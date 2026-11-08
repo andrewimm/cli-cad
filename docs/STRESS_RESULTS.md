@@ -8,7 +8,7 @@ Suites: [`stress/`](../stress/README.md). Archived summaries and reproductions:
 | suite | first run | final run | what changed |
 |---|---|---|---|
 | S01 Booleans (1000 cases) | 34 "defects" → 4 after harness fixes | **1000 pass** | union fallback when face merging corrupts the result; adaptive volume integration |
-| S02 Fillets (504 attempts) | 2 defects + 1 found during smoke runs | **0 defects**; 68 controlled failures, all scoring 4/4 on error quality | fillet/chamfer results must be valid solids with an unchanged solid count; no silent body loss |
+| S02 Fillets (504 attempts) | 2 defects + 1 found during smoke runs | **0 defects**; all 118 failed attempts are controlled and score 4/4 on error quality | fillet/chamfer results must be valid solids with an unchanged solid count; no silent body loss |
 | S03 Scale (6 families × 9 scales) | pass | **pass**; worst normalised deviation 8e-9 across 0.001×–10000× | — |
 | S04 Repeated features (24 cases) | 5 timeouts (>1500 s), quadratic | **24 pass**; batch calls linear-ish | fast OCP list conversion, fast internal metrics, batch positions, Delabella mesher |
 | S05 Parameter mutation (200 cases) | 21 silent body splits | **0 defects**; 155 pass, 45 controlled | `BODY_SPLIT` warning |
@@ -74,11 +74,12 @@ volume checks).
 | 1 mm | 72 | 71 |
 | 2 mm | 72 | 59 |
 | 5 mm | 72 | 36 |
-| 0.9 × r_max | 72 | 72 (after fix: 2 now fail in a controlled way instead of splitting) |
+| 0.9 × r_max | 72 | 72 |
 | 1.1 × r_max | 72 | 4 (valid non-monotonic successes) |
 
-Every failure is a `FILLET_FAILED` with a hint, failing edges and the radius
-(quality 4/4). No selection was entirely un-filletable; stale selections were
+Every one of the 118 failed attempts is a `FILLET_FAILED` with a hint, failing edges and
+the radius (quality 4/4). With the solid-count guard in place the bisected r_max is the
+largest radius giving a valid single solid, so every 0.9 × r_max attempt succeeds. No selection was entirely un-filletable; stale selections were
 always rejected; no unrelated named face disappeared.
 
 ## S03 — Scale
