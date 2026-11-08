@@ -347,7 +347,7 @@ def grade(task: Task, submission: Path, render_dir: Path | None = None) -> dict:
         try:
             from cad.renderer import render_views
 
-            out["renders"] = [r["path"] for r in render_views(parts, ["iso", "front", "top", "right", "iso_back"],
+            out["renders"] = [r["path"] for r in render_views(parts, ["iso", "front", "top", "right", "iso_back", "iso_bottom"],
                                                               render_dir, size=(800, 600), prefix=task.id)]
         except Exception as e:
             out["render_error"] = str(e)

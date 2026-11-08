@@ -1,0 +1,202 @@
+{
+  "run": {
+    "label": "new-tasks-smoke",
+    "model": "sonnet",
+    "attempts": 1,
+    "tasks": [
+      "param_hole_pattern",
+      "robot_leg",
+      "servo_envelope_bracket",
+      "split_shaft_clamp"
+    ],
+    "git": "cdd7c38",
+    "started": 1794101968.6252851
+  },
+  "overall": {
+    "attempts": 4,
+    "pass_rate": 0.75,
+    "mean_score": 0.975,
+    "self_reported_success": 1.0,
+    "overclaimed": 1,
+    "mean_cad_calls": 9.5,
+    "mean_failed_builds": 0,
+    "mean_turns": 11,
+    "mean_cost_usd": 0.178,
+    "total_cost_usd": 0.714,
+    "implementation_peeks": 0,
+    "feedback_received": 4
+  },
+  "tasks": {
+    "param_hole_pattern": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 10,
+      "mean_builds": 4,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 0,
+      "mean_doc_lookups": 2,
+      "mean_turns": 9,
+      "mean_duration_s": 24.5,
+      "mean_cost_usd": 0.134,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "robot_leg": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 16,
+      "mean_builds": 4,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 4,
+      "mean_turns": 19,
+      "mean_duration_s": 55.9,
+      "mean_cost_usd": 0.243,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    },
+    "servo_envelope_bracket": {
+      "attempts": 1,
+      "pass_rate": 0.0,
+      "mean_score": 0.9,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 53.0,
+      "mean_cost_usd": 0.19,
+      "failed_checks": {
+        "min_thickness": 1
+      },
+      "visual_overall_match": 4
+    },
+    "split_shaft_clamp": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 7,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 27.4,
+      "mean_cost_usd": 0.148,
+      "failed_checks": {},
+      "visual_overall_match": 3
+    }
+  },
+  "cad_errors": {},
+  "issue_categories": {
+    "docs_unclear/low": 3,
+    "other/low": 3,
+    "query_missing/medium": 2,
+    "api_confusing/low": 1
+  },
+  "issues": [
+    {
+      "task": "param_hole_pattern",
+      "category": "docs_unclear",
+      "description": "hole_pattern docs say the grid is centred on `center` but do not state clearly that center is in absolute part coordinates (it is, since my plate corner is at the origin and center=(w/2,h/2) worked); only inferred from the example.",
+      "severity": "low"
+    },
+    {
+      "task": "param_hole_pattern",
+      "category": "other",
+      "description": "`cad set` leaves a params.toml with an override equal to the default after resetting; no `cad unset`/reset noticed.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "docs_unclear",
+      "description": "Docs don't describe how to build a multi-part assembly with a motion parameter; I had to infer that returning a dict of Parts and rotating one part by a Parameter works. Rotation sign for 'swing toward +X' (rotate -a about y) had to be verified by measurement.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "api_confusing",
+      "description": "XZ plane offset=d places the sketch at Y=-d and extrudes toward -Y; computing Y layers needs care (negative offsets for +Y positions).",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "query_missing",
+      "description": "No one-shot clearance sweep across a parameter range (had to set angle, rebuild and measure distances manually). Only checked angles 0, 60, 90 by distance; clearance is guaranteed by the Y gap by construction.",
+      "severity": "medium"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "query_missing",
+      "description": "No built-in way to declare an envelope/keep-out body and check clearance of parts against it (side-face 0.5 mm clearance, 7 mm shaft column); I verified by hand arithmetic from the model dimensions only.",
+      "severity": "medium"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "other",
+      "description": "Bash heredoc writes into the workspace needed approval in my sandbox; had to use the file Write tool. Not a cad problem.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "docs_unclear",
+      "description": "Cutting a pocket from a given Z face needs extrude(plane='XY', offset=z) with a positive distance going +Z; this is inferable but not stated for pockets opening on a bottom face. A hex-pocket recipe would help.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "other",
+      "description": "Feature names containing a minus sign (e.g. 'screw-10') are accepted but produce awkward ref names like 'screw-10.side'.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "State explicitly that hole_pattern center is in part coordinates, and the count=(nx, ny) order."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "Add a cad unset/reset for parameter overrides."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Add a docs section on assemblies/motion parameters and a 'cad sweep PARAM a:b:n --measure ...' command."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Allow rotate to take an axis-through-point more explicitly in docs with a sign example for each axis."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Add a helper to build a reference 'envelope' Part that is excluded from export, with `cad measure --distance` between it and each part."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Add a vertical-column clearance query (cylinder of given diameter above a point) reporting any intersecting parts."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Document multi-part assemblies' section render naming (the sheet combines all parts into one image)."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add a hex nut pocket / captive nut recipe to the docs."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add a half-bore / split-part example."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Offer a 'cad check' for interference between all parts in a multi-part project."
+    }
+  ]
+}
