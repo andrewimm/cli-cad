@@ -256,3 +256,22 @@ def test_towel_hook_checks_reject_sharp_elbow_and_wrong_rod(tmp_path):
     assert "points_outside" in failed(grade(t, script(tmp_path, sharp, "sharp.py")))
     square = src.replace("Profile.circle(8)", "Profile.rect(8, 8)")      # square bar instead of round rod
     assert "python" in failed(grade(t, script(tmp_path, square, "square.py")))
+
+
+@pytest.mark.skipif(bool(__import__("cad.fea", fromlist=["missing"]).missing()), reason="optional FEA packages not installed")
+def test_strengthen_arm_checks_reject_weak_heavy_sharp_and_moved(tmp_path):
+    t = task("strengthen_arm")
+
+    def msgs(g):
+        return " | ".join(c.get("message", "") for c in g["checks"] if not c["ok"])
+
+    assert grade(t, mutated_dir(tmp_path / "ok", "strengthen_arm", "width", "width"))["passed"]
+    sharp = grade(t, mutated_dir(tmp_path / "sharp", "strengthen_arm", 'arm.fillet(arm.edges().concave(), 3, name="root")', "pass"))
+    assert "sharp inside edge" in msgs(sharp)                                     # strong but un-rounded corners
+    weak = grade(t, mutated_dir(tmp_path / "weak", "strengthen_arm", 'Parameter("arm.width", 14.0)', 'Parameter("arm.width", 10.0)'))
+    assert "pushrod: safety factor" in msgs(weak)                                 # rounded but too narrow
+    heavy = grade(t, mutated_dir(tmp_path / "heavy", "strengthen_arm", 'Parameter("arm.thickness", 6.0)',
+                                 'Parameter("arm.thickness", 8.0)'))
+    assert "mass" in msgs(heavy)                                                  # strong by brute force
+    moved = grade(t, mutated_dir(tmp_path / "moved", "strengthen_arm", 'Parameter("arm.length", 90)', 'Parameter("arm.length", 80)'))
+    assert "holes" in failed(moved)                                               # shortened the arm: pin moved

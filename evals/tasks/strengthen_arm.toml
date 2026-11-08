@@ -1,0 +1,102 @@
+id = "strengthen_arm"
+title = "Strengthen a robot arm link that breaks (stress analysis)"
+category = "stress"
+split = "dev"
+setup_dir = "strengthen_arm_files"
+prompt = """
+This directory contains a cad project (cad.toml, model.py) for a 3D-printed PETG robot arm link. It is screwed
+to a servo horn at the hub and a linkage pin goes through the hole at the tip. The script already declares the
+two load cases the arm sees in use as stress studies ("pushrod" and "payload"). The arm breaks in use.
+
+Change the design so that it is strong enough:
+
+1. Both studies must reach a safety factor of at least 2. Judge it away from the supports: the peak right at an
+   idealised clamp is not real, so use the safety factor `cad fea` reports away from supports and sharp edges
+   when it gives one, otherwise the plain safety factor.
+2. No sharp inside corners anywhere (a computed stress at a sharp inside corner is meaningless).
+3. Mass at most 12.5 g.
+4. Keep the interfaces exactly where they are: the bottom face on Z = 0 (it sits on the horn), the 7 mm spline
+   hole and the four 2.2 mm horn screw holes (16 mm circle) at the hub around (0, 0), the 4 mm pin hole at
+   (90, 0), and the arm along +X. The arm may be at most 8 mm thick and at most 30 mm wide (Y).
+5. Do not change the load cases (the studies' supports and loads); change the geometry.
+6. One part named "arm", PETG.
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+required_names = ["arm"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "holes"
+diameter = 2.2
+axis = "z"
+positions = [[5.657, 5.657], [-5.657, 5.657], [-5.657, -5.657], [5.657, -5.657]]
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 7
+axis = "z"
+positions = [[0, 0]]
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 4
+axis = "z"
+positions = [[90, 0]]
+tol = 0.1
+
+[[checks]]
+type = "python"
+note = "on Z = 0, at most 8 mm thick and 30 mm wide, PETG, at most 12.5 g, no sharp inside corners"
+code = '''
+def check(parts):
+    from cad import fea
+    p = parts["arm"]
+    lo, hi = p.bbox.min, p.bbox.max
+    msgs = []
+    if abs(lo[2]) > 1e-3:
+        msgs.append(f"bottom at Z = {lo[2]:g}, want 0")
+    if hi[2] - lo[2] > 8 + 1e-3:
+        msgs.append(f"{hi[2] - lo[2]:g} mm thick, max 8")
+    if hi[1] - lo[1] > 30 + 1e-3:
+        msgs.append(f"{hi[1] - lo[1]:g} mm wide, max 30")
+    if not p.material or p.material.name.upper() != "PETG":
+        msgs.append("material is not PETG")
+    if p.mass() > 12.5:
+        msgs.append(f"mass {p.mass():.2f} g, max 12.5")
+    sharp = fea._sharp_concave_edges(p.shape)
+    if sharp:
+        msgs.append(f"{len(sharp)} sharp inside edge(s), e.g. at {[round(c, 2) for c in fea._occ.edge_centroid(sharp[0][0])]}")
+    return not msgs, "; ".join(msgs) or f"envelope ok, {p.mass():.2f} g, no sharp inside corners"
+'''
+
+[[checks]]
+type = "python"
+note = "the grader's own load cases (pushrod 30 N sideways on the pin, 12 N down around the pin; held by the horn screws): safety factor >= 2 away from supports"
+code = '''
+def check(parts):
+    from cad import Study, fea
+    p = parts["arm"]
+    msgs, got = [], []
+    for name in ("pushrod", "payload"):
+        s = Study("grade_" + name, p, target=2)
+        s.fixed(p.faces().holes(2.2, tol=0.05))
+        if name == "pushrod":
+            s.bearing(p.faces().holes(4.0, tol=0.05).nearest((90, 0, 2)), 30, "+y")
+        else:
+            top = p.faces().planar().facing("+z").max("z")
+            s.force(top, 12, "-z", at=(90, 0, p.bbox.max[2]), radius=7)
+        r = fea.analyse(p, s.resolve("arm"), "normal")[0].report
+        away = r.get("away_from_supports_and_sharp_edges")
+        sf = away["safety_factor"] if away else r["safety_factor"]
+        got.append(f"{name} {sf:.2f}")
+        if sf < 1.95:
+            msgs.append(f"{name}: safety factor {sf:.2f} < 2")
+    return not msgs, "; ".join(msgs) or "safety factors " + ", ".join(got)
+'''

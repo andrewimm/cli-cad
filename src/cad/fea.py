@@ -42,7 +42,7 @@ QUALITY = {  # bbox diagonal / max element size, elements per full circle on cur
     "normal": (24, 8, 0.4),  # second pass with elements this fraction of the size around the hot spots
     "fine": (42, 14, 1 / 4),
 }
-SOLVER_VERSION = "fea-13"
+SOLVER_VERSION = "fea-14"
 DIRECT_SOLVE_MAX_DOFS = 8_000
 MAX_DOFS = 3_000_000
 
@@ -305,6 +305,9 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
     tm = mesh if mesh is not None else mesh_part(part, quality)
     t_mesh = tm.seconds
     m, tris = _skfem_mesh(tm)
+    # loads are integrated on the straight-sided version of the mesh (same vertices, same dof numbering):
+    # inverting the curved mapping at surface points can fail on strongly curved elements
+    mflat = MeshTet(np.ascontiguousarray(m.p[:, :int(m.t.max()) + 1]), np.ascontiguousarray(m.t)) if tm.tets.shape[1] == 10 else m
     e = ElementVector(ElementTetP2())
     ib = Basis(m, e, intorder=2)
     if ib.N > MAX_DOFS:
@@ -350,7 +353,7 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
             warnings.append({"code": "LOAD_FACE_SHARED", "message": f"{kind}({ld['faces']!r}) acts on a face that is also "
                              f"{', '.join(shared[:4])} (coplanar faces merge into one when bodies are joined)",
                              "hint": f"the load covers the whole merged face; to load only part of it add at=(x, y, z), radius=r to {kind}()"})
-        fb = FacetBasis(m, e, facets=fac, intorder=3)
+        fb = FacetBasis(mflat, e, facets=fac, intorder=3)
         area = float(_integrate(fb, lambda w: 1.0 + 0 * w.x[0]))
         info["area_mm2"] = round(area, 3)
         info["centroid"] = [round(_integrate(fb, lambda w, k=k: w.x[k]) / area, 4) + 0.0 for k in range(3)]
