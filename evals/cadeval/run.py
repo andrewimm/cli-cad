@@ -66,14 +66,17 @@ SHIM = r'''#!/usr/bin/env python3
 import json, os, re, subprocess, sys, time
 t = time.time()
 p = subprocess.run([{real!r}] + sys.argv[1:], capture_output=True)
-sys.stdout.buffer.write(p.stdout); sys.stdout.flush()
-sys.stderr.buffer.write(p.stderr); sys.stderr.flush()
 err = None
-m = re.search(rb'error \[([A-Z_]+)\]', p.stderr) or re.search(rb'"code": "([A-Z_]+)"', p.stdout if p.returncode else b"")
+m = re.search(rb'error \[([A-Z_]+)\]', p.stderr) or (re.search(rb'"code": "([A-Z_]+)"', p.stdout) if p.returncode else None)
 if m: err = m.group(1).decode()
 with open({log!r}, "a") as f:
     f.write(json.dumps({{"t": t, "argv": sys.argv[1:], "exit": p.returncode, "error": err,
                         "ms": round((time.time() - t) * 1000, 1), "cwd": os.getcwd()}}) + "\n")
+try:
+    sys.stdout.buffer.write(p.stdout); sys.stdout.flush()
+    sys.stderr.buffer.write(p.stderr); sys.stderr.flush()
+except BrokenPipeError:
+    pass
 sys.exit(p.returncode)
 '''
 
@@ -114,6 +117,7 @@ def agent_env(attempt_dir: Path) -> dict:
 
 def run_attempt(task: Task, attempt_dir: Path, *, model: str, max_turns: int, timeout_s: int,
                 budget_usd: float | None, visual: bool, agent_cmd: str = "claude") -> dict:
+    attempt_dir = attempt_dir.resolve()
     attempt_dir.mkdir(parents=True, exist_ok=True)
     ws, prompt = prepare(task, attempt_dir)
     env = agent_env(attempt_dir)
@@ -121,6 +125,9 @@ def run_attempt(task: Task, attempt_dir: Path, *, model: str, max_turns: int, ti
            "--max-turns", str(task.limits.get("max_turns", max_turns)), "--model", model,
            "--no-session-persistence",
            "--allowedTools", "Bash(cad:*)", "Bash(ls:*)", "Bash(cat:*)", "Read", "Write", "Edit", "Glob", "Grep"]
+    # the agent's shell re-initialises PATH from the user profile; settings.env is applied on top of it
+    keep = ("PATH", "CAD_STATE_DIR", "CAD_RUNTIME_DIR", "CAD_PYTHON", "CAD_DAEMON_IDLE_SECS")
+    cmd += ["--settings", json.dumps({"env": {k: env[k] for k in keep}})]
     if budget_usd:
         cmd += ["--max-budget-usd", str(budget_usd)]
     meta = {"task": task.id, "model": model, "agent": agent_cmd, "max_turns": max_turns, "started": time.time(),
@@ -164,6 +171,7 @@ def run_batch(tasks: list[Task], run_dir: Path, *, attempts: int, model: str, ma
 
     if not CAD_BIN.exists():
         sys.exit(f"{CAD_BIN} not found: run `cargo build --release` first")
+    run_dir = run_dir.resolve()
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "run.json").write_text(json.dumps({
         "label": label, "model": model, "attempts": attempts, "tasks": [t.id for t in tasks],
