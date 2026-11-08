@@ -153,6 +153,8 @@ def _parser() -> _Parser:
     s.add_argument("--thickness", action="store_true", help="sampled wall thickness with the thinnest locations")
     s.add_argument("--distance", metavar="OTHER", help="minimum distance (and interference) to another part or reference")
     s.add_argument("--density", type=float, metavar="G_PER_CM3", help="report mass for this density")
+    s.add_argument("--section", metavar="AXIS=VALUE",
+                   help="cross-section at a plane, e.g. z=-5: regions with outlines (rectangles, circles) and holes")
 
     s = cmd("query")
     s.add_argument("target", nargs="?", help="part name (optional for single-part projects)")
@@ -502,7 +504,14 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         return r, _fmt_inspect(r)
     if c == "measure":
         metrics = [m for m in ("volume", "area", "bbox", "com", "holes", "validity", "length", "thickness") if getattr(args, m)]
-        r = s.measure(args.target, metrics, args.revision, other=args.distance, density=args.density)
+        section = None
+        if args.section:
+            ax, _, val = args.section.partition("=")
+            try:
+                section = (ax.strip(), float(val))
+            except ValueError:
+                raise CadError(INVALID_ARGUMENT, f"--section expects AXIS=VALUE, e.g. z=-5, got {args.section!r}") from None
+        r = s.measure(args.target, metrics, args.revision, other=args.distance, density=args.density, section=section)
         return r, _fmt_yaml(r)
     if c == "query":
         target, expr = args.target, args.expr
@@ -574,9 +583,17 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
             extra = f", overlap {p['overlap_volume']} mm3" if p["overlap_volume"] else ""
             lines.append(f"  {p['a']} <-> {p['b']}: {p['state']}, min distance {p['min_distance']} mm{extra} "
                          f"at {p['closest_points'][0]} / {p['closest_points'][1]}{flag}")
-            for f in p.get("reference_faces", []):
-                gap = "open (nothing in front)" if f["gap"] is None else ("contact" if f["gap"] < 1e-4 else f"{f['gap']} mm")
-                lines.append(f"      {p['b'] if p['b'] in r['references'] else p['a']} face {', '.join(f['faces'])} (normal {f['normal']}): gap {gap}")
+            faces = p.get("reference_faces", [])
+            facing = sorted((f for f in faces if f["gap"] is not None), key=lambda f: f["gap"])
+            refname = p["b"] if p["b"] in r["references"] else p["a"]
+            for f in facing[:6]:
+                gap = "contact" if f["gap"] < 1e-4 else f"{f['gap']} mm"
+                lines.append(f"      {refname} face {', '.join(f['faces'])} (normal {f['normal']}): gap {gap}")
+            hidden = len(facing) - 6 if len(facing) > 6 else 0
+            open_ = len(faces) - len(facing)
+            if hidden or open_:
+                lines.append(f"      ({hidden} more facing faces, " if hidden else "      (" )
+                lines[-1] += f"{open_} faces with nothing in front; all in --json)"
         fail = None
         if r.get("violations"):
             fail = {"code": "VALIDATION_FAILED", "message": f"{len(r['violations'])} pair(s) closer than {args.min} mm",

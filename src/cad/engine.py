@@ -246,10 +246,14 @@ class ProjectSession:
             out["parts"][n] = d
         return out
 
-    def measure(self, target: str | None, metrics: list[str], rev=None, *, other: str | None = None, density: float | None = None) -> dict:
+    def measure(self, target: str | None, metrics: list[str], rev=None, *, other: str | None = None, density: float | None = None,
+                section: tuple[str, float] | None = None) -> dict:
         if target is None:
             r, all_parts = self.parts(rev)
             if len(all_parts) > 1:  # no target in a multi-part model: measure every part
+                if section:
+                    raise CadError(INVALID_ARGUMENT, "--section needs a part name", hint="e.g. cad measure servo --section z=-5",
+                                   details={"parts": list(all_parts)})
                 return {"revision": r, "parts": {n: self.measure(n, metrics, r, other=other if other != n else None, density=density)
                                                   for n in all_parts}}
         r, part, ref = self.split_target(target, rev)
@@ -273,6 +277,12 @@ class ProjectSession:
             if other:
                 out["distance"] = self._distance(comp, other, r)
             return out
+        if section:
+            from .analysis import cross_section
+
+            out["section"] = cross_section(part.shape, *section)
+            if all_m:
+                return out
         if all_m or "volume" in metrics:
             out["volume"] = round(part.volume, 6)
         if all_m or "area" in metrics:

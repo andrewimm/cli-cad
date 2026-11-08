@@ -307,6 +307,7 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad export [--format step,stl,3mf,brep] [--3mf-mode objects|multimaterial] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files; 3MF carries materials; STL reports watertightness |
 | `cad materials` | built-in materials (density, colour) |
 | `cad fonts [filter]` | installed fonts for text |
+| `cad measure <part> --section z=V` | cross-section outline at a plane (regions, rectangles, circles, holes) |
 | `cad info <file>` | bodies, names, sizes, units in a STEP / IGES / STL / BREP file |
 | `cad slice` | Bambu Studio slice: print time, grams per filament, supports, warnings, .gcode.3mf |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
@@ -406,7 +407,8 @@ b = Part.from_file("old_bracket.stl"); b.hole(5, at=(0, 2))                 # an
   and are read as mm: `scale=25.4` for an inch STL.
 - Placement: the file's coordinates are kept unless you pass `align=` (per axis "min" | "center" | "max",
   bounding box onto the origin) and/or `at=` (an offset). To design around a component keep it where it is
-  and measure it: `cad info`, `cad measure servo --bbox --holes`, `part.find_holes()`.
+  and measure it: `cad info`, `cad measure servo --bbox --holes`, `part.find_holes()`, and its outline at a
+  height with `cad measure servo --section z=-8` (each region's extents, rectangle / circle outlines, holes).
 - `solid=` picks bodies by name (exact, else substring), index, or a list. Several bodies in one part stay
   separate solids. Named faces: `import1.top` / `.bottom` / `.front` ... and `import1.<body name>`.
 - Paths are relative to the project directory; imported files count as sources, so editing one triggers a

@@ -100,3 +100,16 @@ def test_large_sources_are_stored_once(tmp_path):
     for rev in ("a", "b"):
         st.snapshot_file(big, tmp_path / rev / "big.stl", files["big.stl"])
     assert (tmp_path / "a" / "big.stl").stat().st_ino == (tmp_path / "b" / "big.stl").stat().st_ino
+
+
+def test_cross_section_reports_outlines_and_holes():
+    from cad.analysis import cross_section
+
+    servo = Part.from_file(str(FIX.parent.parent / "evals" / "setups" / "vendor_servo_mount" / "vendor" / "micro_servo.step"))
+    ears = cross_section(servo.shape, "z", -1.0)["regions"][0]
+    assert ears["outline"]["shape"] == "rectangle" and ears["size"][:2] == pytest.approx([32.2, 12.2])
+    assert sorted(h["center"][0] for h in ears["holes"]) == pytest.approx([-19.8, 8.0])
+    body = cross_section(servo.shape, "z", -8)["regions"][0]
+    assert body["min"][:2] == pytest.approx([-17.3, -6.1]) and body["max"][:2] == pytest.approx([5.5, 6.1])
+    with pytest.raises(CadError):
+        cross_section(servo.shape, "z", 100)

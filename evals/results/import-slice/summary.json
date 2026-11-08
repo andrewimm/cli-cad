@@ -1,0 +1,127 @@
+{
+  "run": {
+    "label": "import-slice",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "vendor_servo_mount"
+    ],
+    "git": "ca7ded0",
+    "started": 1794118331.3417459
+  },
+  "overall": {
+    "attempts": 3,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 16.667,
+    "mean_failed_builds": 0,
+    "mean_turns": 14.667,
+    "mean_cost_usd": 0.199,
+    "total_cost_usd": 0.596,
+    "implementation_peeks": 0,
+    "feedback_received": 3
+  },
+  "tasks": {
+    "vendor_servo_mount": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 16.667,
+      "mean_builds": 2,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 4,
+      "mean_turns": 14.667,
+      "mean_duration_s": 40.5,
+      "mean_cost_usd": 0.199,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    }
+  },
+  "cad_errors": {
+    "INVALID_ARGUMENT": 2,
+    "NOT_FOUND": 1
+  },
+  "issue_categories": {
+    "query_missing/medium": 2,
+    "api_missing/low": 1,
+    "docs_unclear/medium": 1,
+    "query_missing/low": 1,
+    "docs_unclear/low": 1
+  },
+  "issues": [
+    {
+      "task": "vendor_servo_mount",
+      "category": "query_missing",
+      "description": "No direct way to get the bounding box / outline of a face or of the ear region of an imported part; I inferred ear x-extents and body width from face areas and centroids (e.g. 278.16 mm2 = 22.8 x 12.2). edges().at_z does not exist.",
+      "severity": "medium"
+    },
+    {
+      "task": "vendor_servo_mount",
+      "category": "api_missing",
+      "description": "No way to section the imported servo at a Z height to get its footprint below the ears.",
+      "severity": "low"
+    },
+    {
+      "task": "vendor_servo_mount",
+      "category": "docs_unclear",
+      "description": "No direct way to get the ears' outline or body cross-section; I had to infer ear extents from face areas/centroids (cad query facing) and bbox. A 'cad measure servo --section z=-1' or per-z outline would help.",
+      "severity": "medium"
+    },
+    {
+      "task": "vendor_servo_mount",
+      "category": "query_missing",
+      "description": "cad clearance output for a reference part lists ~20 face lines, mostly 'open'; noisy for the simple check of 'is the clearance 0.5'.",
+      "severity": "low"
+    },
+    {
+      "task": "vendor_servo_mount",
+      "category": "query_missing",
+      "description": "No direct way to get the case-body footprint below the ears of an imported solid; I inferred the body X range (-17.3..5.5) from pixels in a section render plus face-area arithmetic.",
+      "severity": "medium"
+    },
+    {
+      "task": "vendor_servo_mount",
+      "category": "docs_unclear",
+      "description": "cad clearance output for a touching pair lists ~20 per-face lines, mostly 'gap open'; hard to scan.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "Add face/selection bbox output to cad query."
+    },
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "Add a z-slice outline query."
+    },
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "Add a way to query the XY outline/bbox of a slab of a part (z range), e.g. cad measure servo --bbox --zrange -2.5:0."
+    },
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "Filter 'gap open' lines in cad clearance by default."
+    },
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "cad slice names the output after the directory (workspace.gcode.3mf) rather than the part."
+    },
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "Cross-section bbox/outline at a given Z"
+    },
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "Face bounding boxes in cad query output"
+    },
+    {
+      "task": "vendor_servo_mount",
+      "suggestion": "Compact clearance summary (only faces with finite gap)"
+    }
+  ]
+}

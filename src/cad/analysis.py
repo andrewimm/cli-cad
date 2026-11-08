@@ -148,3 +148,68 @@ def _face_clearances(ref: "Part", other: "Part", per_face: int = 5) -> list[dict
         })
     rows.sort(key=lambda r: (r["gap"] is None, r["gap"] if r["gap"] is not None else 0))
     return rows
+
+
+def cross_section(shape, axis: str, value: float) -> dict:
+    """The part cut by the plane ``axis = value``: regions with area, extents and outlines.
+
+    Each region is one connected piece of the cut; its outline and holes are reported as
+    bounding boxes, recognised as rectangles (axis-aligned) or circles where they are.
+    """
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+    from OCP.BRepTools import BRepTools
+    from OCP.gp import gp_Dir, gp_Pln, gp_Pnt
+
+    from . import _occ
+    from .errors import INVALID_ARGUMENT, CadError
+
+    axis = axis.lower()
+    if axis not in ("x", "y", "z"):
+        raise CadError(INVALID_ARGUMENT, f"section axis must be x, y or z, got {axis!r}", hint="e.g. --section z=-5")
+    i = "xyz".index(axis)
+    lo, hi = _occ.bbox(shape)
+    if not lo[i] - 1e-9 <= value <= hi[i] + 1e-9:
+        raise CadError(INVALID_ARGUMENT, f"{axis} = {value:g} misses the part (it spans {axis} {lo[i]:.4g} .. {hi[i]:.4g})")
+    n = [0.0, 0.0, 0.0]
+    n[i] = 1.0
+    o = [0.0, 0.0, 0.0]
+    o[i] = value
+    big = 10 * max(h - l for l, h in zip(lo, hi)) + 10
+    face = BRepBuilderAPI_MakeFace(gp_Pln(gp_Pnt(*o), gp_Dir(*n)), -big, big, -big, big).Face()
+    common = BRepAlgoAPI_Common(shape, face).Shape()
+    regions = []
+    for f in _occ.faces(common):
+        outer = BRepTools.OuterWire_s(f)
+        loops = [_loop_info(w, i) for w in _occ.wires(f)]
+        outer_info = _loop_info(outer, i)
+        holes = [lp for lp, w in zip(loops, _occ.wires(f)) if not w.IsSame(outer)]
+        flo, fhi = _occ.bbox(f)
+        regions.append({"area": round(_occ.area(f), 4), "min": _r(flo), "max": _r(fhi),
+                        "size": _r([b - a for a, b in zip(flo, fhi)]), "outline": outer_info, "holes": holes})
+    regions.sort(key=lambda r: -r["area"])
+    return {"axis": axis, "value": value, "regions": regions, "area": round(sum(r["area"] for r in regions), 4)}
+
+
+def _loop_info(wire, axis_index: int) -> dict:
+    from . import _occ
+
+    edges = _occ.edges(wire)
+    lo, hi = _occ.bbox(wire)
+    size = [b - a for a, b in zip(lo, hi)]
+    info = {"min": _r(lo), "max": _r(hi), "size": _r(size), "edges": len(edges)}
+    kinds = {_occ.curve_type(e) for e in edges}
+    if kinds == {"circle"}:
+        c = [(a + b) / 2 for a, b in zip(lo, hi)]
+        others = [k for k in range(3) if k != axis_index]
+        info.update(shape="circle", center=_r(c), diameter=round(max(size[k] for k in others), 4))
+    elif kinds == {"line"} and len(edges) == 4:
+        dirs = [_occ.edge_tangent(e) for e in edges]
+        if all(max(abs(c) for c in d) > 1 - 1e-9 for d in dirs):
+            info["shape"] = "rectangle"
+    return info
+
+
+
+def _r(v):
+    return [round(float(x), 4) for x in v]
