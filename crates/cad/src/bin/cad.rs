@@ -24,7 +24,10 @@ use std::time::{Duration, Instant};
 fn main() {
     let mut args: Vec<String> = env::args().skip(1).collect();
     let mut no_daemon = env::var("CAD_NO_DAEMON").map(|v| v == "1").unwrap_or(false);
-    let mut timeout_s: u64 = env::var("CAD_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(600);
+    let mut timeout_s: u64 = env::var("CAD_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(600);
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -40,7 +43,11 @@ fn main() {
         }
     }
     let json_out = args.iter().any(|a| a == "--json");
-    let first = args.iter().find(|a| !a.starts_with('-')).cloned().unwrap_or_default();
+    let first = args
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .cloned()
+        .unwrap_or_default();
 
     if first == "daemon" {
         std::process::exit(daemon_cmd(&args, json_out));
@@ -50,7 +57,9 @@ fn main() {
     }
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     let req = json!({"argv": args, "cwd": cwd, "timeout_s": timeout_s});
-    let require = env::var("CAD_REQUIRE_DAEMON").map(|v| v == "1").unwrap_or(false);
+    let require = env::var("CAD_REQUIRE_DAEMON")
+        .map(|v| v == "1")
+        .unwrap_or(false);
     let stream = match connect_or_start() {
         Ok(s) => s,
         Err(reason) if !require => {
@@ -60,7 +69,16 @@ fn main() {
         }
         Err(reason) => {
             if json_out {
-                println!("{}", error_json(&first, "DAEMON_UNAVAILABLE", &reason, "unset CAD_REQUIRE_DAEMON or retry with --no-daemon", exit::DAEMON_UNAVAILABLE));
+                println!(
+                    "{}",
+                    error_json(
+                        &first,
+                        "DAEMON_UNAVAILABLE",
+                        &reason,
+                        "unset CAD_REQUIRE_DAEMON or retry with --no-daemon",
+                        exit::DAEMON_UNAVAILABLE
+                    )
+                );
             } else {
                 eprintln!("error [DAEMON_UNAVAILABLE]: {reason}\n  hint: unset CAD_REQUIRE_DAEMON or retry with --no-daemon");
             }
@@ -78,7 +96,16 @@ fn main() {
         }
         Err(e) => {
             if json_out {
-                println!("{}", error_json(&first, "DAEMON_UNAVAILABLE", &e, "retry with --no-daemon, or see `cad daemon status`", exit::DAEMON_UNAVAILABLE));
+                println!(
+                    "{}",
+                    error_json(
+                        &first,
+                        "DAEMON_UNAVAILABLE",
+                        &e,
+                        "retry with --no-daemon, or see `cad daemon status`",
+                        exit::DAEMON_UNAVAILABLE
+                    )
+                );
             } else {
                 eprintln!("error [DAEMON_UNAVAILABLE]: {e}\n  hint: retry with --no-daemon, or see `cad daemon status`");
             }
@@ -103,12 +130,17 @@ fn connect() -> std::io::Result<UnixStream> {
 fn connect_or_start() -> Result<UnixStream, String> {
     match connect() {
         Ok(s) => Ok(s),
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(libc::EPERM) => {
+        Err(e)
+            if e.kind() == std::io::ErrorKind::PermissionDenied
+                || e.raw_os_error() == Some(libc::EPERM) =>
+        {
             Err(format!("Unix sockets are not permitted here: {e}"))
         }
         Err(_) => {
             start_daemon().map_err(|e| format!("could not start the daemon: {e}"))?;
-            connect().map_err(|e| format!("daemon started but its socket is not accepting connections: {e}"))
+            connect().map_err(|e| {
+                format!("daemon started but its socket is not accepting connections: {e}")
+            })
         }
     }
 }
@@ -126,10 +158,14 @@ fn send(mut stream: UnixStream, req: &Value, timeout: Duration) -> Result<Value,
     stream.set_read_timeout(Some(timeout)).ok();
     let mut line = req.to_string();
     line.push('\n');
-    stream.write_all(line.as_bytes()).map_err(|e| format!("send failed: {e}"))?;
+    stream
+        .write_all(line.as_bytes())
+        .map_err(|e| format!("send failed: {e}"))?;
     let mut reader = BufReader::new(stream);
     let mut resp = String::new();
-    reader.read_line(&mut resp).map_err(|e| format!("no response from daemon: {e}"))?;
+    reader
+        .read_line(&mut resp)
+        .map_err(|e| format!("no response from daemon: {e}"))?;
     if resp.is_empty() {
         return Err("daemon closed the connection without responding".into());
     }
@@ -139,7 +175,11 @@ fn send(mut stream: UnixStream, req: &Value, timeout: Duration) -> Result<Value,
 fn daemon_binary() -> PathBuf {
     let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("cad"));
     let sib = exe.with_file_name("cadd");
-    if sib.exists() { sib } else { PathBuf::from("cadd") }
+    if sib.exists() {
+        sib
+    } else {
+        PathBuf::from("cadd")
+    }
 }
 
 fn start_daemon() -> Result<(), String> {
@@ -147,7 +187,11 @@ fn start_daemon() -> Result<(), String> {
     std::fs::create_dir_all(&logdir).map_err(|e| e.to_string())?;
     let log_path = logdir.join("cadd.log");
     let log_start = std::fs::metadata(&log_path).map(|m| m.len()).unwrap_or(0);
-    let log = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).map_err(|e| e.to_string())?;
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| e.to_string())?;
     let log2 = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(daemon_binary());
     cmd.stdin(Stdio::null()).stdout(log).stderr(log2);
@@ -157,7 +201,9 @@ fn start_daemon() -> Result<(), String> {
             Ok(())
         });
     }
-    let mut child = cmd.spawn().map_err(|e| format!("could not start daemon {}: {e}", daemon_binary().display()))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("could not start daemon {}: {e}", daemon_binary().display()))?;
     let t0 = Instant::now();
     while t0.elapsed() < Duration::from_secs(15) {
         if connect().is_ok() {
@@ -169,9 +215,17 @@ fn start_daemon() -> Result<(), String> {
             }
             // only what this startup wrote, not older runs' lines
             let log = std::fs::read(&log_path).unwrap_or_default();
-            let fresh = String::from_utf8_lossy(&log[(log_start as usize).min(log.len())..]).into_owned();
+            let fresh =
+                String::from_utf8_lossy(&log[(log_start as usize).min(log.len())..]).into_owned();
             let tail = fresh.lines().last().unwrap_or("").to_string();
-            return Err(format!("daemon exited during startup ({status}){}", if tail.is_empty() { String::new() } else { format!(": {tail}") }));
+            return Err(format!(
+                "daemon exited during startup ({status}){}",
+                if tail.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {tail}")
+                }
+            ));
         }
         std::thread::sleep(Duration::from_millis(25));
     }
@@ -179,10 +233,21 @@ fn start_daemon() -> Result<(), String> {
 }
 
 fn daemon_cmd(args: &[String], json_out: bool) -> i32 {
-    let sub = args.iter().filter(|a| !a.starts_with('-')).nth(1).map(|s| s.as_str()).unwrap_or("status");
+    let sub = args
+        .iter()
+        .filter(|a| !a.starts_with('-'))
+        .nth(1)
+        .map(|s| s.as_str())
+        .unwrap_or("status");
     let print = |v: &Value, text: String| {
         if json_out {
-            println!("{}", serde_json::to_string_pretty(&json!({"ok": true, "command": "daemon", "result": v})).unwrap());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &json!({"ok": true, "command": "daemon", "result": v})
+                )
+                .unwrap()
+            );
         } else {
             println!("{text}");
         }
@@ -190,12 +255,18 @@ fn daemon_cmd(args: &[String], json_out: bool) -> i32 {
     match sub {
         "start" => match connect() {
             Ok(_) => {
-                print(&json!({"running": true, "started": false}), "daemon already running".into());
+                print(
+                    &json!({"running": true, "started": false}),
+                    "daemon already running".into(),
+                );
                 0
             }
             Err(_) => match start_daemon() {
                 Ok(()) => {
-                    print(&json!({"running": true, "started": true}), format!("daemon started ({})", socket_path().display()));
+                    print(
+                        &json!({"running": true, "started": true}),
+                        format!("daemon started ({})", socket_path().display()),
+                    );
                     0
                 }
                 Err(e) => {
@@ -205,7 +276,12 @@ fn daemon_cmd(args: &[String], json_out: bool) -> i32 {
             },
         },
         "stop" | "restart" => {
-            let was = request(&json!({"argv": ["daemon", "stop"]}), false, Duration::from_secs(10)).is_ok();
+            let was = request(
+                &json!({"argv": ["daemon", "stop"]}),
+                false,
+                Duration::from_secs(10),
+            )
+            .is_ok();
             let t0 = Instant::now();
             while connect().is_ok() && t0.elapsed() < Duration::from_secs(5) {
                 std::thread::sleep(Duration::from_millis(20));
@@ -213,19 +289,35 @@ fn daemon_cmd(args: &[String], json_out: bool) -> i32 {
             if sub == "restart" {
                 return daemon_cmd(&["daemon".into(), "start".into()], json_out);
             }
-            print(&json!({"stopped": was}), if was { "daemon stopped".into() } else { "daemon was not running".into() });
+            print(
+                &json!({"stopped": was}),
+                if was {
+                    "daemon stopped".into()
+                } else {
+                    "daemon was not running".into()
+                },
+            );
             0
         }
-        "status" => match request(&json!({"argv": ["daemon", "status"]}), false, Duration::from_secs(10)) {
+        "status" => match request(
+            &json!({"argv": ["daemon", "status"]}),
+            false,
+            Duration::from_secs(10),
+        ) {
             Ok(resp) => {
                 let st = &resp["result"];
                 let mut text = format!(
                     "daemon pid {} up {}s, socket {}\n",
-                    st["pid"], st["uptime_s"], socket_path().display()
+                    st["pid"],
+                    st["uptime_s"],
+                    socket_path().display()
                 );
                 if let Some(ws) = st["workers"].as_array() {
                     for w in ws {
-                        text += &format!("  worker {} pid {} requests {} restarts {} rss {}KB\n", w["session"], w["pid"], w["requests"], w["restarts"], w["max_rss_kb"]);
+                        text += &format!(
+                            "  worker {} pid {} requests {} restarts {} rss {}KB\n",
+                            w["session"], w["pid"], w["requests"], w["restarts"], w["max_rss_kb"]
+                        );
                     }
                 }
                 print(st, text.trim_end().into());
@@ -237,7 +329,9 @@ fn daemon_cmd(args: &[String], json_out: bool) -> i32 {
             }
         },
         other => {
-            eprintln!("error [USAGE]: unknown daemon command {other:?} (use start|stop|restart|status)");
+            eprintln!(
+                "error [USAGE]: unknown daemon command {other:?} (use start|stop|restart|status)"
+            );
             exit::USAGE
         }
     }

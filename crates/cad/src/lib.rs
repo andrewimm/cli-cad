@@ -20,7 +20,17 @@ pub mod exit {
 
 /// Commands that never need a project; they run in the shared "global" worker.
 pub const GLOBAL_COMMANDS: &[&str] = &[
-    "init", "open", "run", "capabilities", "schema", "examples", "docs", "help", "--version", "--help", "-h",
+    "init",
+    "open",
+    "run",
+    "capabilities",
+    "schema",
+    "examples",
+    "docs",
+    "help",
+    "--version",
+    "--help",
+    "-h",
 ];
 
 pub const GLOBAL_KEY: &str = "<global>";
@@ -67,7 +77,9 @@ pub fn state_dir() -> PathBuf {
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join(".local/state"));
+        .unwrap_or_else(|| {
+            PathBuf::from(env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join(".local/state")
+        });
     base.join("cad")
 }
 
@@ -79,7 +91,11 @@ pub fn ensure_private_dir(p: &Path) -> std::io::Result<()> {
 
 /// Walk up from `start` to find a directory containing cad.toml.
 pub fn find_project_root(start: &Path) -> Option<PathBuf> {
-    let mut d = if start.is_file() { start.parent()?.to_path_buf() } else { start.to_path_buf() };
+    let mut d = if start.is_file() {
+        start.parent()?.to_path_buf()
+    } else {
+        start.to_path_buf()
+    };
     loop {
         if d.join("cad.toml").is_file() {
             return Some(d);
@@ -93,7 +109,11 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
 /// Session key for a request: the project root, or GLOBAL_KEY for project-less commands.
 /// Mirrors the Python resolution order: --project/-C, cwd ancestors, then the opened project.
 pub fn session_key(argv: &[String], cwd: &Path) -> String {
-    let cmd = argv.iter().find(|a| !a.starts_with('-') || a.as_str() == "--version").map(|s| s.as_str()).unwrap_or("");
+    let cmd = argv
+        .iter()
+        .find(|a| !a.starts_with('-') || a.as_str() == "--version")
+        .map(|s| s.as_str())
+        .unwrap_or("");
     if cmd.is_empty() || GLOBAL_COMMANDS.contains(&cmd) {
         return GLOBAL_KEY.into();
     }
@@ -106,7 +126,9 @@ pub fn session_key(argv: &[String], cwd: &Path) -> String {
         };
         if let Some(p) = given {
             let p = cwd.join(p);
-            return find_project_root(&p).map(|r| canon(&r)).unwrap_or_else(|| GLOBAL_KEY.into());
+            return find_project_root(&p)
+                .map(|r| canon(&r))
+                .unwrap_or_else(|| GLOBAL_KEY.into());
         }
     }
     if let Some(r) = find_project_root(cwd) {
@@ -122,7 +144,10 @@ pub fn session_key(argv: &[String], cwd: &Path) -> String {
 }
 
 fn canon(p: &Path) -> String {
-    fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).to_string_lossy().into_owned()
+    fs::canonicalize(p)
+        .unwrap_or_else(|_| p.to_path_buf())
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Python interpreter that has the `cad` package installed.

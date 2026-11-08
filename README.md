@@ -1,5 +1,7 @@
 # cad — agent-first parametric CAD
 
+[![CI](https://github.com/andrewimm/clicd/actions/workflows/ci.yml/badge.svg)](https://github.com/andrewimm/clicd/actions/workflows/ci.yml)
+
 A programmable CAD environment designed for autonomous coding agents: write a
 Python script, get exact solid geometry (Open CASCADE BRep), check it with
 numbers, look at deterministic headless renders, revise, and export STEP/STL.
@@ -93,3 +95,12 @@ geometry stress suites (Booleans, fillets, scale, repeated features, parameter m
 uv run pytest -q                                 # unit + integration (daemon tests need the release build)
 cd evals && ../.venv/bin/python -m cadeval selftest   # reference solutions vs validators
 ```
+
+CI (GitHub Actions) runs the tests on Ubuntu and macOS, Rust fmt/clippy, a CLI smoke test through the
+daemon, and a core-only install without the optional stress-analysis packages. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+Apache-2.0 (see [LICENSE](LICENSE)). The optional stress-analysis extra installs gmsh, which is GPL-licensed;
+cad never imports it and runs it only as a separate process, and everything else works without it.

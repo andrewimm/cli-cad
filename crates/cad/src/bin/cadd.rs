@@ -54,7 +54,10 @@ struct Daemon {
 }
 
 fn now_s() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn log(msg: &str) {
@@ -84,7 +87,11 @@ fn main() {
         }
     };
     let _ = fs::write(rt.join("cadd.pid"), std::process::id().to_string());
-    log(&format!("listening on {} (python {})", sock.display(), python().display()));
+    log(&format!(
+        "listening on {} (python {})",
+        sock.display(),
+        python().display()
+    ));
 
     let d = Arc::new(Daemon {
         slots: Mutex::new(HashMap::new()),
@@ -93,13 +100,18 @@ fn main() {
         shutdown: AtomicBool::new(false),
     });
 
-    let idle: u64 = env::var("CAD_DAEMON_IDLE_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(1800);
+    let idle: u64 = env::var("CAD_DAEMON_IDLE_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1800);
     {
         let d = d.clone();
         let sock = sock.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(5));
-            if d.shutdown.load(Ordering::SeqCst) || now_s().saturating_sub(d.last_activity.load(Ordering::SeqCst)) > idle {
+            if d.shutdown.load(Ordering::SeqCst)
+                || now_s().saturating_sub(d.last_activity.load(Ordering::SeqCst)) > idle
+            {
                 log("shutting down");
                 shutdown_workers(&d);
                 let _ = fs::remove_file(&sock);
@@ -144,7 +156,9 @@ fn handle(d: &Arc<Daemon>, stream: UnixStream) -> std::io::Result<()> {
     d.last_activity.store(now_s(), Ordering::SeqCst);
     let resp = match serde_json::from_str::<Value>(&line) {
         Ok(req) => dispatch(d, &req),
-        Err(e) => json!({"exit_code": exit::USAGE, "stdout": "", "stderr": format!("bad request: {e}\n")}),
+        Err(e) => {
+            json!({"exit_code": exit::USAGE, "stdout": "", "stderr": format!("bad request: {e}\n")})
+        }
     };
     d.last_activity.store(now_s(), Ordering::SeqCst);
     let mut out = resp.to_string();
@@ -154,7 +168,14 @@ fn handle(d: &Arc<Daemon>, stream: UnixStream) -> std::io::Result<()> {
 }
 
 fn dispatch(d: &Arc<Daemon>, req: &Value) -> Value {
-    let argv: Vec<String> = req["argv"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+    let argv: Vec<String> = req["argv"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
     if argv.first().map(|s| s.as_str()) == Some("daemon") {
         return match argv.get(1).map(|s| s.as_str()) {
             Some("stop") => {
@@ -176,7 +197,10 @@ fn dispatch(d: &Arc<Daemon>, req: &Value) -> Value {
 }
 
 fn command_name(argv: &[String]) -> String {
-    argv.iter().find(|a| !a.starts_with('-')).cloned().unwrap_or_default()
+    argv.iter()
+        .find(|a| !a.starts_with('-'))
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn failure(argv: &[String], code: &str, msg: &str, hint: &str, exit_code: i32) -> Value {
@@ -189,18 +213,27 @@ fn failure(argv: &[String], code: &str, msg: &str, hint: &str, exit_code: i32) -
 }
 
 fn error_json(cmd: &str, code: &str, msg: &str, hint: &str) -> String {
-    cadcore::error_json(cmd, code, msg, hint, match code {
-        "WORKER_CRASHED" => exit::WORKER_CRASHED,
-        "TIMEOUT" => exit::TIMEOUT,
-        _ => exit::INTERNAL,
-    })
+    cadcore::error_json(
+        cmd,
+        code,
+        msg,
+        hint,
+        match code {
+            "WORKER_CRASHED" => exit::WORKER_CRASHED,
+            "TIMEOUT" => exit::TIMEOUT,
+            _ => exit::INTERNAL,
+        },
+    )
 }
 
 fn forward(slot: &mut Slot, key: &str, argv: &[String], cwd: &PathBuf, timeout: Duration) -> Value {
     // a worker that died while idle is replaced transparently: no command was lost
     if let Some(w) = slot.worker.as_mut() {
         if let Ok(Some(status)) = w.child.try_wait() {
-            log(&format!("worker pid {} for {key} died while idle ({status}); restarting", w.pid));
+            log(&format!(
+                "worker pid {} for {key} died while idle ({status}); restarting",
+                w.pid
+            ));
             slot.crashes += 1;
             slot.worker = None;
         }
@@ -211,7 +244,15 @@ fn forward(slot: &mut Slot, key: &str, argv: &[String], cwd: &PathBuf, timeout: 
                 slot.spawned += 1;
                 slot.worker = Some(w);
             }
-            Err(e) => return failure(argv, "WORKER_START_FAILED", &e, "check CAD_PYTHON and the daemon log", exit::INTERNAL),
+            Err(e) => {
+                return failure(
+                    argv,
+                    "WORKER_START_FAILED",
+                    &e,
+                    "check CAD_PYTHON and the daemon log",
+                    exit::INTERNAL,
+                )
+            }
         }
     }
     let w = slot.worker.as_mut().unwrap();
@@ -225,15 +266,29 @@ fn forward(slot: &mut Slot, key: &str, argv: &[String], cwd: &PathBuf, timeout: 
     match w.lines.recv_timeout(timeout) {
         Ok(line) => match serde_json::from_str::<Value>(&line) {
             Ok(v) => v,
-            Err(e) => failure(argv, "INTERNAL", &format!("bad worker response: {e}"), "see the worker log", exit::INTERNAL),
+            Err(e) => failure(
+                argv,
+                "INTERNAL",
+                &format!("bad worker response: {e}"),
+                "see the worker log",
+                exit::INTERNAL,
+            ),
         },
         Err(RecvTimeoutError::Timeout) => {
             if let Some(mut w) = slot.worker.take() {
                 let _ = w.child.kill();
                 let _ = w.child.wait();
             }
-            failure(argv, "TIMEOUT", &format!("command exceeded {}s; the worker was stopped", timeout.as_secs()),
-                    "increase --timeout or simplify the model; the last successful revision is intact", exit::TIMEOUT)
+            failure(
+                argv,
+                "TIMEOUT",
+                &format!(
+                    "command exceeded {}s; the worker was stopped",
+                    timeout.as_secs()
+                ),
+                "increase --timeout or simplify the model; the last successful revision is intact",
+                exit::TIMEOUT,
+            )
         }
         Err(RecvTimeoutError::Disconnected) => crashed(slot, argv),
     }
@@ -244,7 +299,12 @@ fn crashed(slot: &mut Slot, argv: &[String]) -> Value {
     let mut detail = String::new();
     if let Some(mut w) = slot.worker.take() {
         let status = w.child.wait().ok();
-        detail = format!("worker pid {} exited ({:?}); last log lines:\n{}", w.pid, status, tail(&w.log, 1500));
+        detail = format!(
+            "worker pid {} exited ({:?}); last log lines:\n{}",
+            w.pid,
+            status,
+            tail(&w.log, 1500)
+        );
     }
     log(&format!("worker crashed: {detail}"));
     failure(argv, "WORKER_CRASHED", &format!("the geometry worker crashed while running this command. {detail}"),
@@ -268,28 +328,55 @@ fn tail(p: &PathBuf, n: u64) -> String {
 fn spawn_worker(key: &str) -> Result<Worker, String> {
     let logdir = state_dir().join("logs");
     fs::create_dir_all(&logdir).map_err(|e| e.to_string())?;
-    let safe: String = key.chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '_' }).collect();
-    let safe = if safe.len() > 80 { safe[safe.len() - 80..].to_string() } else { safe };
+    let safe: String = key
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let safe = if safe.len() > 80 {
+        safe[safe.len() - 80..].to_string()
+    } else {
+        safe
+    };
     let logp = logdir.join(format!("worker-{safe}.log"));
-    let logf = fs::OpenOptions::new().create(true).append(true).open(&logp).map_err(|e| e.to_string())?;
+    let logf = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&logp)
+        .map_err(|e| e.to_string())?;
     let mut cmd = Command::new(python());
-    cmd.arg("-m").arg("cad.worker").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(logf);
-    let mem_mb: Option<u64> = env::var("CAD_WORKER_MAX_MEM_MB").ok().and_then(|v| v.parse().ok());
-    let cpu_s: Option<u64> = env::var("CAD_WORKER_CPU_SECS").ok().and_then(|v| v.parse().ok());
+    cmd.arg("-m")
+        .arg("cad.worker")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(logf);
+    let mem_mb: Option<u64> = env::var("CAD_WORKER_MAX_MEM_MB")
+        .ok()
+        .and_then(|v| v.parse().ok());
+    let cpu_s: Option<u64> = env::var("CAD_WORKER_CPU_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok());
     unsafe {
         cmd.pre_exec(move || {
             if let Some(mb) = mem_mb {
-                let lim = libc::rlimit { rlim_cur: mb * 1024 * 1024, rlim_max: mb * 1024 * 1024 };
+                let lim = libc::rlimit {
+                    rlim_cur: mb * 1024 * 1024,
+                    rlim_max: mb * 1024 * 1024,
+                };
                 libc::setrlimit(libc::RLIMIT_AS, &lim);
             }
             if let Some(s) = cpu_s {
-                let lim = libc::rlimit { rlim_cur: s, rlim_max: s + 5 };
+                let lim = libc::rlimit {
+                    rlim_cur: s,
+                    rlim_max: s + 5,
+                };
                 libc::setrlimit(libc::RLIMIT_CPU, &lim);
             }
             Ok(())
         });
     }
-    let mut child = cmd.spawn().map_err(|e| format!("cannot start {}: {e}", python().display()))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("cannot start {}: {e}", python().display()))?;
     let stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
     let (tx, rx) = channel();
@@ -305,17 +392,39 @@ fn spawn_worker(key: &str) -> Result<Worker, String> {
             }
         }
     });
-    let ready = rx.recv_timeout(Duration::from_secs(60)).map_err(|_| format!("worker did not start; see {}", logp.display()))?;
-    let v: Value = serde_json::from_str(&ready).map_err(|e| format!("bad worker handshake: {e}"))?;
+    let ready = rx
+        .recv_timeout(Duration::from_secs(60))
+        .map_err(|_| format!("worker did not start; see {}", logp.display()))?;
+    let v: Value =
+        serde_json::from_str(&ready).map_err(|e| format!("bad worker handshake: {e}"))?;
     if v["ready"] != json!(true) {
         return Err(format!("unexpected worker handshake: {ready}"));
     }
-    log(&format!("worker for {key} started pid {} in {}ms", child.id(), v["startup_ms"]));
-    Ok(Worker { pid: child.id(), child, stdin, lines: rx, started: Instant::now(), requests: 0, log: logp, next_id: 0 })
+    log(&format!(
+        "worker for {key} started pid {} in {}ms",
+        child.id(),
+        v["startup_ms"]
+    ));
+    Ok(Worker {
+        pid: child.id(),
+        child,
+        stdin,
+        lines: rx,
+        started: Instant::now(),
+        requests: 0,
+        log: logp,
+        next_id: 0,
+    })
 }
 
 fn status(d: &Daemon) -> Value {
-    let slots: Vec<(String, Arc<Mutex<Slot>>)> = d.slots.lock().unwrap().iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let slots: Vec<(String, Arc<Mutex<Slot>>)> = d
+        .slots
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     let mut workers = vec![];
     for (k, s) in slots {
         let entry = match s.try_lock() {
@@ -326,7 +435,10 @@ fn status(d: &Daemon) -> Value {
                         w.next_id += 1;
                         let ping = json!({"id": w.next_id, "op": "ping"}).to_string() + "\n";
                         let info = if w.stdin.write_all(ping.as_bytes()).is_ok() {
-                            w.lines.recv_timeout(Duration::from_secs(5)).ok().and_then(|l| serde_json::from_str::<Value>(&l).ok())
+                            w.lines
+                                .recv_timeout(Duration::from_secs(5))
+                                .ok()
+                                .and_then(|l| serde_json::from_str::<Value>(&l).ok())
                         } else {
                             None
                         };
@@ -335,7 +447,9 @@ fn status(d: &Daemon) -> Value {
                                "restarts": restarts, "crashes": crashes, "busy": false,
                                "max_rss_kb": info["max_rss_kb"], "stats": info["sessions"]})
                     }
-                    None => json!({"session": k, "pid": null, "requests": 0, "restarts": restarts, "crashes": crashes, "busy": false}),
+                    None => {
+                        json!({"session": k, "pid": null, "requests": 0, "restarts": restarts, "crashes": crashes, "busy": false})
+                    }
                 }
             }
             Err(_) => json!({"session": k, "busy": true}),

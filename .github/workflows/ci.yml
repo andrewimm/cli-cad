@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (fmt, clippy, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --release -- -D warnings
+      - run: cargo build --release
+
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries (OpenGL for OCP, X11 for gmsh, a font for text)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglu1-mesa libegl1 libxrender1 libxcursor1 \
+            libxft2 libxinerama1 libxi6 libxkbcommon0 libfontconfig1 fonts-dejavu-core
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Python environment (with the optional stress-analysis packages)
+        run: uv sync --locked
+      - name: Build the cad client and cadd daemon (the daemon tests use them)
+        run: cargo build --release
+      - name: Tests
+        run: uv run --locked pytest -q -ra
+      - name: CLI smoke test through the daemon
+        run: |
+          export PATH="$PWD/target/release:$PATH"
+          cad capabilities
+          cad examples copy servo_arm "$RUNNER_TEMP/arm"
+          cd "$RUNNER_TEMP/arm"
+          cad build
+          cad fea -q draft || [ $? -eq 4 ]   # 4 = a study is below its target (expected for this example)
+          cad render --fea pushrod --quality draft --views iso --no-sheet
+          cad daemon stop
+
+  core-without-fea:
+    name: Core install without the optional FEA packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libegl1 libfontconfig1 fonts-dejavu-core
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install the package alone (no dev group, so no gmsh / scikit-fem / scipy / pyamg)
+        run: |
+          uv sync --locked --no-dev
+          uv pip install pytest lib3mf
+      - name: Stress analysis reports itself unavailable with an install hint
+        run: |
+          .venv/bin/python - <<'PY'
+          import json, subprocess, sys
+          out = subprocess.run([sys.executable, "-m", "cad", "capabilities", "--json"], capture_output=True, text=True)
+          fea = json.loads(out.stdout)["result"]["stress_analysis"]
+          assert not fea["available"] and "gmsh" in fea["missing"] and "install" in fea["install"], fea
+          print(fea["install"])
+          PY
+      - name: Core tests (FEA tests skip themselves)
+        run: .venv/bin/python -m pytest -q -ra tests/test_part.py tests/test_engine_cli.py tests/test_fea.py tests/test_render.py

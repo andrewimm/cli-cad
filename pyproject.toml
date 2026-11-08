@@ -1,8 +1,10 @@
 [project]
 name = "cad"
 version = "0.1.0"
-description = "Add your description here"
+description = "Agent-first parametric CAD on Open CASCADE: Python scripts in; exact solids, renders, analysis and STEP/STL/3MF out"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [
     { name = "Andrew Imm", email = "aimm22@gmail.com" }
 ]
@@ -12,6 +14,10 @@ dependencies = [
     "numpy>=2.5.4",
     "pillow>=13.0.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/andrewimm/clicd"
+Issues = "https://github.com/andrewimm/clicd/issues"
 
 [project.optional-dependencies]
 # stress analysis (`cad fea`): gmsh meshes (GPL, so optional), scikit-fem + scipy + pyamg solve
