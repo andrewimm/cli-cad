@@ -1,0 +1,67 @@
+id = "engraved_nameplate"
+title = "Engraved and embossed nameplate"
+category = "text"
+split = "dev"
+prompt = """
+Design a nameplate.
+
+- Plate 80 mm (X) x 36 mm (Y) x 5 mm thick, bottom on Z = 0, centred on the origin, vertical corners rounded with a 4 mm radius.
+- Four 4.2 mm mounting holes at (X, Y) = (+-34, +-12).
+- Engrave the text "SN 0042" into the top face: capital letters 7 mm tall, 0.8 mm deep, centred at (X, Y) = (0, 4), reading normally from above (left to right along +X).
+- Emboss the text "MADE WITH CAD" on the top face: capital letters 3.2 mm tall, raised 0.5 mm, centred at (X, Y) = (0, -8).
+- Any clean sans-serif font. Name the part "plate".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [80, 36, 5.5]
+min = [-40, -18, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 4.2
+axis = "z"
+positions = [[-34, -12], [34, -12], [-34, 12], [34, 12]]
+tol = 0.1
+
+[[checks]]
+type = "python"
+note = "engraved and embossed regions: position, depth/height, size (font-independent)"
+code = '''
+def check(parts):
+    from cad import Part, _occ
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+    p = next(iter(parts.values()))
+    ref = Part("ref"); ref.box(80, 36, 5)
+    ref.fillet(ref.edges().vertical(), 4)
+    ref.holes(4.2, [(-34, -12), (34, -12), (-34, 12), (34, 12)])
+    cut = BRepAlgoAPI_Cut(ref.shape, p.shape).Shape()       # material removed: the engraving
+    add = BRepAlgoAPI_Cut(p.shape, ref.shape).Shape()       # material added: the embossing
+    msgs = []
+    vc, va = _occ.volume(cut), _occ.volume(add)
+    if vc < 1e-3:
+        return False, "nothing engraved"
+    if va < 1e-3:
+        return False, "nothing embossed"
+    lo, hi = _occ.bbox(cut)
+    cx, cy = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+    if abs(cx) > 1.0 or abs(cy - 4) > 1.0: msgs.append(f"engraving centred at ({cx:.2f}, {cy:.2f}), want (0, 4)")
+    if abs(lo[2] - 4.2) > 0.05 or abs(hi[2] - 5.0) > 0.05: msgs.append(f"engraving spans Z {lo[2]:.2f}..{hi[2]:.2f}, want 4.2..5.0")
+    if not (6.5 <= hi[1] - lo[1] <= 8.0): msgs.append(f"engraved letters {hi[1]-lo[1]:.2f} mm tall, want ~7")
+    if not (20 <= hi[0] - lo[0] <= 45): msgs.append(f"engraving {hi[0]-lo[0]:.1f} mm wide: not 7 mm text 'SN 0042'")
+    lo, hi = _occ.bbox(add)
+    cx, cy = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+    if abs(cx) > 1.0 or abs(cy + 8) > 1.0: msgs.append(f"embossing centred at ({cx:.2f}, {cy:.2f}), want (0, -8)")
+    if abs(lo[2] - 5.0) > 0.05 or abs(hi[2] - 5.5) > 0.05: msgs.append(f"embossing spans Z {lo[2]:.2f}..{hi[2]:.2f}, want 5.0..5.5")
+    if not (2.9 <= hi[1] - lo[1] <= 4.0): msgs.append(f"embossed letters {hi[1]-lo[1]:.2f} mm tall, want ~3.2")
+    if not (25 <= hi[0] - lo[0] <= 50): msgs.append(f"embossing {hi[0]-lo[0]:.1f} mm wide: not 3.2 mm 'MADE WITH CAD'")
+    return not msgs, "; ".join(msgs) or f"engraved {vc:.1f} mm3, embossed {va:.1f} mm3"
+'''

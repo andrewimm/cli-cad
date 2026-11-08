@@ -389,7 +389,7 @@ class Part:
             raise err from e
         if self._shape is not None:
             with _phase(feat, "measure"):
-                feat.metrics = {
+                feat.metrics = {**feat.metrics,
                     "volume": round(_occ.volume_fast(self._shape), 6),
                     "solids": len(_occ.solids(self._shape)),
                     "faces": len(_occ.faces(self._shape)),
@@ -769,6 +769,99 @@ class Part:
             self._body_op(feat, tool, refs, op)
 
         return self._run("revolve", name, dict(profile=profile, angle=angle, plane=pl, axis=axis, op=op), build)
+
+    # ================================================================== text
+    def emboss(self, text: str, *, on, size: float, height: float = 0.6, at: Sequence[float] | None = None,
+               up: Sequence[float] | None = None, angle: float = 0.0, font: str | None = None, bold: bool = False,
+               italic: bool = False, align=("center", "center"), name: str | None = None) -> FeatureRef:
+        """Raised text on a flat face.
+
+        ``on`` is a selection with exactly one planar face (or a :class:`Plane`); the text
+        reads normally when viewed from outside that face, upright on vertical faces.
+        ``size`` is the capital letter height (mm), ``height`` how far it stands proud.
+        ``at`` moves the text: (u, v) from the face centre, or a 3D point.  Named faces:
+        ``<id>.end`` (letter tops) and ``<id>.side``.
+        """
+        return self._text_feature("emboss", name, text, on, size, height, at, up, angle, font, bold, italic, align)
+
+    def engrave(self, text: str, *, on, size: float, depth: float = 0.6, at: Sequence[float] | None = None,
+                up: Sequence[float] | None = None, angle: float = 0.0, font: str | None = None, bold: bool = False,
+                italic: bool = False, align=("center", "center"), name: str | None = None) -> FeatureRef:
+        """Text cut into a flat face, ``depth`` mm deep (same placement rules as :meth:`emboss`).
+        Named faces: ``<id>.floor`` (letter bottoms) and ``<id>.side``."""
+        return self._text_feature("engrave", name, text, on, size, depth, at, up, angle, font, bold, italic, align)
+
+    def _text_feature(self, ftype, name, text, on, size, amount, at, up, angle, font, bold, italic, align) -> FeatureRef:
+        from .text import stroke_width
+
+        _pos(**{"height" if ftype == "emboss" else "depth": amount})
+        prof = Profile.text(text, size, font=font, bold=bold, italic=italic, align=align, angle=angle)
+
+        def build(feat):
+            if isinstance(on, Plane):
+                pl = on if at is None else Plane(on.to_world((*at, 0)) if len(at) == 2 else _occ.vec(at), on.normal, on.u)
+                face = None
+            elif isinstance(on, FaceSelection):
+                self._check_current(on, feat.id)
+                self._record_selection(feat, "on", on)
+                pl = Plane.from_face(on, at=at, up=up)
+                face = max(on.shapes, key=_occ.area)
+            else:
+                raise CadError(INVALID_ARGUMENT, f"{ftype}(on=...) needs a face selection or a Plane", feature=feat.id,
+                               hint="e.g. on=part.faces('base.top') or on=part.faces().facing('+y').max('y')")
+            eps = 0.01  # overlap the face (emboss) / start above it (engrave) so the boolean is clean
+            n = pl.normal
+            if ftype == "emboss":
+                base = prof.placed(pl.offset(-eps))
+                vec = [c * (amount + eps) for c in n]
+                op, d = "add", n
+            else:
+                base = prof.placed(pl.offset(eps))
+                vec = [-c * (amount + eps) for c in n]
+                op, d = "cut", tuple(-c for c in n)
+            prism = BRepPrimAPI_MakePrism(base, gp_Vec(*vec))
+            prism.Build()
+            if not prism.IsDone():
+                raise CadError(OPERATION_FAILED, f"{ftype} failed to build the letter solids", feature=feat.id)
+            tool = prism.Shape()
+            refs = _axial_refs(feat.id, tool, d)
+            if ftype == "engrave" and f"{feat.id}.end" in refs:
+                refs[f"{feat.id}.floor"] = refs.pop(f"{feat.id}.end")
+            if face is not None:
+                outside = self._points_off_face(face, prof.placed(pl))
+                if outside:
+                    feat.warnings.append(CadWarning("TEXT_OFF_FACE", f"the text extends past the edge of the face ({outside} of 4 corners)",
+                                                    feat.id, {"text_size_mm": [prof.description["width"], prof.description["height"]]}))
+            stroke = stroke_width(size, font, bold, italic)
+            if stroke < 0.4:
+                feat.warnings.append(CadWarning("TEXT_STROKES_THIN", f"strokes are about {stroke:.2f} mm wide; under ~0.4 mm is too fine "
+                                                "for FDM printing", feat.id,
+                                                {"stroke_mm": round(stroke, 3), "hint": "increase size, use bold=True or a heavier font"}))
+            self._body_op(feat, tool, refs, op)
+            feat.metrics["text"] = {**{k: prof.description[k] for k in ("font", "width", "height", "glyph_faces")},
+                                    "stroke_mm": round(stroke, 3)}
+
+        params = {"text": text, "size": size, ("height" if ftype == "emboss" else "depth"): amount, "font": prof.description["font"],
+                  "bold": bold, "italic": italic, "align": align, "angle": angle, "at": at, "on": on}
+        return self._run(ftype, name, params, build)
+
+    @staticmethod
+    def _points_off_face(face, placed_text) -> int:
+        """How many corners of the text's bounding rectangle fall outside ``face``."""
+        from OCP.BRepClass import BRepClass_FaceClassifier
+        from OCP.gp import gp_Pnt
+        from OCP.TopAbs import TopAbs_OUT
+
+        lo, hi = _occ.bbox(placed_text)
+        # corners of the (planar) text box; at least 4 distinct points on the face plane
+        corners = {(x, y, z) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])}
+        out = 0
+        checked = 0
+        for c in corners:
+            st = BRepClass_FaceClassifier(face, gp_Pnt(*c), 1e-3).State()
+            checked += 1
+            out += st == TopAbs_OUT
+        return min(4, round(out * 4 / max(checked, 1)))
 
     # ================================================================== holes
     def hole(

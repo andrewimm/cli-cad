@@ -10,7 +10,9 @@ EXAMPLES = sorted(p.name for p in _examples_dir().glob("*.py"))
 def test_example_builds_valid(name):
     out = run_script(_examples_dir() / name)
     for part in out.parts.values():
-        part.assert_valid()
+        # text made into its own part is several solids (one per letter); everything else is one solid
+        text_part = any((f.params.get("profile") or {}).get("type") == "text" for f in part.features)
+        part.assert_valid(solids=None if text_part else 1)
     assert not [w for w in out.warnings if w["code"] in ("CUT_NO_EFFECT", "DISCONNECTED_BODIES")]
 
 

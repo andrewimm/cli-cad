@@ -65,6 +65,8 @@ Profiles: `Profile.rect/rounded_rect/circle/slot/polygon/regular_polygon(across_
 Holes: `hole`, `holes(d, positions)`, `hole_pattern`, `bolt_circle`; `depth=None` is through;
 `counterbore=(d, depth)`, `countersink=(d, 90)`; `direction=` may be any vector.
 Dress-up: `fillet(edges, r)`, `chamfer(edges, d)`, `shell(t, open_faces=...)`. Transforms: `translate`, `rotate`, `mirror`.
+Text: `engrave("SN 01", on=p.faces("body.top"), size=6, depth=0.6)` / `emboss(..., height=0.5)` on any flat
+face (`size` = capital height mm; `at=(u, v)` from the face centre; `font=`, `bold=True`; `cad fonts`).
 
 Selections chain: `p.faces().facing("+z").max("z")`, `p.edges().vertical().convex()`, `.concave()`,
 `.circular(radius=)`, `.nearest((x, y, z))`, `.one()` (fails instead of guessing). Named references survive

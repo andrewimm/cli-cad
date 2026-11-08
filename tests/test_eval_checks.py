@@ -174,3 +174,13 @@ def test_threemf_artifact_check(tmp_path):
     swapped = src.replace('material="PLA"', 'material="X"').replace('material="TPU"', 'material="PLA"').replace('material="X"', 'material="TPU"')
     assert failed(grade(t, project("swapped", swapped, ["--format", "3mf"]))) == {"threemf_artifact"}
     assert failed(grade(t, project("none", src, ["--format", "stl"]))) == {"threemf_artifact"}
+
+
+def test_nameplate_text_check_rejects_wrong_text_placement(tmp_path):
+    t = task("engraved_nameplate")
+    src = (SOLUTION_DIR / "engraved_nameplate.py").read_text()
+    assert grade(t, script(tmp_path, src, "ok.py"))["passed"]
+    assert "python" in failed(grade(t, script(tmp_path, src.replace("at=(0, 4)", "at=(0, -4)"), "moved.py")))
+    assert "python" in failed(grade(t, script(tmp_path, src.replace("depth=0.8", "depth=0.3"), "shallow.py")))
+    swapped = src.replace('p.engrave("SN 0042"', 'p.emboss("SN 0042"').replace("depth=0.8", "height=0.8")
+    assert failed(grade(t, script(tmp_path, swapped, "swapped.py")))  # raised instead of engraved

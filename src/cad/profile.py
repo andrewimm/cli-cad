@@ -96,6 +96,54 @@ class Plane:
         o = tuple(a + distance * b for a, b in zip(self.origin, self.normal))
         return Plane(o, self.normal, self.u)
 
+    @staticmethod
+    def from_face(face, *, at: Sequence[float] | None = None, up: Sequence[float] | None = None) -> "Plane":
+        """Plane on a flat face, normal pointing out of the material, oriented for reading.
+
+        ``face`` is a selection with exactly one planar face.  The origin is the face's
+        centroid, or ``at``: a 2D (u, v) offset from it or a 3D point projected onto the
+        face.  ``v`` ("up" on the face) is world +Z projected onto the face (world +Y on
+        horizontal faces) unless ``up`` is given; ``u`` completes a right-handed frame, so
+        text reads normally when you look at the face from outside.
+        """
+        from . import _occ
+
+        shapes = getattr(face, "shapes", None)
+        if not shapes:
+            raise CadError(INVALID_ARGUMENT, "Plane.from_face needs a face selection",
+                           hint="e.g. part.faces('body.top') or part.faces().facing('+z').max('z')")
+        if any(_occ.surface_type(s) != "plane" for s in shapes):
+            raise CadError(INVALID_ARGUMENT, "text and Plane.from_face need flat (planar) faces")
+        # a face split by earlier cuts (e.g. the islands inside engraved letters) is still one surface:
+        # accept several faces when they are coplanar, and place on the largest
+        f = max(shapes, key=_occ.area)
+        n0, c0 = _occ.face_normal(f), _occ.face_centroid(f)
+        for s in shapes:
+            n1, c1 = _occ.face_normal(s), _occ.face_centroid(s)
+            if sum(a * b for a, b in zip(n0, n1)) < 1 - 1e-6 or abs(sum((a - b) * c for a, b, c in zip(c1, c0, n0))) > 1e-6:
+                raise CadError(INVALID_ARGUMENT, f"the selection has {len(shapes)} faces that are not in one plane",
+                               hint="narrow it to one flat face, e.g. .facing('+z').max('z')")
+        n = _norm(_occ.face_normal(f))
+        c = _occ.face_centroid(f)
+        if up is None:
+            up = (0.0, 0.0, 1.0) if abs(n[2]) < 0.9 else (0.0, 1.0, 0.0)
+        upv = _occ.vec(up)
+        d = sum(a * b for a, b in zip(upv, n))
+        v = tuple(a - d * b for a, b in zip(upv, n))
+        if math.sqrt(sum(x * x for x in v)) < 1e-9:
+            raise CadError(INVALID_ARGUMENT, "up= is parallel to the face normal")
+        v = _norm(v)
+        u = _norm(_cross(v, n))  # u x v = n
+        origin = c
+        if at is not None:
+            a = _occ.vec(at)
+            if len(at) == 2:
+                origin = tuple(o + a[0] * uu + a[1] * vv for o, uu, vv in zip(c, u, v))
+            else:
+                dist = sum((p - q) * nn for p, q, nn in zip(a, c, n))
+                origin = tuple(p - dist * nn for p, nn in zip(a, n))
+        return Plane(tuple(float(x) for x in origin), n, u)
+
     def to_world(self, p: Sequence[float]) -> tuple[float, float, float]:
         x, y = float(p[0]), float(p[1])
         z = float(p[2]) if len(p) > 2 else 0.0
@@ -252,6 +300,28 @@ class Profile:
         ]
         p = Profile.polygon(pts)
         p.description = {"type": "regular_polygon", "sides": sides, "diameter": diameter, "center": list(center)}
+        return p
+
+    @staticmethod
+    def text(text: str, size: float, *, font: str | None = None, bold: bool = False, italic: bool = False,
+             align: tuple[str, str] | str = ("center", "center"), angle: float = 0.0, center: Vec2 = (0, 0)) -> "Profile":
+        """Text outlines as a profile.  ``size`` = capital letter height in mm.
+
+        ``align`` = (horizontal, vertical): horizontal left|center|right, vertical
+        baseline|bottom|center|top, relative to ``center``.  ``font`` is an installed
+        font name (`cad fonts`) or a .ttf/.otf path; default Helvetica/Arial/DejaVu Sans.
+        Extrude it to emboss or cut it to engrave, or use ``Part.emboss`` / ``Part.engrave``.
+        """
+        from .text import text_shape
+
+        if isinstance(align, str):
+            align = (align, "center")
+        shape, info = text_shape(text, size, font=font, bold=bold, italic=italic, halign=align[0], valign=align[1], angle=angle)
+        p = Profile(shape, {"type": "text", "text": text, "size": size, **info})
+        if tuple(center) != (0, 0):
+            desc = p.description
+            p = p.translated(center)
+            p.description = dict(desc, center=list(center))
         return p
 
     # ------------------------------------------------------------------ combination

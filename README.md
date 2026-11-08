@@ -67,7 +67,7 @@ An [Agent Skill](skills/cad/SKILL.md) in the skills.sh format teaches other agen
 
 | area | status |
 |---|---|
-| Modelling | box, cylinder, sphere, extrude/revolve of 2D profiles (rect, circle, rounded rect, slot, polygon, boolean combos), holes (through/blind, counterbore, countersink, grids, bolt circles), fillet, chamfer, shell, boolean with other parts, translate/rotate/mirror |
+| Modelling | box, cylinder, sphere, extrude/revolve of 2D profiles (rect, circle, rounded rect, slot, polygon, boolean combos), holes (through/blind, counterbore, countersink, grids, bolt circles), engraved/embossed text, fillet, chamfer, shell, boolean with other parts, translate/rotate/mirror |
 | Semantic geometry | feature-generated face names (`base.top`, `hole1.wall`) tracked through OCCT history; user tags; geometric selectors (`facing`, `convex/concave`, `max("z")`, `holes()`…); ambiguity and lost references are reported, never guessed |
 | Validation | validity, solid count, bbox, volume, area, centre of mass, hole detection, min distance, interference, structured warnings (`CUT_NO_EFFECT`, `DISCONNECTED_BODIES`, …) |
 | Feature graph | per-feature params, dependencies (incl. selection provenance), outputs, warnings, timings, failed features |

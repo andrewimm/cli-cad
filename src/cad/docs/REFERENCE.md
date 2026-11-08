@@ -306,6 +306,7 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad render [--views ...] [--section y=0] [--part P] [--size WxH] [--style shaded_edges|shaded|lines] [-r REV]` | PNG + JSON metadata per view, plus a contact sheet; `--section` cuts away the half facing the camera (`x=5:+` keeps the +X side) |
 | `cad export [--format step,stl,3mf,brep] [--3mf-mode objects|multimaterial] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files; 3MF carries materials; STL reports watertightness |
 | `cad materials` | built-in materials (density, colour) |
+| `cad fonts [filter]` | installed fonts for text |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
 | `cad clearance [--min D] [--part P]` | gaps / contact / overlap for every pair of parts; per-face gaps for reference envelopes; exit 4 below `--min` |
 | `cad sweep PARAM START:STOP:STEP [--min D] [--render VIEWS]` | rebuild across a parameter range, check clearances and optionally render each value |
@@ -320,6 +321,28 @@ Views: `iso front back left right top bottom iso_back iso_left iso_bottom all`,
 `dir=x,y,z[,up=x,y,z]` (direction from the model toward the camera).
 Every PNG has a sidecar JSON with the camera vectors, `mm_per_pixel`, and the
 model bbox; images are annotated with the view, screen axes, an axis triad and a scale bar.
+
+## Text: engrave and emboss
+
+```python
+p = Part("plate"); p.box(80, 36, 5, name="body")
+p.engrave("SN 0042", on=p.faces("body.top"), size=7, depth=0.8, at=(0, 4), bold=True)   # cut in
+p.emboss("MADE WITH CAD", on=p.faces("body.top"), size=3.2, height=0.5, at=(0, -8))    # raised
+p.engrave("FRONT", on=p.faces("body.front"), size=2.6, depth=0.4)                      # any flat face
+```
+
+- `size` = height of capital letters in mm; `depth` / `height` = how deep / how proud.
+- `on` = one flat face (a face split by earlier text is fine: coplanar faces are treated as one) or a `Plane`.
+  Text reads normally when you look at that face from outside, upright on vertical faces
+  (`up=(x, y, z)` changes "up"); `at=(u, v)` moves it from the face centre (u = reading direction), or
+  pass a 3D point; `angle=` rotates it; `align=("left"|"center"|"right", "baseline"|"bottom"|"center"|"top")`.
+- `font=` an installed font name (`cad fonts`, `cad fonts helv`) or a .ttf/.otf path; default Helvetica,
+  else Arial / DejaVu Sans; `bold=True`, `italic=True`. Unknown fonts are an error (never substituted).
+- Warnings: `TEXT_OFF_FACE` (text runs past the face edge), `TEXT_STROKES_THIN` (strokes under ~0.4 mm:
+  too fine for FDM; increase size or use bold). Named faces: `<id>.end` (raised tops), `<id>.floor` (engraved bottoms).
+- As a 2D profile: `Profile.text("A1", 8)` for `extrude(..., op="cut")`, or a separate part in another
+  material for a two-colour print: `label.extrude(Profile.text("PLA", 8), 0.6, plane=Plane.from_face(base.faces("body.top")))`.
+- Flat faces only: text does not wrap around curved surfaces.
 
 ## Materials and 3D printing (3MF)
 

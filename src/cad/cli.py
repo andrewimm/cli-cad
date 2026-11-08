@@ -63,6 +63,7 @@ COMMANDS: dict[str, dict] = {
     "render": {"summary": "Render PNG views (iso, front, back, left, right, top, bottom, az=..,el=.., dir=x,y,z)", "project": True},
     "export": {"summary": "Export STEP / STL / 3MF (with materials) / BREP for a revision (reference parts are skipped)", "project": True},
     "materials": {"summary": "List built-in materials (density, colour) for Part(..., material=...)", "project": False},
+    "fonts": {"summary": "List installed fonts usable for text (Profile.text, Part.emboss / engrave)", "project": False},
     "clearance": {"summary": "Clear / touching / overlap with minimum distance for every pair of parts (and per-face gaps for reference envelopes)", "project": True},
     "sweep": {"summary": "Rebuild over a range of one parameter, checking clearances (and rendering) at each value", "project": True},
     "params": {"summary": "List declared parameters and the override overlay", "project": True},
@@ -179,6 +180,8 @@ def _parser() -> _Parser:
     s.add_argument("--tolerance", type=float, default=0.01, help="STL chordal tolerance in mm")
 
     cmd("materials")
+    s = cmd("fonts")
+    s.add_argument("filter", nargs="?", help="only fonts whose name contains this text")
 
     s = cmd("clearance")
     s.add_argument("--min", type=float, help="required clearance in mm; violations exit with code 4")
@@ -411,6 +414,12 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         return _docs(args)
     if c == "examples":
         return _examples(args, cwd)
+    if c == "fonts":
+        from .text import DEFAULT_FONTS, available_fonts
+
+        fonts = [f for f in available_fonts() if not args.filter or args.filter.lower() in f.lower()]
+        text = "\n".join(fonts) + f"\n\n{len(fonts)} font(s). Default (first installed): {', '.join(DEFAULT_FONTS)}"
+        return {"fonts": fonts, "defaults": list(DEFAULT_FONTS)}, text
     if c == "materials":
         from .materials import library
 
@@ -832,7 +841,7 @@ GETTING_STARTED = """getting started:
 
 documentation:
   cad docs                      full API reference      cad docs --list    section titles
-  cad docs holes                one section (any title words: fillet, selecting, assemblies, ...)
+  cad docs holes                one section (any title words: fillet, text, selecting, assemblies, ...)
   cad examples list             worked examples         cad examples show <name>
   cad help <command>            options of one command
 """
