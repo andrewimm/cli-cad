@@ -39,7 +39,9 @@ def prepared_solution(task) -> Path:
 
     tmp = Path(tempfile.mkdtemp(prefix=f"selftest-{task.id}-"))
     ws = tmp / "ws"
-    shutil.copytree(task.solution, ws, ignore=shutil.ignore_patterns(".cad", "renders", "out"))
+    if task.setup_dir:  # the files the agent starts with (e.g. a vendor STEP)
+        shutil.copytree(task.setup_dir, ws)
+    shutil.copytree(task.solution, ws, ignore=shutil.ignore_patterns(".cad", "renders", "out"), dirs_exist_ok=True)
     old = os.environ.get("CAD_STATE_DIR")
     os.environ["CAD_STATE_DIR"] = str(tmp / "state")
     try:

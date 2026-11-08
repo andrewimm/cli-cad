@@ -42,8 +42,9 @@ from .errors import INVALID_ARGUMENT, CadError
 CONFIG_NAME = "cad.toml"
 PARAMS_NAME = "params.toml"
 STATE_DIR = ".cad"
-NOT_FOUND = "NOT_FOUND"
-SOURCE_SUFFIXES = (".py", ".toml", ".json", ".csv", ".txt", ".dxf", ".svg")
+from .errors import NOT_FOUND  # noqa: E402,F401  (re-exported)
+GEOMETRY_SUFFIXES = (".step", ".stp", ".iges", ".igs", ".brep", ".brp", ".stl", ".ttf", ".otf")
+SOURCE_SUFFIXES = (".py", ".toml", ".json", ".csv", ".txt", ".dxf", ".svg") + GEOMETRY_SUFFIXES
 IGNORED_DIRS = {STATE_DIR, ".git", "renders", "out", "__pycache__", ".venv", "node_modules"}
 
 
@@ -211,9 +212,27 @@ class Store:
         for dirpath, dirnames, filenames in os.walk(self.root):
             dirnames[:] = sorted(d for d in dirnames if d not in IGNORED_DIRS and not d.startswith("."))
             for fn in sorted(filenames):
-                if fn.endswith(SOURCE_SUFFIXES) and fn != PARAMS_NAME:
+                if fn.lower().endswith(SOURCE_SUFFIXES) and fn != PARAMS_NAME:
                     files.append(Path(dirpath) / fn)
         return files
+
+    def snapshot_file(self, src: Path, dst: Path, digest: str) -> None:
+        """Copy a source file into a revision; large files (imported geometry) are stored once
+        under cache/blobs by content hash and hard-linked, so revisions do not multiply them."""
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.stat().st_size < 256 * 1024:
+            shutil.copy2(src, dst)
+            return
+        blob = self.cache_dir / "blobs" / digest
+        if not blob.exists():
+            blob.parent.mkdir(parents=True, exist_ok=True)
+            tmp = blob.with_suffix(".tmp")
+            shutil.copyfile(src, tmp)
+            os.replace(tmp, blob)
+        try:
+            os.link(blob, dst)
+        except OSError:
+            shutil.copyfile(blob, dst)
 
     def source_hash(self) -> tuple[str, dict[str, str]]:
         per = {}

@@ -1,5 +1,4 @@
 """Integration with Bambu Studio's command line (skipped when Bambu Studio is not installed)."""
-import shutil
 import subprocess
 import zipfile
 from pathlib import Path
@@ -9,9 +8,9 @@ import pytest
 from cad import Part
 from cad.threemf import export_3mf
 
-BAMBU = Path("/Applications/BambuStudio.app/Contents/MacOS/BambuStudio")
-if not BAMBU.exists() and shutil.which("bambu-studio"):
-    BAMBU = Path(shutil.which("bambu-studio"))
+from cad.slicer import find_bambu
+
+BAMBU = find_bambu() or Path("bambu-studio-not-found")
 pytestmark = pytest.mark.skipif(not BAMBU.exists(), reason="Bambu Studio not installed")
 
 

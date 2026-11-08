@@ -7,6 +7,7 @@ claims), then evaluates each declarative check from the task file.
 from __future__ import annotations
 
 import math
+import re
 import time
 import tomllib
 import traceback
@@ -372,6 +373,39 @@ def run_check(check: dict, parts_or_ctx) -> dict:
                                 "materials": sorted(info["by_material"]), "problems": problems})
             ok = any("problems" in r and not r["problems"] for r in reports)
             res.update(ok=ok, files=reports or "no .3mf file in the workspace")
+        elif t == "sliced":
+            # the agent sliced the final design: a .gcode.3mf whose printer / filament match, and whose
+            # sliced objects match the final parts' height (so it was not sliced from an older revision)
+            import json as _json
+            import zipfile
+
+            files = [f for f in sorted(ctx.workspace.rglob("*.gcode.3mf")) if ".cad" not in f.parts]
+            reports = []
+            for f in files:
+                try:
+                    with zipfile.ZipFile(f) as z:
+                        settings = _json.loads(z.read("Metadata/project_settings.config"))
+                        gname = next(n for n in z.namelist() if n.endswith(".gcode"))
+                        head = z.read(gname)[:4096].decode(errors="replace")
+                except Exception as e:
+                    reports.append({"file": str(f.relative_to(ctx.workspace)), "error": str(e)})
+                    continue
+                printer = str(settings.get("printer_model", ""))
+                fils = [str(x) for x in settings.get("filament_type", [])]
+                m = re.search(r"max_z_height: ([\d.]+)", head)
+                zmax = float(m.group(1)) if m else None
+                want_h = max(p.bbox.size[2] for p in parts.values() if not p.reference) if parts else None
+                problems = []
+                if check.get("printer") and check["printer"].lower() not in printer.lower():
+                    problems.append(f"printer {printer!r}")
+                if check.get("filament") and not any(check["filament"].lower() in x.lower() for x in fils):
+                    problems.append(f"filaments {fils}")
+                if want_h is not None and (zmax is None or abs(zmax - want_h) > 0.25):
+                    problems.append(f"sliced height {zmax} vs final design {want_h:.2f}")
+                reports.append({"file": str(f.relative_to(ctx.workspace)), "printer": printer, "filaments": fils,
+                                "max_z": zmax, "problems": problems})
+            res.update(ok=any("problems" in r and not r["problems"] for r in reports),
+                       files=reports or "no .gcode.3mf in the workspace (the agent never ran `cad slice`)")
         elif t == "plate":
             # orientation-agnostic plate: two bbox dimensions match `footprint`, the third is the thickness,
             # with `holes` through-holes along the thickness axis
@@ -389,9 +423,12 @@ def run_check(check: dict, parts_or_ctx) -> dict:
                                                          "through_holes": len(holes), "hole_diameters": sorted({round(h["diameter"], 3) for h in holes})},
                        expected={k: check[k] for k in ("footprint", "holes", "thickness_min", "thickness_max") if k in check})
         elif t == "python":
+            import contextlib
+
             env: dict[str, Any] = {"parts": parts, "math": math}
             exec(check["code"], env)
-            ok, msg = env["check"](parts)
+            with contextlib.chdir(ctx.workspace) if getattr(ctx, "workspace", None) else contextlib.nullcontext():
+                ok, msg = env["check"](parts)  # relative paths (e.g. setup files) resolve in the workspace
             res.update(ok=bool(ok), message=msg)
         else:
             res.update(ok=False, error=f"unknown check type {t}")

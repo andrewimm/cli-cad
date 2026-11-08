@@ -1,0 +1,3 @@
+[project]
+name = "vendor_servo_mount"
+entry = "model.py"

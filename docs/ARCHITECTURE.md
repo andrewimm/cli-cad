@@ -91,6 +91,7 @@ fail and why). Non-fatal geometry smells are warnings attached to features.
 - No sketch constraints, splines/lofts/sweeps, drafts, threads, or assembly constraints/mates; parts are positioned explicitly. Text is flat-face only (no wrapping onto curved surfaces).
 - Rendering is orthographic only, with section views; no transparency, feature highlighting or exploded views yet. Worker peak memory during rendering is ~0.8 GB (float buffers at 2× supersampling).
 - Adding features one call at a time is quadratic in the number of features (full re-validation each time); use batch positions for repeated features.
+- Import: STL meshes become faceted solids (fine for reference geometry and simple booleans; curved surfaces stay faceted). 3MF/OBJ import is not supported. Slicing needs Bambu Studio installed and uses its bundled presets (user presets from the app's profile folder are not read yet).
 - `find_holes()` recognises cylindrical holes; slots, tapered holes and holes split into >2 faces may be reported partially.
 - Feature graph is a record, not a re-executable DAG; edits happen in the script.
 - Resource limits: RLIMIT_AS is not enforced by macOS.

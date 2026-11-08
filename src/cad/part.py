@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import difflib
 import math
+from pathlib import Path
 import time
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
@@ -769,6 +770,78 @@ class Part:
             self._body_op(feat, tool, refs, op)
 
         return self._run("revolve", name, dict(profile=profile, angle=angle, plane=pl, axis=axis, op=op), build)
+
+    # ================================================================== import
+    @classmethod
+    def from_file(cls, path: str, name: str | None = None, *, solid=None, reference: bool = False, material=None,
+                  color=None, scale: float = 1.0, align=None, at: Sequence[float] | None = None,
+                  max_triangles: int | None = None) -> "Part":
+        """A part made from a STEP / IGES / BREP / STL file (see :meth:`import_file`).
+
+        ``reference=True`` for a component you design around (a servo, a PCB): it renders
+        and takes part in ``cad clearance`` but is never exported.  The part's colour
+        defaults to the file's colour.
+        """
+        p = cls(name or Path(path).stem, reference=reference, material=material, color=color)
+        p.import_file(path, solid=solid, scale=scale, align=align, at=at, max_triangles=max_triangles)
+        return p
+
+    def import_file(self, path: str, *, solid=None, scale: float = 1.0, align=None, at: Sequence[float] | None = None,
+                    op: str = "add", name: str | None = None, max_triangles: int | None = None) -> FeatureRef:
+        """Add (or cut / intersect) the solids of a STEP, IGES, BREP or STL file.
+
+        Paths are relative to the project directory.  STEP/IGES units are converted to
+        mm; STL/BREP are taken as mm (``scale=25.4`` for inches).  ``solid`` picks bodies
+        by name (exact, else substring), index, or a list of either (`cad info <file>`
+        lists them).  ``align`` = per-axis "min" | "center" | "max" (e.g.
+        ``("center", "center", "min")``) moves the imported bounding box onto the origin;
+        ``at`` then offsets it.  As the first feature the bodies are kept exactly as in
+        the file (several solids stay separate); later imports are booleans with the body.
+        Named faces: ``<id>`` (all), ``<id>.top`` ... ``<id>.<body name>``.
+        """
+        from . import importer
+
+        if not isinstance(scale, (int, float)) or scale <= 0:
+            raise CadError(INVALID_ARGUMENT, f"scale must be positive, got {scale!r}")
+        align = _import_align(align)
+
+        def build(feat):
+            bodies, info = importer.read(path, max_triangles=max_triangles or importer.MAX_TRIANGLES)
+            chosen = importer.select(bodies, solid, path)
+            trsf = gp_Trsf()
+            if scale != 1:
+                trsf.SetScaleFactor(scale)
+            shapes = [BRepBuilderAPI_Transform(b.shape, trsf, True).Shape() if scale != 1 else b.shape for b in chosen]
+            lo, hi = _occ.bbox(_occ.compound(shapes))
+            move = [0.0, 0.0, 0.0]
+            for i, a in enumerate(align or (None, None, None)):
+                if a is not None:
+                    move[i] = -{"min": lo[i], "center": (lo[i] + hi[i]) / 2, "max": hi[i]}[a]
+            if at is not None:
+                move = [m + v for m, v in zip(move, _occ.vec(at))]
+            if any(abs(m) > 0 for m in move):
+                t = gp_Trsf()
+                t.SetTranslation(gp_Vec(*move))
+                shapes = [BRepBuilderAPI_Transform(sh, t, True).Shape() for sh in shapes]
+            refs = _direction_refs(feat.id, _occ.compound(shapes))
+            for b, sh in zip(chosen, shapes):
+                key = f"{feat.id}.{_ref_safe(b.name)}"
+                if key not in refs:
+                    refs[key] = ("face", _occ.faces(sh))
+            if self._shape is None and op == "add":
+                self._commit(feat, shapes[0] if len(shapes) == 1 else _occ.compound(shapes), None, refs)
+            else:
+                self._body_op(feat, shapes, refs, op)
+            if self.color is None and chosen[0].color and all(b.color == chosen[0].color for b in chosen):
+                self.color = chosen[0].color
+            feat.metrics["import"] = {"file": str(path), "format": info["format"], "sha256": info["sha256"][:16],
+                                      "bodies": [b.name for b in chosen], "units_in_file": info.get("units_in_file"),
+                                      "moved_by": [round(m, 6) for m in move]}
+            if info.get("format") == "stl":
+                feat.metrics["import"]["triangles"] = info.get("triangles")
+
+        params = {"path": str(path), "solid": solid, "scale": scale, "align": align, "at": at, "op": op}
+        return self._run("import", name, params, build)
 
     # ================================================================== text
     def emboss(self, text: str, *, on, size: float, height: float = 0.6, at: Sequence[float] | None = None,
@@ -1642,6 +1715,23 @@ def _direction_refs(fid: str, tool) -> dict:
         if nm:
             refs.setdefault(f"{fid}.{nm}", ("face", []))[1].append(f)
     return refs
+
+
+def _import_align(align):
+    if align is None:
+        return None
+    if isinstance(align, str):
+        align = (align, align, align)
+    if len(align) != 3 or any(a not in (None, "min", "center", "max") for a in align):
+        raise CadError(INVALID_ARGUMENT, f"align must be 3 of 'min' | 'center' | 'max' | None, got {align!r}",
+                       hint='e.g. align=("center", "center", "min"): centred on X/Y, bottom on Z = 0')
+    return tuple(align)
+
+
+def _ref_safe(name: str) -> str:
+    import re
+
+    return re.sub(r"[^A-Za-z0-9_-]+", "_", name).strip("_") or "body"
 
 
 def _axial_refs(fid: str, tool, d, start_point=None) -> dict:

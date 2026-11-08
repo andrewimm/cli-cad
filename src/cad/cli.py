@@ -63,6 +63,8 @@ COMMANDS: dict[str, dict] = {
     "render": {"summary": "Render PNG views (iso, front, back, left, right, top, bottom, az=..,el=.., dir=x,y,z)", "project": True},
     "export": {"summary": "Export STEP / STL / 3MF (with materials) / BREP for a revision (reference parts are skipped)", "project": True},
     "materials": {"summary": "List built-in materials (density, colour) for Part(..., material=...)", "project": False},
+    "slice": {"summary": "Slice with Bambu Studio: print time, filament grams per material, layers, supports, warnings; writes a .gcode.3mf", "project": True},
+    "info": {"summary": "What a STEP / IGES / STL / BREP file contains: bodies, names, sizes, units (before importing it)", "project": False},
     "fonts": {"summary": "List installed fonts usable for text (Profile.text, Part.emboss / engrave)", "project": False},
     "clearance": {"summary": "Clear / touching / overlap with minimum distance for every pair of parts (and per-face gaps for reference envelopes)", "project": True},
     "sweep": {"summary": "Rebuild over a range of one parameter, checking clearances (and rendering) at each value", "project": True},
@@ -180,6 +182,24 @@ def _parser() -> _Parser:
     s.add_argument("--tolerance", type=float, default=0.01, help="STL chordal tolerance in mm")
 
     cmd("materials")
+    s = cmd("slice")
+    s.add_argument("parts", nargs="*", help="parts to print (default: all non-reference parts)")
+    s.add_argument("--revision", "-r")
+    s.add_argument("--printer", help='Bambu printer, e.g. "A1", "A1 mini", "P1S", "X1 Carbon", "H2D" (default A1; cad.toml [print] printer)')
+    s.add_argument("--nozzle", type=float, help="nozzle diameter mm (default 0.4)")
+    s.add_argument("--process", help='process preset, e.g. "0.20mm Standard", "0.16mm Optimal", "0.12mm Fine"')
+    s.add_argument("--filament", action="append", default=[], metavar="MATERIAL=PRESET",
+                   help='filament preset for a material, e.g. PLA="Bambu PLA Matte" (repeatable)')
+    s.add_argument("--supports", choices=["default", "off", "auto", "on"], help="auto = tree supports where needed")
+    s.add_argument("--plate", choices=["textured", "cool", "engineering", "high-temp", "smooth", "supertack"],
+                   help="build plate (default: the printer's, usually textured PEI)")
+    s.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", dest="overrides",
+                   help="raw slicer setting, e.g. sparse_infill_density=25%%, wall_loops=3 (repeatable)")
+    s.add_argument("--3mf-mode", dest="threemf_mode", choices=["objects", "multimaterial"])
+    s.add_argument("--out", help="output directory (default out/r<N>)")
+    s.add_argument("--list", choices=["printers", "processes", "filaments"], help="list Bambu presets and exit")
+    s = cmd("info")
+    s.add_argument("file", help="a .step/.stp/.iges/.igs/.stl/.brep file")
     s = cmd("fonts")
     s.add_argument("filter", nargs="?", help="only fonts whose name contains this text")
 
@@ -414,6 +434,28 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         return _docs(args)
     if c == "examples":
         return _examples(args, cwd)
+    if c == "slice" and args.list:
+        from .slicer import listing
+
+        items = listing(args.list, args.printer, args.nozzle)
+        return {args.list: items}, "\n".join(items)
+    if c == "info":
+        from .importer import describe
+
+        path = Path(args.file)
+        if not path.is_absolute():
+            path = Path(cwd) / path
+        d = describe(path)
+        d["file"] = args.file
+        lines = [f"{args.file}: {d['format'].upper()}, {len(d['bodies'])} solid bod{'y' if len(d['bodies']) == 1 else 'ies'}"
+                 + (f", units in file: {d['units_in_file']} (converted to mm)" if d.get("units_in_file") else ", taken as mm")
+                 + (f", {d['triangles']} triangles" if d.get("triangles") else ""),
+                 f"overall: size {_fmt3(d['size'])}  min {_fmt3(d['bbox_min'])}  max {_fmt3(d['bbox_max'])}"]
+        for b in d["bodies"]:
+            lines.append(f"  {b['path']}: size {_fmt3(b['size'])} min {_fmt3(b['bbox_min'])} volume {b['volume']:g} mm3"
+                         + (f" colour {b['color']}" if b["color"] else "") + ("" if b["valid"] else "  INVALID"))
+        lines.append(f"\nuse: Part.from_file({args.file!r}, reference=True)   # or solid=\"<name>\", align=(\"center\", \"center\", \"min\")")
+        return d, "\n".join(lines)
     if c == "fonts":
         from .text import DEFAULT_FONTS, available_fonts
 
@@ -478,6 +520,37 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
                          f"1px={im['mm_per_pixel']:.4g}mm, right={im['screen_axes']['right']} up={im['screen_axes']['up']})")
         if r["sheet"]:
             lines.append(f"  sheet      {r['sheet']}")
+        return r, "\n".join(lines)
+    if c == "slice":
+        def pairs(items, flag):
+            out = {}
+            for it in items:
+                if "=" not in it:
+                    raise CadError(INVALID_ARGUMENT, f"{flag} expects KEY=VALUE, got {it!r}")
+                k, v = it.split("=", 1)
+                out[k.strip()] = v.strip().strip('"')
+            return out
+
+        r = s.slice(rev=args.revision, parts=args.parts or None, printer=args.printer, nozzle=args.nozzle, process=args.process,
+                      filaments=pairs(args.filament, "--filament"), supports=args.supports,
+                      overrides=pairs(args.overrides, "--set"), threemf_mode=args.threemf_mode, out_dir=args.out,
+                    plate=args.plate)
+        lines = [f"revision {r['revision']} sliced{' (cached)' if r['cached'] else ''} for {r['printer']}, {r['process']}, "
+                 f"{r['plate_type']}  [{r['slicer']}]",
+                 f"  print time {r['time']}, {r['filament_g']} g filament, {r['layers']} layers at {r['layer_height']:g} mm"
+                 + (f", {r['filament_changes']} filament changes" if r.get("filament_changes") else ""),
+                 f"  supports: {'used' if r['supports']['used'] else ('enabled, none needed' if r['supports']['enabled'] else 'off')}"]
+        for f in r["filaments"]:
+            lines.append(f"  filament {f['slot']}: {f['material']} -> {f['preset']} ({', '.join(f['parts'])}): {f['grams']} g"
+                         + (f", {f['meters']} m" if f.get("meters") else ""))
+        top = list(r["time_by_feature_s"].items())[:4]
+        if top:
+            lines.append("  time by feature: " + ", ".join(f"{k} {v // 60}m" if v >= 60 else f"{k} {v}s" for k, v in top))
+        for w in r["warnings"]:
+            lines.append(f"  warning {w['code']}: {w['message']}")
+        if r.get("skipped_reference_parts"):
+            lines.append(f"  skipped reference parts: {', '.join(r['skipped_reference_parts'])}")
+        lines.append(f"  sliced file: {r['output']}  (open in Bambu Studio or send to the printer)")
         return r, "\n".join(lines)
     if c == "export":
         fmts = [f.strip() for f in args.format.split(",")] if args.format else None
@@ -922,6 +995,10 @@ def _examples(args, cwd: Path):
     dest = (cwd / (args.dest or args.name)).resolve()
     init_project(dest, args.name, src)
     return {"root": str(dest)}, f"copied example {args.name} to {dest}\nnext: cd {dest} && cad build && cad render"
+
+
+def _fmt3(v) -> str:
+    return " x ".join(f"{x:g}" for x in v) if len(v) == 3 else str(v)
 
 
 def console_main() -> None:  # pragma: no cover - entry point

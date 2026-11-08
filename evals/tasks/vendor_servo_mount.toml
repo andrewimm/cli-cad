@@ -1,0 +1,78 @@
+id = "vendor_servo_mount"
+title = "Mount for a vendor servo (STEP import) and slice it"
+category = "import"
+split = "dev"
+setup_dir = "../setups/vendor_servo_mount"
+selftest_commands = ["build", "slice --printer A1"]
+prompt = """
+vendor/micro_servo.step is the manufacturer's model of a micro servo. Do not move it: design around it
+exactly where it sits in the file.
+
+Design a flat PETG mounting plate named "mount" for it:
+- 4 mm thick, its top face touching the underside of the servo's mounting ears (the ears rest on the plate).
+- A rectangular cutout so the servo body passes through the plate with 0.5 mm clearance on every side.
+- Two 2.2 mm through-holes for the screws, aligned with the holes in the servo's mounting ears.
+- The plate extends 6 mm beyond the ears' outline on every side (in X and Y), with no other features.
+Include the servo in the model as a reference part named "servo" so its clearance can be checked.
+
+Then estimate the print: slice the mount for a Bambu Lab A1 with PETG, and write PRINT.md stating the
+estimated print time and filament weight in grams.
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+required_names = ["mount"]
+
+[[checks]]
+type = "valid"
+part = "mount"
+
+[[checks]]
+type = "bbox"
+part = "mount"
+size = [44.2, 24.2, 4]
+min = [-28, -12.1, -6.5]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+part = "mount"
+diameter = 2.2
+axis = "z"
+positions = [[-19.8, 0], [8.0, 0]]
+tol = 0.1
+
+[[checks]]
+type = "python"
+note = "ears rest on the plate; body passes the cutout with 0.5 mm clearance"
+code = '''
+def check(parts):
+    from cad import Part
+    mount = parts["mount"]
+    ref = Part.from_file("vendor/micro_servo.step")   # the servo where the file puts it
+    msgs = []
+    if abs(mount.bbox.max[2] - (-2.5)) > 0.02:
+        msgs.append(f"plate top at z={mount.bbox.max[2]:.3f}, ear underside is z=-2.5")
+    if mount.interference(ref) > 1e-3:
+        msgs.append(f"plate overlaps the servo by {mount.interference(ref):.3f} mm3")
+    body = Part("body"); body.box(22.8, 12.2, 15.9, at=(-5.9, 0, -15.9))     # the part of the case below the ears
+    d = mount.distance_to(body)
+    if not (0.45 <= d <= 0.55):
+        msgs.append(f"cutout clearance to the servo body is {d:.3f} mm, want 0.5")
+    big = Part("big"); big.box(24.2, 14.2, 4, at=(-5.9, 0, -6.5))
+    if mount.interference(big) < 1.0:
+        msgs.append("cutout is more than ~1 mm oversize")
+    return not msgs, "; ".join(msgs) or f"clearance {d:.3f} mm"
+'''
+
+[[checks]]
+type = "sliced"
+printer = "A1"
+filament = "PETG"
+
+[[checks]]
+type = "file"
+path = "PRINT.md"
+min_chars = 20
+must_mention = ["g"]

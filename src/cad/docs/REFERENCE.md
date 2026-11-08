@@ -307,6 +307,8 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad export [--format step,stl,3mf,brep] [--3mf-mode objects|multimaterial] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files; 3MF carries materials; STL reports watertightness |
 | `cad materials` | built-in materials (density, colour) |
 | `cad fonts [filter]` | installed fonts for text |
+| `cad info <file>` | bodies, names, sizes, units in a STEP / IGES / STL / BREP file |
+| `cad slice` | Bambu Studio slice: print time, grams per filament, supports, warnings, .gcode.3mf |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
 | `cad clearance [--min D] [--part P]` | gaps / contact / overlap for every pair of parts; per-face gaps for reference envelopes; exit 4 below `--min` |
 | `cad sweep PARAM START:STOP:STEP [--min D] [--render VIEWS]` | rebuild across a parameter range, check clearances and optionally render each value |
@@ -384,6 +386,54 @@ Bambu Studio 2.07: objects mode loads as separate objects on filaments 1..n; mul
 object with one part per material. Set the matching filament types/colours in the slicer.
 Overlapping parts are reported (`MATERIAL_OVERLAP`) because two materials would claim the same volume.
 In Python: `part.export("x.3mf")`, or `from cad.threemf import export_3mf; export_3mf({"a": a, "b": b}, "x.3mf", mode="multimaterial")`.
+
+## Importing STEP / STL files (vendor parts)
+
+```bash
+cad info vendor/servo.step     # bodies, assembly paths, sizes, positions, units -- before writing code
+```
+
+```python
+servo = Part.from_file("vendor/servo.step", "servo", reference=True)       # design around it, never exported
+case = Part.from_file("vendor/servo.step", solid="case", align=("center", "center", "min"))
+p.import_file("vendor/pcb.step", op="cut", at=(0, 0, 2))                    # use a file as a cutter
+b = Part.from_file("old_bracket.stl"); b.hole(5, at=(0, 2))                 # an STL becomes an editable solid
+```
+
+- Formats: STEP (.step/.stp) and IGES with body names and colours; BREP; STL (sewn into a solid, coplanar
+  triangles merged; up to 100k triangles, `max_triangles=` to raise it).
+- Units: STEP/IGES are converted to mm from the file's units (`cad info` shows them); STL/BREP have no units
+  and are read as mm: `scale=25.4` for an inch STL.
+- Placement: the file's coordinates are kept unless you pass `align=` (per axis "min" | "center" | "max",
+  bounding box onto the origin) and/or `at=` (an offset). To design around a component keep it where it is
+  and measure it: `cad info`, `cad measure servo --bbox --holes`, `part.find_holes()`.
+- `solid=` picks bodies by name (exact, else substring), index, or a list. Several bodies in one part stay
+  separate solids. Named faces: `import1.top` / `.bottom` / `.front` ... and `import1.<body name>`.
+- Paths are relative to the project directory; imported files count as sources, so editing one triggers a
+  rebuild, and revisions keep a copy (stored once however many revisions use it).
+
+## Slicing: print time and filament (Bambu Studio)
+
+```bash
+cad slice                                    # A1, 0.4 mm nozzle, the printer's standard process, textured PEI plate
+cad slice --printer "P1S" --process "0.16mm Optimal" --supports auto
+cad slice --filament PLA="Bambu PLA Matte" --set sparse_infill_density=25% --set wall_loops=3
+cad slice --list printers | processes | filaments
+```
+
+- Reports print time, grams and metres per filament (one per material; multi-material via `--3mf-mode
+  multimaterial`), layers, whether supports were used, time by feature, and writes `out/r<N>/<name>.gcode.3mf`
+  (open it in Bambu Studio or send it to the printer). Results are cached per revision and settings.
+- Materials map to Bambu filament presets (PLA -> Bambu PLA Basic, PETG -> Bambu PETG Basic, TPU -> Bambu TPU 95A,
+  ABS, ASA, PC, PA12 -> Generic PA); others slice as PLA with a `FILAMENT_ASSUMED` warning. Metals and resin are refused.
+- Warnings: `NEEDS_SUPPORT` (overhangs would print in mid-air: re-orient, or `--supports auto`), `OFF_PLATE`,
+  `SLICER_WARNING`. A model too big for the printer fails before slicing with its size and the plate's.
+- `--plate textured | cool | engineering | high-temp`; Bambu refuses filaments a plate is not rated for (PETG on cool).
+- The part is printed as modelled: Z up, bottom face on the bed. Orient it for printing in the model.
+- Defaults in cad.toml: `[print]` `printer = "A1 mini"`, `process`, `supports`, `plate`, `slicer = "/path/to/BambuStudio"`;
+  `[print.filaments]` `PLA = "Bambu PLA Matte"`; `[print.settings]` `wall_loops = 3`.
+- Bambu Studio is found via cad.toml `slicer`, `$CAD_BAMBU_STUDIO`, `bambu-studio` on PATH, then the usual
+  install locations.
 
 ## Assemblies, motion and designing around components
 

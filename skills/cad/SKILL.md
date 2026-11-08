@@ -97,6 +97,8 @@ or your own `p.tag("mount", p.faces().facing("-z"))`.
 | a component you design around | `Part("servo", reference=True)` (rendered, never exported) + `cad clearance` |
 | moving parts | a motion `Parameter`, then `cad sweep angle 0:90:15 --min 0.5 --render front` |
 | hidden internals | `cad render --views front --section y=0` |
+| a vendor part (STEP/STL) | `cad info vendor/x.step`, then `Part.from_file("vendor/x.step", reference=True)`; keep it where the file puts it |
+| will it print, how long, how many grams | `cad slice` (Bambu Studio; `NEEDS_SUPPORT` = re-orient or `--supports auto`) |
 
 Renders show shape; numbers prove it. Do not report success until the checks pass.
 
@@ -116,3 +118,5 @@ case.mass()                                       # grams from the material dens
 - `cad export --format 3mf --3mf-mode multimaterial`: one piece printed with several filaments
   (Bambu Studio loads it as one object, part k on filament k). `cad export --format 3mf`: separate pieces.
   Set the default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. `cad materials` lists the library.
+- `cad slice [--printer "P1S"] [--process "0.16mm Optimal"] [--supports auto]`: print time, grams per filament
+  and a ready-to-print `.gcode.3mf` via Bambu Studio (if installed). `cad docs slicing` for options.

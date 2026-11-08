@@ -184,3 +184,32 @@ def test_nameplate_text_check_rejects_wrong_text_placement(tmp_path):
     assert "python" in failed(grade(t, script(tmp_path, src.replace("depth=0.8", "depth=0.3"), "shallow.py")))
     swapped = src.replace('p.engrave("SN 0042"', 'p.emboss("SN 0042"').replace("depth=0.8", "height=0.8")
     assert failed(grade(t, script(tmp_path, swapped, "swapped.py")))  # raised instead of engraved
+
+
+SERVO_SETUP = ROOT / "evals" / "setups" / "vendor_servo_mount"
+
+
+def _servo_ws(tmp_path, name, old=None, new=None):
+    d = tmp_path / name
+    shutil.copytree(SERVO_SETUP, d)
+    src = (SOLUTION_DIR / "vendor_servo_mount" / "model.py").read_text()
+    if old:
+        assert old in src
+        src = src.replace(old, new)
+    (d / "model.py").write_text(src)
+    return d / "model.py"
+
+
+def test_vendor_servo_mount_checks_reject_guessed_geometry(tmp_path):
+    t = task("vendor_servo_mount")
+    g = grade(t, _servo_ws(tmp_path, "ok"))
+    assert failed(g) == {"sliced", "file"}  # geometry right; not sliced, no PRINT.md
+    # holes placed symmetrically (a guess) instead of where the file puts them
+    g = grade(t, _servo_ws(tmp_path, "guess", "[(-19.8, 0), (8.0, 0)]", "[(-13.9, 0), (13.9, 0)]"))
+    assert "holes:mount" in failed(g)
+    # plate 0.5 mm below the ears
+    g = grade(t, _servo_ws(tmp_path, "low", "at=(-5.9, 0, -6.5))\n    mount.box(22.8", "at=(-5.9, 0, -7.0))\n    mount.box(22.8"))
+    assert "python" in failed(g)
+    # cutout with no clearance
+    g = grade(t, _servo_ws(tmp_path, "tight", "mount.box(22.8 + 1, 12.2 + 1", "mount.box(22.8, 12.2"))
+    assert "python" in failed(g)

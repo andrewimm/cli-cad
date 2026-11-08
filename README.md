@@ -67,14 +67,15 @@ An [Agent Skill](skills/cad/SKILL.md) in the skills.sh format teaches other agen
 
 | area | status |
 |---|---|
-| Modelling | box, cylinder, sphere, extrude/revolve of 2D profiles (rect, circle, rounded rect, slot, polygon, boolean combos), holes (through/blind, counterbore, countersink, grids, bolt circles), engraved/embossed text, fillet, chamfer, shell, boolean with other parts, translate/rotate/mirror |
+| Modelling | box, cylinder, sphere, extrude/revolve of 2D profiles (rect, circle, rounded rect, slot, polygon, boolean combos), holes (through/blind, counterbore, countersink, grids, bolt circles), engraved/embossed text, STEP/IGES/STL import, fillet, chamfer, shell, boolean with other parts, translate/rotate/mirror |
 | Semantic geometry | feature-generated face names (`base.top`, `hole1.wall`) tracked through OCCT history; user tags; geometric selectors (`facing`, `convex/concave`, `max("z")`, `holes()`…); ambiguity and lost references are reported, never guessed |
 | Validation | validity, solid count, bbox, volume, area, centre of mass, hole detection, min distance, interference, structured warnings (`CUT_NO_EFFECT`, `DISCONNECTED_BODIES`, …) |
 | Feature graph | per-feature params, dependencies (incl. selection provenance), outputs, warnings, timings, failed features |
 | Rendering | deterministic NumPy software rasteriser: 7 standard + arbitrary views, section (cut-away) views, orthographic, auto-framing, shaded/edges/lines, silhouettes, annotations (axes triad, scale bar), JSON camera metadata, contact sheet |
+| Manufacturing | STEP / STL / BREP export, 3MF with materials (separate objects or one multi-material object Bambu Studio assigns filaments from), `cad slice` through Bambu Studio (print time, grams per filament, supports, ready-to-print .gcode.3mf) |
 | Runtime | Rust `cad` client + `cadd` daemon, one Python worker per project, auto-start, crash recovery, timeouts, optional rlimits, standalone mode |
 | State | immutable revisions with atomic publication, parameter overlay, source snapshots, build/mesh/render/export caches surviving restarts, diff/checkout/restore |
-| Evals | 14 declarative tasks (9 dev, 5 held-out) with reference solutions, deterministic grader, independent-agent runner (Claude Code CLI), cad call logging, structured feedback, visual review, reports/compare, performance eval |
+| Evals | 23 declarative tasks (16 dev, 7 held-out) with reference solutions, deterministic grader, independent-agent runner (Claude Code CLI), cad call logging, structured feedback, visual review, reports/compare, performance eval |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions and
 known limitations, [docs/SECURITY.md](docs/SECURITY.md) before running untrusted

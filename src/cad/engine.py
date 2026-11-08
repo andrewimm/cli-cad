@@ -83,6 +83,9 @@ class ProjectSession:
                 return self._build_result(existing, m, cached=True, duration_ms=(time.perf_counter() - t0) * 1000)
         self.stats.bump("builds_run")
         try:
+            from . import importer
+
+            importer.set_cache_dir(self.store.cache_dir / "imports")
             out = run_script(entry, params)
         except CadError as e:
             self.store.write_last_build({"status": "failed", "error": e.to_dict(), "head": self.store.head()})
@@ -109,10 +112,8 @@ class ProjectSession:
                               "reference": part.reference,
                               "material": part.material.to_dict() if part.material else None}
             src = tmp / "source"
-            for rel in files:
-                dst = src / rel
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(self.root / rel, dst)
+            for rel, digest in files.items():
+                self.store.snapshot_file(self.root / rel, src / rel, digest)
             manifest = {
                 "revision": rev,
                 "key": key,
@@ -507,6 +508,61 @@ class ProjectSession:
         if skipped:
             out["skipped_reference_parts"] = skipped
         return out
+
+    # ------------------------------------------------------------------ slicing
+    def slice(self, *, rev=None, parts: list[str] | None = None, printer: str | None = None, nozzle: float | None = None,
+              process: str | None = None, filaments: dict[str, str] | None = None, supports: str | None = None,
+              overrides: dict[str, str] | None = None, threemf_mode: str | None = None, out_dir: str | None = None,
+              plate: str | None = None) -> dict:
+        from . import slicer
+
+        r, all_parts = self.parts(rev)
+        m = self.store.manifest(r)
+        cfg = self.config.raw.get("print", {})
+        skipped = [] if parts else [n for n, p in all_parts.items() if p.reference]
+        chosen = parts or [n for n in all_parts if n not in skipped]
+        for n in chosen:
+            if n not in all_parts:
+                raise CadError(NOT_FOUND, f"no part named '{n}'", details={"parts": list(all_parts)})
+        settings = {
+            "printer": printer or cfg.get("printer"), "nozzle": nozzle or cfg.get("nozzle"),
+            "process": process or cfg.get("process"),
+            "filaments": {**cfg.get("filaments", {}), **(filaments or {})},
+            "supports": supports or cfg.get("supports", "default"),
+            "overrides": {**{k: str(v) for k, v in cfg.get("settings", {}).items()}, **(overrides or {})},
+            "mode": threemf_mode or self.config.threemf_mode,
+            "plate": plate or cfg.get("plate"),
+        }
+        exe = slicer.find_bambu(cfg.get("slicer"))
+        key = hash_json({"parts": {n: m["parts"][n]["geometry_hash"] for n in chosen},
+                         "materials": {n: (all_parts[n].material.to_dict() if all_parts[n].material else None) for n in chosen},
+                         "settings": settings, "slicer": slicer.bambu_version(exe) if exe else None, "cad": __version__})
+        cache = self.store.cache_dir / "slices" / key[:32]
+        out = Path(out_dir) if out_dir else self.root / "out" / f"r{r}"
+        if not out.is_absolute():
+            out = self.root / out
+        if (cache / "report.json").exists():
+            self.stats.bump("slice_cache_hits")
+            report = json.loads((cache / "report.json").read_text())
+            out.mkdir(parents=True, exist_ok=True)
+            dst = out / Path(report["output"]).name
+            shutil.copyfile(cache / Path(report["output"]).name, dst)
+            report["output"], report["cached"] = str(dst), True
+        else:
+            report = slicer.slice_parts({n: all_parts[n] for n in chosen}, title=self.config.name, out_dir=cache,
+                                        printer=settings["printer"], nozzle=settings["nozzle"], process=settings["process"],
+                                        filaments=settings["filaments"], supports=settings["supports"],
+                                        overrides=settings["overrides"], mode=settings["mode"], plate=settings["plate"],
+                                        slicer=cfg.get("slicer"))
+            (cache / "report.json").write_text(json.dumps(report))
+            out.mkdir(parents=True, exist_ok=True)
+            dst = out / Path(report["output"]).name
+            shutil.copyfile(report["output"], dst)
+            report["output"], report["cached"] = str(dst), False
+        report = {"revision": r, "parts": chosen, **report}
+        if skipped:
+            report["skipped_reference_parts"] = skipped
+        return report
 
     # ------------------------------------------------------------------ design checks
     def clearance(self, rev=None, *, parts: list[str] | None = None, min_distance: float | None = None,
