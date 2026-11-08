@@ -103,7 +103,7 @@ fail and why). Non-fatal geometry smells are warnings attached to features.
 ## Known limitations
 
 - No sketch constraints or closed-loop joints (four-bar linkages); assemblies are trees of joints from one fixed part. Text is flat-face only (no wrapping onto curved surfaces).
-- Shelling freeform (lofted / swept) bodies relies on OCCT's offset algorithm: `shell` retries looser tolerances and the other join type, but a loft fused onto a prism often still fails. Volumes of booleaned pieces of such shells integrate ~0.2 % off (the geometry itself is consistent, checked by meshing).
+- Shelling freeform (lofted / swept) bodies relies on OCCT's offset algorithm: `shell` retries looser tolerances and the other join type, but a loft fused onto a prism often still fails, and on x86_64 the kernel can crash inside the offset (the bottle example hollows its loft with a cut loft instead). Volumes of booleaned pieces of such shells integrate ~0.2 % off (the geometry itself is consistent, checked by meshing).
 - Rendering is orthographic only, with section views; no transparency, feature highlighting or exploded views yet. Worker peak memory during rendering is ~0.8 GB (float buffers at 2× supersampling).
 - Adding features one call at a time is quadratic in the number of features (full re-validation each time); use batch positions for repeated features.
 - Import: STL meshes become faceted solids (fine for reference geometry and simple booleans; curved surfaces stay faceted). 3MF/OBJ import is not supported. Slicing needs Bambu Studio installed and uses its bundled presets (user presets from the app's profile folder are not read yet).

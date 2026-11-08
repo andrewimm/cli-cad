@@ -204,7 +204,9 @@ box = Part("box"); box.box(40, 30, 20); box.draft(2)                         # w
   section has the same number of holes. `LOFT_FAILED` when sections cross or twist (try `ruled=True` or an
   intermediate section). A smooth loft through three or more sections can bulge outside them between
   sections (check `cad measure --bbox`): use two-section lofts for each transition, or `ruled=True`.
-  To hollow a lofted shape, shell it while it is a single loft: shelling a loft fused onto an extrusion often fails.
+  To hollow a lofted shape, cut a smaller loft from it (`loft([...inset sections...], op="cut")`): `shell()` on
+  freeform surfaces depends on the kernel's offset algorithm, which can fail (or crash on some platforms),
+  especially for a loft fused onto an extrusion.
   Named faces `<id>.start`, `<id>.end`, `<id>.side`.
 - `sweep(profile, path)`: paths are `Path.polyline(points, radius=)` (corners rounded with that bend radius),
   `Path.spline(points)`, `Path.arc(start, through, end)`, `Path.helix(radius=, pitch=, height=, center=)`.
@@ -347,7 +349,7 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad fonts [filter]` | installed fonts for text |
 | `cad measure <part> --section z=V` | cross-section outline at a plane (regions, rectangles, circles, holes) |
 | `cad fasteners` | M2-M8 screw, nut and heat-set insert dimensions (screw_hole table) |
-| `cad examples show bottle` | loft + shell + printed thread + matching cap |
+| `cad examples show bottle` | loft hollowed by a cut loft + printed thread + matching cap |
 | `cad joints` | an Assembly's joints: world axes, values, limits, what positive motion does |
 | `cad info <file>` | bodies, names, sizes, units in a STEP / IGES / STL / BREP file |
 | `cad slice` | Bambu Studio slice: print time, grams per filament, supports, warnings, .gcode.3mf |

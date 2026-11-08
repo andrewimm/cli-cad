@@ -109,14 +109,19 @@ def test_thread_warnings_and_parsing():
 @pytest.mark.parametrize("size", ["M3", "M12", "M40x3"])
 def test_threads_are_valid_across_sizes(size):
     """Regression: axial clearance made fine-pitch grooves wider than the pitch (invalid M4 holes)."""
+    import math
+
     from cad import _occ
-    from cad.part import _fuse_all
-    from cad.threads import bolt_tools, hole_tools, parse
+    from cad.threads import bolt_tools, external_profile, hole_tools, parse
 
     d, p = parse(size)
-    bore, grooves, _ = hole_tools(d, p, -1, 4 * p, 0.25)
-    core, teeth = bolt_tools(d, p, 4 * p)
-    assert _occ.is_valid(_fuse_all([bore] + grooves)) and _occ.is_valid(_fuse_all([core] + teeth))
+    tool, info = hole_tools(d, p, -1, 4 * p, 0.25)
+    rod = bolt_tools(d, p, 4 * p)
+    assert _occ.is_valid(tool) and _occ.is_valid(rod)
+    # the union kept its core (it used to be dropped silently when the core's ends were coplanar with the tooth's)
+    r_min = external_profile(d, p)["minor_d"] / 2
+    assert _occ.volume(rod) > math.pi * r_min ** 2 * 4 * p
+    assert _occ.volume(tool) > math.pi * (info["bore_d"] / 2) ** 2 * (4 * p + 1)
 
 
 def test_print_on_orients_exports_and_persists(tmp_path):

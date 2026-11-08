@@ -1082,10 +1082,10 @@ class Part:
         _pos(length=length)
 
         def build(feat):
-            core, teeth = threads.bolt_tools(d, p, length)
-            trsf = _frame_trsf(_occ.vec(at), _axis_dir(direction))
-            shapes = [BRepBuilderAPI_Transform(s, trsf, True).Shape() for s in [core] + teeth]
-            rod = _fuse_all(shapes)
+            rod = threads.bolt_tools(d, p, length)
+            if rod is None or not _occ.is_valid(rod):
+                raise CadError(OPERATION_FAILED, f"could not build a valid M{d:g}x{p:g} thread", feature=feat.id)
+            rod = BRepBuilderAPI_Transform(rod, _frame_trsf(_occ.vec(at), _axis_dir(direction)), True).Shape()
             if not _occ.is_valid(rod):
                 raise CadError(OPERATION_FAILED, f"could not build a valid M{d:g}x{p:g} thread", feature=feat.id)
             refs = {f"{feat.id}.thread": ("face", [f for f in _occ.faces(rod) if _occ.surface_type(f) != "plane"]),
@@ -1121,10 +1121,10 @@ class Part:
                 raise CadError("HOLE_MISSED", f"the threaded hole at {_jsonable(at)} points away from the part", feature=feat.id)
             back = 1.0 if len(at) == 2 else 0.01
             length = depth if depth is not None else ahead + 1.0
-            bore, grooves, info = threads.hole_tools(d, p, -back, length, clearance)
-            trsf = _frame_trsf(start, dvec)
-            tools = [BRepBuilderAPI_Transform(s, trsf, True).Shape() for s in [bore] + grooves]
-            tool = _fuse_all(tools)
+            tool, info = threads.hole_tools(d, p, -back, length, clearance)
+            if tool is None:
+                raise CadError(OPERATION_FAILED, f"could not build a valid M{d:g}x{p:g} thread", feature=feat.id)
+            tool = BRepBuilderAPI_Transform(tool, _frame_trsf(start, dvec), True).Shape()
             if not _occ.is_valid(tool):
                 raise CadError(OPERATION_FAILED, f"could not build a valid M{d:g}x{p:g} thread", feature=feat.id,
                                hint="try a different clearance or pitch")
@@ -2494,18 +2494,46 @@ def _frame_trsf(origin, direction):
 
 
 def _fuse_all(shapes: list):
+    """Union of overlapping solids.  The result's volume is checked (at least the largest piece, at most their
+    sum): the boolean has been seen to drop a whole piece silently on one platform, so a bad union retries
+    pairwise and then with a small fuzzy tolerance before giving up loudly."""
     if len(shapes) == 1:
         return shapes[0]
-    alg = BRepAlgoAPI_Fuse()
-    args, tools = List_TopoDS_Shape(), List_TopoDS_Shape()
-    args.Append(shapes[0])
-    for s in shapes[1:]:
-        tools.Append(s)
-    alg.SetArguments(args)
-    alg.SetTools(tools)
-    alg.Build()
-    alg.SimplifyResult()
-    return alg.Shape()
+    vols = [_occ.volume(s) for s in shapes]
+    lo, hi = max(vols) * (1 - 1e-6) - 1e-9, sum(vols) * (1 + 1e-6) + 1e-9
+
+    def sane(r):
+        return r is not None and not r.IsNull() and _occ.is_valid(r) and lo <= _occ.volume(r) <= hi
+
+    def together(fuzzy=0.0):
+        alg = BRepAlgoAPI_Fuse()
+        args, tools = List_TopoDS_Shape(), List_TopoDS_Shape()
+        args.Append(shapes[0])
+        for sh in shapes[1:]:
+            tools.Append(sh)
+        alg.SetArguments(args)
+        alg.SetTools(tools)
+        if fuzzy:
+            alg.SetFuzzyValue(fuzzy)
+        alg.Build()
+        alg.SimplifyResult()
+        return alg.Shape()
+
+    def pairwise():
+        acc = shapes[0]
+        for sh in shapes[1:]:
+            acc = BRepAlgoAPI_Fuse(acc, sh).Shape()
+        return acc
+
+    for attempt in (together, pairwise, lambda: together(1e-5)):
+        try:
+            r = attempt()
+        except Standard_Failure:
+            continue
+        if sane(r):
+            return r
+    raise CadError(BOOLEAN_FAILED, f"joining {len(shapes)} pieces failed: the kernel's union lost material",
+                   hint="this is a kernel robustness problem; try slightly different sizes or positions")
 
 
 def _import_align(align):

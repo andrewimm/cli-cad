@@ -54,7 +54,8 @@ def _helix(r: float, pitch: float, height: float, z0: float):
     return BRepBuilderAPI_MakeWire(edge).Wire()
 
 
-def tooth_pieces(r_in: float, r_out: float, w_in: float, w_out: float, pitch: float, z0: float, z1: float) -> list:
+def tooth_pieces(r_in: float, r_out: float, w_in: float, w_out: float, pitch: float, z0: float, z1: float,
+                 *, trim: bool = True) -> list:
     """The tooth along +Z (local frame) covering z0..z1, trimmed flat at both ends: a trapezoid
     swept along a helix with its plane kept radial (binormal mode).
 
@@ -86,6 +87,8 @@ def tooth_pieces(r_in: float, r_out: float, w_in: float, w_out: float, pitch: fl
     tooth = mk.Shape()
     if _occ.volume_fast(tooth) < 0:
         tooth.Reverse()
+    if not trim:  # the raw sweep, about one pitch beyond z0 and z1
+        return [tooth]
     big = 4 * r_out + 10
     below = BRepPrimAPI_MakeBox(gp_Pnt(-big / 2, -big / 2, z0 - 4 * pitch), big, big, 4 * pitch).Shape()
     above = BRepPrimAPI_MakeBox(gp_Pnt(-big / 2, -big / 2, z1), big, big, 4 * pitch).Shape()
@@ -102,23 +105,44 @@ def external_profile(d: float, pitch: float) -> dict:
             "root": w_crest + 2 * h * TAN30}
 
 
-def bolt_tools(d: float, pitch: float, length: float, eps: float = 0.05) -> tuple:
-    """(core cylinder, tooth pieces) for an external thread along +Z from 0 to length."""
+def _with_core(r_core: float, tooth_args: tuple, pitch: float, z0: float, z1: float):
+    """A cylinder of radius r_core united with the swept tooth, trimmed flat to z0..z1.
+
+    The union is made before trimming, with the core running well past the tooth: when the core's end faces lie
+    in the same planes as the trimmed tooth's, the kernel's union often drops the core entirely (seen for M28x3
+    on macOS and M8 on Linux), and a coincident-face union is fragile in general."""
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder
     from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
 
+    from . import _occ
+    from .errors import BOOLEAN_FAILED
+    from .part import _fuse_all
+
+    teeth = tooth_pieces(*tooth_args, pitch, z0, z1, trim=False)
+    if not teeth:
+        return None
+    a, b = z0 - 3 * pitch, z1 + 3 * pitch
+    core = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, a), gp_Dir(0, 0, 1)), r_core, b - a).Shape()
+    whole = _fuse_all([core] + teeth)
+    keep = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, z0), gp_Dir(0, 0, 1)), tooth_args[1] + 5, z1 - z0).Shape()
+    out = BRepAlgoAPI_Common(whole, keep).Shape()
+    core_vol = 3.141592653589793 * r_core ** 2 * (z1 - z0)
+    if not _occ.solids(out) or _occ.volume(out) < core_vol * (1 - 1e-6):
+        raise CadError(BOOLEAN_FAILED, "building the thread solid failed (the kernel lost material)",
+                       hint="try a slightly different length or pitch")
+    return out
+
+
+def bolt_tools(d: float, pitch: float, length: float, eps: float = 0.05):
+    """The threaded rod (core and tooth as one solid) along +Z from 0 to length."""
     pr = external_profile(d, pitch)
     r_min, r_maj = pr["minor_d"] / 2, d / 2
-    core = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r_min, length).Shape()
-    teeth = tooth_pieces(r_min - eps, r_maj, pr["root"] + 2 * eps * TAN30, pr["crest"], pitch, 0.0, length)
-    return core, teeth
+    return _with_core(r_min, (r_min - eps, r_maj, pr["root"] + 2 * eps * TAN30, pr["crest"]), pitch, 0.0, length)
 
 
 def hole_tools(d: float, pitch: float, z0: float, z1: float, clearance: float, eps: float = 0.05) -> tuple:
-    """(bore cylinder, groove pieces) to cut an internal thread along +Z between z0 and z1."""
-    from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder
-    from OCP.gp import gp_Ax2, gp_Dir, gp_Pnt
-
+    """(cutting tool: bore and groove as one solid, info) for an internal thread along +Z between z0 and z1."""
     pr = external_profile(d, pitch)
     nut_minor = d - 1.0825 * pitch            # ISO D1
     r_bore = nut_minor / 2 + clearance
@@ -127,6 +151,5 @@ def hole_tools(d: float, pitch: float, z0: float, z1: float, clearance: float, e
     r_in = r_bore - eps
     w_in = pr["crest"] + 2 * (r_out - r_in) * TAN30   # = 0.75 P + small: always narrower than the pitch
     w_out = pr["crest"]
-    bore = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(0, 0, z0), gp_Dir(0, 0, 1)), r_bore, z1 - z0).Shape()
-    grooves = tooth_pieces(r_in, r_out, w_in, w_out, pitch, z0, z1)
-    return bore, grooves, {"bore_d": round(2 * r_bore, 4), "nut_minor_d": round(nut_minor, 4)}
+    tool = _with_core(r_bore, (r_in, r_out, w_in, w_out), pitch, z0, z1)
+    return tool, {"bore_d": round(2 * r_bore, 4), "nut_minor_d": round(nut_minor, 4)}
