@@ -1,0 +1,106 @@
+id = "printed_pipe_clamp"
+title = "Two-piece printed pipe clamp with captured nuts"
+category = "printing"
+split = "dev"
+selftest_commands = ["build", "slice --printer A1"]
+prompt = """
+Design a two-piece pipe clamp to 3D print in PETG, modelled assembled around the pipe.
+
+- The pipe is 20 mm in diameter, its axis along Y through (X, Z) = (0, 15). Bore 20.4 mm (0.2 mm clearance).
+- The clamp is a 50 mm (X) x 20 mm (Y) x 30 mm (Z) block from Z = 0 to 30, centred on X = 0 and Y = 0,
+  split at Z = 15 into "clamp_bottom" (Z 0..15) and "clamp_top" (Z 15..30).
+- Two M4 socket-head cap screws hold the halves together, vertical, at (X, Y) = (-18, 0) and (18, 0).
+  The screw heads sit in counterbores in the top face of clamp_top, below the surface.
+  The nuts are captured in hex pockets in the underside of clamp_bottom.
+  Use standard M4 dimensions with sensible printing allowances.
+- Chamfer the edges of each half that touch the print bed by 0.5 mm against elephant's foot. clamp_bottom
+  prints on its underside (Z = 0); clamp_top prints on its split face (Z = 15).
+- Slice both halves for a Bambu Lab A1 and write PRINT.md with the estimated print time and filament weight.
+"""
+
+[[checks]]
+type = "part_count"
+count = 2
+required_names = ["clamp_bottom", "clamp_top"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+part = "clamp_bottom"
+size = [50, 20, 15]
+min = [-25, -10, 0]
+tol = 0.05
+
+[[checks]]
+type = "bbox"
+part = "clamp_top"
+size = [50, 20, 15]
+min = [-25, -10, 15]
+tol = 0.05
+
+[[checks]]
+type = "python"
+note = "bore, M4 clearance holes, counterbores, captured-nut hex pockets, bed chamfers (all via cross-sections)"
+code = '''
+def check(parts):
+    from cad import Part
+    from cad.analysis import cross_section
+    bot, top = parts["clamp_bottom"], parts["clamp_top"]
+    msgs = []
+    pipe = Part("pipe"); pipe.cylinder(20, 40, at=(0, -20, 15), axis="y")
+    for p in (bot, top):
+        if p.interference(pipe) > 1e-3:
+            msgs.append(f"{p.name} overlaps the pipe")
+        d = p.distance_to(pipe)
+        if not 0.15 <= d <= 0.25:
+            msgs.append(f"{p.name}: bore clearance {d:.3f} mm, want 0.2")
+
+    def loops(p, z):
+        return [h for r in cross_section(p.shape, "z", z)["regions"] for h in r["holes"]]
+
+    def near(ls, x):
+        return [h for h in ls if abs((h["min"][0] + h["max"][0]) / 2 - x) < 0.3 and abs((h["min"][1] + h["max"][1]) / 2) < 0.3]
+
+    for x in (-18, 18):
+        # clearance through both halves: 4.3 .. 4.8 mm
+        for p, z in ((bot, 7.5), (top, 21.0)):
+            h = near(loops(p, z), x)
+            if not h or not 4.3 <= h[0]["size"][0] <= 4.8:
+                msgs.append(f"{p.name}: no M4 clearance hole at x={x} z={z} ({[l['size'][:2] for l in h]})")
+        # counterbore at the top: 7.4 .. 8.6 mm wide, at least 4 mm deep (head 4 mm)
+        h = near(loops(top, 29.5), x)
+        if not h or not 7.4 <= h[0]["size"][0] <= 8.6:
+            msgs.append(f"clamp_top: counterbore at x={x} is {[l['size'][:2] for l in h]}, want ~8 mm")
+        if not near(loops(top, 30 - 3.9), x) or near(loops(top, 30 - 3.9), x)[0]["size"][0] < 7.4:
+            msgs.append(f"clamp_top: counterbore at x={x} is shallower than the 4 mm head")
+        # hex pocket at the bottom: across flats 7.0 .. 7.6, across corners ~8.1 .. 8.8, >= 3.2 deep (nut height)
+        h = near(loops(bot, 1.0), x)
+        if not h or h[0].get("shape") == "circle":
+            msgs.append(f"clamp_bottom: no hex nut pocket at x={x} (found {[l.get('shape') for l in h]})")
+        else:
+            a, b = sorted(h[0]["size"][:2])
+            if not (7.0 <= a <= 7.6 and 8.0 <= b <= 8.9):
+                msgs.append(f"clamp_bottom: nut pocket at x={x} is {a:.2f} x {b:.2f}, want ~7.3 across flats")
+        if not near(loops(bot, 3.1), x) or near(loops(bot, 3.1), x)[0]["size"][0] < 7.0:
+            msgs.append(f"clamp_bottom: nut pocket at x={x} is shallower than an M4 nut (3.2 mm)")
+    # bed chamfers: outline shrinks near the bed face
+    for p, z in ((bot, 0.05), (top, 15.05)):
+        regs = cross_section(p.shape, "z", z)["regions"]   # the split face is two pieces either side of the bore
+        width = max(r["max"][0] for r in regs) - min(r["min"][0] for r in regs)
+        if width > 49.6 or width < 48.6:
+            msgs.append(f"{p.name}: outline at z={z} is {width:.2f} mm wide: no ~0.5 mm bed chamfer")
+    return not msgs, "; ".join(msgs) or "ok"
+'''
+
+[[checks]]
+type = "sliced"
+printer = "A1"
+filament = "PETG"
+
+[[checks]]
+type = "file"
+path = "PRINT.md"
+min_chars = 20
+must_mention = ["g"]

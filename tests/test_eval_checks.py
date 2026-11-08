@@ -213,3 +213,26 @@ def test_vendor_servo_mount_checks_reject_guessed_geometry(tmp_path):
     # cutout with no clearance
     g = grade(t, _servo_ws(tmp_path, "tight", "mount.box(22.8 + 1, 12.2 + 1", "mount.box(22.8, 12.2"))
     assert "python" in failed(g)
+
+
+def _clamp(tmp_path, name, old=None, new=None):
+    d = tmp_path / name
+    d.mkdir()
+    src = (SOLUTION_DIR / "printed_pipe_clamp" / "model.py").read_text()
+    if old:
+        assert old in src, old
+        src = src.replace(old, new)
+    (d / "model.py").write_text(src)
+    return d / "model.py"
+
+
+def test_printed_pipe_clamp_checks_reject_wrong_fasteners(tmp_path):
+    t = task("printed_pipe_clamp")
+    assert failed(grade(t, _clamp(tmp_path, "ok"))) == {"sliced", "file"}
+    for name, old, new in (
+        ("round_nut", 'kind="nut")', 'kind="counterbore")'),                # round recess instead of a hex pocket
+        ("m3_nut", 'bot.screw_hole("M4"', 'bot.screw_hole("M3"'),             # M3 nut pocket and hole
+        ("no_cbore", 'kind="counterbore")\n    top', 'kind="clearance")\n    top'),
+        ("no_chamfer", "    bot.bottom_chamfer(0.5)\n", ""),
+    ):
+        assert "python" in failed(grade(t, _clamp(tmp_path, name, old, new))), name

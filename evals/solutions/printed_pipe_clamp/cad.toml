@@ -1,0 +1,3 @@
+[project]
+name = "printed_pipe_clamp"
+entry = "model.py"
