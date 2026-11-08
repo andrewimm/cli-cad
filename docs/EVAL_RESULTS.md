@@ -111,7 +111,7 @@ thickness and hole size: the footprint must be 60 × 40 in some orientation with
 through-holes along the thickness, and a watertight STL matching the final model must
 exist in the workspace. Times come from the `cad` call log relative to the agent's start.
 
-| 5 attempts each | baseline (`f0d2b6e`) | v2 (`cad --help` getting started, `cad docs <topic>`, quick start) |
+| 5 attempts each | baseline (`0ff5867`) | v2 (`af455c4`: `cad --help` getting started, `cad docs <topic>`, quick start) |
 |---|---|---|
 | passed / exported a valid STL | 5/5 / 5/5 | 5/5 / 5/5 |
 | time to first valid model (median) | 16.0 s | **13.1 s** |
