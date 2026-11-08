@@ -66,3 +66,15 @@ def test_standalone_matches_daemon(tmp_path, env):
 def test_error_exit_codes_through_daemon(tmp_path, env):
     p = cad(["inspect", "--json"], tmp_path, env, check=False)
     assert p.returncode == 5 and json.loads(p.stdout)["error"]["code"] == "NO_PROJECT"
+
+
+def test_falls_back_to_standalone_when_daemon_cannot_start(tmp_path, env):
+    # a runtime dir that cannot be created stands in for a sandbox that forbids the daemon's socket
+    env = dict(env, CAD_RUNTIME_DIR="/dev/null/cad-runtime")
+    p = cad(["capabilities", "--json"], tmp_path, env, check=False)
+    assert p.returncode == 0, p.stderr
+    assert json.loads(p.stdout)["ok"]
+    assert "running standalone" in p.stderr
+    env["CAD_REQUIRE_DAEMON"] = "1"
+    p = cad(["capabilities", "--json"], tmp_path, env, check=False)
+    assert p.returncode == 8 and json.loads(p.stdout)["error"]["code"] == "DAEMON_UNAVAILABLE"

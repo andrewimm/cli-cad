@@ -606,9 +606,13 @@ def _assignments(items: list[str]) -> dict[str, Any]:
 
 
 def _set_current(root: Path) -> None:
-    f = current_project_file()
-    f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(str(root) + "\n")
+    """Remember the current project (best effort: sandboxes often forbid writes outside the workspace)."""
+    try:
+        f = current_project_file()
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(str(root) + "\n")
+    except OSError:
+        pass
 
 
 def _open(args, cwd: Path, engine):

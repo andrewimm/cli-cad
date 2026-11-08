@@ -5,6 +5,10 @@
 //! `CAD_NO_DAEMON=1` execute the Python CLI directly instead (standalone mode,
 //! identical semantics, no persistent state beyond the project's .cad directory).
 //!
+//! If the daemon cannot be reached or started (e.g. a sandbox such as Codex's forbids
+//! Unix sockets), the client falls back to standalone mode automatically and says so
+//! on stderr; set `CAD_REQUIRE_DAEMON=1` to make that an error instead.
+//!
 //! Daemon management: `cad daemon status|stop|start|restart`.
 
 use cadcore::*;
@@ -46,7 +50,24 @@ fn main() {
     }
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
     let req = json!({"argv": args, "cwd": cwd, "timeout_s": timeout_s});
-    match request(&req, true, Duration::from_secs(timeout_s + 30)) {
+    let require = env::var("CAD_REQUIRE_DAEMON").map(|v| v == "1").unwrap_or(false);
+    let stream = match connect_or_start() {
+        Ok(s) => s,
+        Err(reason) if !require => {
+            // same engine in-process: identical results, just no warm session
+            eprintln!("note: cad daemon unavailable ({reason}); running standalone. Set CAD_NO_DAEMON=1 to skip this check.");
+            exec_standalone(&args);
+        }
+        Err(reason) => {
+            if json_out {
+                println!("{}", error_json(&first, "DAEMON_UNAVAILABLE", &reason, "unset CAD_REQUIRE_DAEMON or retry with --no-daemon", exit::DAEMON_UNAVAILABLE));
+            } else {
+                eprintln!("error [DAEMON_UNAVAILABLE]: {reason}\n  hint: unset CAD_REQUIRE_DAEMON or retry with --no-daemon");
+            }
+            std::process::exit(exit::DAEMON_UNAVAILABLE);
+        }
+    };
+    match send(stream, &req, Duration::from_secs(timeout_s + 30)) {
         Ok(resp) => {
             let out = resp["stdout"].as_str().unwrap_or("");
             let err = resp["stderr"].as_str().unwrap_or("");
@@ -77,15 +98,31 @@ fn connect() -> std::io::Result<UnixStream> {
     UnixStream::connect(socket_path())
 }
 
-fn request(req: &Value, autostart: bool, timeout: Duration) -> Result<Value, String> {
-    let mut stream = match connect() {
-        Ok(s) => s,
-        Err(_) if autostart => {
-            start_daemon()?;
-            connect().map_err(|e| format!("daemon started but socket is not accepting connections: {e}"))?
+/// Connect to the daemon, starting it if needed.  A socket refused with EPERM/EACCES
+/// means a sandbox forbids Unix sockets: don't try to start a daemon that cannot bind.
+fn connect_or_start() -> Result<UnixStream, String> {
+    match connect() {
+        Ok(s) => Ok(s),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(libc::EPERM) => {
+            Err(format!("Unix sockets are not permitted here: {e}"))
         }
+        Err(_) => {
+            start_daemon().map_err(|e| format!("could not start the daemon: {e}"))?;
+            connect().map_err(|e| format!("daemon started but its socket is not accepting connections: {e}"))
+        }
+    }
+}
+
+fn request(req: &Value, autostart: bool, timeout: Duration) -> Result<Value, String> {
+    let stream = match connect() {
+        Ok(s) => s,
+        Err(_) if autostart => connect_or_start()?,
         Err(e) => return Err(format!("daemon is not running ({e})")),
     };
+    send(stream, req, timeout)
+}
+
+fn send(mut stream: UnixStream, req: &Value, timeout: Duration) -> Result<Value, String> {
     stream.set_read_timeout(Some(timeout)).ok();
     let mut line = req.to_string();
     line.push('\n');
@@ -108,7 +145,9 @@ fn daemon_binary() -> PathBuf {
 fn start_daemon() -> Result<(), String> {
     let logdir = state_dir().join("logs");
     std::fs::create_dir_all(&logdir).map_err(|e| e.to_string())?;
-    let log = std::fs::OpenOptions::new().create(true).append(true).open(logdir.join("cadd.log")).map_err(|e| e.to_string())?;
+    let log_path = logdir.join("cadd.log");
+    let log_start = std::fs::metadata(&log_path).map(|m| m.len()).unwrap_or(0);
+    let log = std::fs::OpenOptions::new().create(true).append(true).open(&log_path).map_err(|e| e.to_string())?;
     let log2 = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(daemon_binary());
     cmd.stdin(Stdio::null()).stdout(log).stderr(log2);
@@ -128,9 +167,11 @@ fn start_daemon() -> Result<(), String> {
             if connect().is_ok() {
                 return Ok(()); // another daemon won the race
             }
-            let log = std::fs::read_to_string(logdir.join("cadd.log")).unwrap_or_default();
-            let tail: String = log.lines().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
-            return Err(format!("daemon exited during startup ({status}): {tail}"));
+            // only what this startup wrote, not older runs' lines
+            let log = std::fs::read(&log_path).unwrap_or_default();
+            let fresh = String::from_utf8_lossy(&log[(log_start as usize).min(log.len())..]).into_owned();
+            let tail = fresh.lines().last().unwrap_or("").to_string();
+            return Err(format!("daemon exited during startup ({status}){}", if tail.is_empty() { String::new() } else { format!(": {tail}") }));
         }
         std::thread::sleep(Duration::from_millis(25));
     }

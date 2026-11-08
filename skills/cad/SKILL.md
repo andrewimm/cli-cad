@@ -17,9 +17,12 @@ cad --version            # prints "cad 0.1.0"; if "command not found", install i
 Install from a checkout of the cad repository (needs `uv` and Rust/`cargo`):
 
 ```bash
-scripts/install.sh ~/.local/cad                      # self-contained: Python env + cad + cadd binaries
-ln -sf ~/.local/cad/bin/cad ~/.local/cad/bin/cadd ~/.local/bin/   # any directory on PATH; link both
+scripts/install.sh            # -> ~/.local/cad (Python env + cad + cadd), linked into ~/.local/bin
 ```
+
+In a sandbox that forbids Unix sockets (e.g. Codex) the background daemon cannot run; `cad` then
+runs each command standalone automatically (same results, a note on stderr, ~0.6 s per command).
+Set `CAD_NO_DAEMON=1` to skip the daemon attempt.
 
 ## 2. Workflow
 

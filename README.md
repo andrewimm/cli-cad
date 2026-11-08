@@ -21,6 +21,10 @@ export PATH="$PWD/target/release:$PATH"
 cad capabilities
 ```
 
+Or install for everyday use: `scripts/install.sh` builds a self-contained `~/.local/cad` and links
+`cad`/`cadd` into `~/.local/bin` (re-run it to update). In sandboxes that forbid Unix sockets (e.g.
+Codex), `cad` falls back to standalone mode automatically.
+
 The `cad` binary finds the venv automatically (`.venv/bin/python` above the
 executable); otherwise set `CAD_PYTHON` to an interpreter with the `cad`
 package installed. Without the Rust binaries, `uv run cadpy <command>` runs the
