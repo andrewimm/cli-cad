@@ -1487,21 +1487,31 @@ class Part:
         return self._dressup("chamfer", name, edges, distance)
 
     def bottom_chamfer(self, size: float = 0.5, *, holes: bool = True, name: str | None = None) -> FeatureRef:
-        """Chamfer the edges of the faces that sit on the print bed (lowest Z), against
-        "elephant's foot" (the squashed first layers bulge outward by ~0.2-0.5 mm).
+        """Chamfer the edges of the faces that sit on the print bed, against "elephant's foot"
+        (the squashed first layers bulge outward by ~0.2-0.5 mm).
 
-        Chamfers the outer outline; with ``holes=True`` also the edges of holes and cut-outs
-        in those faces (they shrink for the same reason).  0.4-0.6 mm is typical.
+        The bed face is the lowest flat face, or the face given to :meth:`print_on` if that was
+        called first.  Chamfers the outer outline; with ``holes=True`` also the edges of holes
+        and cut-outs in those faces (they shrink for the same reason).  0.4-0.6 mm is typical.
         """
         from OCP.BRepTools import BRepTools
 
         _pos(distance=size)
-        lo = self.bbox.min[2]
-        bed = [f for f in self.faces().facing("-z").shapes
-               if _occ.surface_type(f) == "plane" and abs(_occ.bbox(f)[0][2] - lo) < 1e-6 and abs(_occ.bbox(f)[1][2] - lo) < 1e-6]
-        if not bed:
+        down = _occ.vec(self.print_down) if self.print_down else (0.0, 0.0, -1.0)
+
+        def extent(f):  # how far the face lies along `down`
+            lo_f, hi_f = _occ.bbox(f)
+            corners = [(x, y, z) for x in (lo_f[0], hi_f[0]) for y in (lo_f[1], hi_f[1]) for z in (lo_f[2], hi_f[2])]
+            return max(sum(a * b for a, b in zip(c, down)) for c in corners)
+
+        flats = [f for f in _occ.faces(self.shape) if _occ.surface_type(f) == "plane"
+                 and sum(a * b for a, b in zip(_occ.face_normal(f), down)) > 1 - 1e-6]
+        far = max((extent(f) for f in flats), default=None)
+        lowest = max(sum(a * b for a, b in zip(c, down)) for c in (self.bbox.min, self.bbox.max))  # exact for axis directions
+        bed = [f for f in flats if abs(extent(f) - far) < 1e-6] if flats else []
+        if not bed or far < lowest - 1e-6:  # no flat face, or something sticks out below it
             raise CadError(EMPTY_SELECTION, "the part has no flat face on the bed (at its lowest Z)",
-                           hint="orient the part for printing so a flat face is at the bottom")
+                           hint="orient the part for printing so a flat face is at the bottom, or call print_on(face) first")
         efmap = _occ.edge_face_map(self.shape)
         chosen, seen = [], _occ.ShapeSet([])
         for f in bed:
@@ -1522,7 +1532,7 @@ class Part:
             for e in chosen:
                 (good if self._dressup_result_ok(self._make_dressup("chamfer", [e], size))[0] else skipped).append(e)
             chosen = good
-        sel = EdgeSelection(self, chosen, f"bottom edges (z={lo:g})")
+        sel = EdgeSelection(self, chosen, "bed face edges" + (f" (print_on {_jsonable(down)})" if self.print_down else f" (z={-far:g})"))
         ref = self._dressup("bottom_chamfer", name, sel, size)
         if skipped:
             ref.feature.warnings.append(CadWarning(

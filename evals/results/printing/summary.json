@@ -1,0 +1,137 @@
+{
+  "run": {
+    "label": "printing",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "printed_pipe_clamp"
+    ],
+    "git": "475bf1d",
+    "started": 1794120066.3596501
+  },
+  "overall": {
+    "attempts": 3,
+    "pass_rate": 0.667,
+    "mean_score": 0.952,
+    "self_reported_success": 1.0,
+    "overclaimed": 1,
+    "mean_cad_calls": 18,
+    "mean_failed_builds": 0.333,
+    "mean_turns": 13,
+    "mean_cost_usd": 0.23,
+    "total_cost_usd": 0.691,
+    "implementation_peeks": 0,
+    "feedback_received": 3
+  },
+  "tasks": {
+    "printed_pipe_clamp": {
+      "attempts": 3,
+      "pass_rate": 0.667,
+      "mean_score": 0.952,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 18,
+      "mean_builds": 1.333,
+      "mean_failed_builds": 0.333,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 8.667,
+      "mean_turns": 13,
+      "mean_duration_s": 46.433,
+      "mean_cost_usd": 0.23,
+      "failed_checks": {
+        "python": 1
+      },
+      "visual_overall_match": 4
+    }
+  },
+  "cad_errors": {
+    "NO_PROJECT": 2,
+    "NOT_FOUND": 1
+  },
+  "issue_categories": {
+    "docs_unclear/low": 4,
+    "query_missing/low": 2,
+    "other/low": 1
+  },
+  "issues": [
+    {
+      "task": "printed_pipe_clamp",
+      "category": "docs_unclear",
+      "description": "Docs do not say that cad slice reports one combined time/weight for all parts on one plate; per-part numbers are not shown.",
+      "severity": "low"
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "category": "docs_unclear",
+      "description": "Not stated that kind='nut' puts the pocket on the exit side of a through-drill (it does, at the part bottom); verified via section render.",
+      "severity": "low"
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "category": "query_missing",
+      "description": "cad inspect lists nut pockets neither as holes nor with dimensions unless I read --features; I verified the hex pocket via measure --section z=1.5 instead.",
+      "severity": "low"
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "category": "docs_unclear",
+      "description": "Docs don't say which end the nut pocket goes for screw_hole(kind='nut') (it is at the far end of the drill direction, which worked here), nor that bottom_chamfer on a print_on part chamfers the printed bed face.",
+      "severity": "low"
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "category": "query_missing",
+      "description": "screw_hole kind=nut does not list the hex pocket in `cad inspect` holes (only the 4.5 clearance hole); I verified the pocket via a z-section and a section render.",
+      "severity": "low"
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "category": "docs_unclear",
+      "description": "Docs don't say where the nut pocket ends up, or that a 3D 'at' (x,y,30) is needed for the counterbore on a part that doesn't start at Z=0; worked by trial.",
+      "severity": "low"
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "category": "other",
+      "description": "cad slice reports one combined time/weight for both parts, not per part, so PRINT.md gives the combined figure.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "Report per-part print time/grams in cad slice output."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "Add a pipe-clamp example with split halves, nut pockets and counterbores."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "Document which side screw_hole(kind='nut') places the pocket."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "List nut pockets and counterbores in cad inspect's hole summary with across-flats and depth."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "cad slice with several parts could report per-part time/grams by default as well as the combined plate."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "Give a worked two-half clamp example (split bore, print_on)."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "List nut pockets in cad inspect holes (AF, depth, Z range)."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "Per-part time/grams in cad slice output."
+    },
+    {
+      "task": "printed_pipe_clamp",
+      "suggestion": "Screw-length fit check for head/nut stack."
+    }
+  ]
+}

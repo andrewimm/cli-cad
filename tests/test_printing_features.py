@@ -147,3 +147,13 @@ def test_print_on_orients_exports_and_persists(tmp_path):
     from cad.importer import describe
     assert describe(stl["path"])["bbox_min"][2] == pytest.approx(0, abs=1e-3)
     assert describe(next(f["path"] for f in r["files"] if f["format"] == "step"))["bbox_min"][2] == pytest.approx(15, abs=1e-3)
+
+
+def test_bottom_chamfer_follows_print_on():
+    from cad.analysis import cross_section
+
+    top = Part("top"); top.box(50, 20, 15, at=(0, 0, 15), name="block")
+    top.print_on(top.faces("block.top"))
+    top.bottom_chamfer(0.5)
+    assert cross_section(top.shape, "z", 29.95)["regions"][0]["size"][0] == pytest.approx(49.1, abs=0.01)
+    assert cross_section(top.shape, "z", 15.05)["regions"][0]["size"][0] == pytest.approx(50)

@@ -406,9 +406,15 @@ nut.threaded_hole("M8", at=(0, 0))                             # internal thread
   into), `insert` (heat-set insert pocket: blind, insert length + 0.5 mm), `nut` (hex pocket where the hole
   leaves the material). Metrics (`cad inspect --features`) give every dimension used, the material thickness
   and, for nuts, a standard screw length that fits. `INSERT_TOO_DEEP` when the material is too thin.
+- Where things go: a 2D `at` starts at the first material along the drill direction (default -Z, from above),
+  wherever the part sits, so `at=(18, 0)` on a part spanning Z 15..30 starts at Z = 30. Recesses (counterbore,
+  countersink, insert lead-in) are at that entry; the `nut` pocket is at the far end, where the hole leaves the
+  material (drill down from the top -> pocket in the underside). `cad inspect` lists the round holes; check
+  pockets with `cad measure <part> --section z=<height>` (hex shows as a 6-edge hole loop) or `inspect --features`.
 - Inserts need >= 1.5 mm of wall around the pocket (check with `cad measure <part> --thickness`); bosses
   for M3 inserts are typically 7-8 mm in diameter.
-- `bottom_chamfer(size=0.5, holes=True)`: chamfers the edges of the faces at the lowest Z (the bed face).
+- `bottom_chamfer(size=0.5, holes=True)`: chamfers the edges of the bed face: the lowest flat face, or the face
+  given to `print_on()` if you called it first (a lid printed upside down gets its top chamfered).
 - `snap_hook(on=, length=, thickness=, width=, catch=, hook=, at=)`: a cantilever growing out of a flat face
   along its normal, hook pointing `hook` (a direction in the face). Metrics: peak strain (1.5 t y / L^2) against
   the material's allowable strain (PLA 2 %, PETG 3.5 %, ABS 2.5 %, PC 4 %, PA12 6 %), deflection force, and
@@ -457,6 +463,8 @@ cad slice --filament PLA="Bambu PLA Matte" --set sparse_infill_density=25% --set
 cad slice --list printers | processes | filaments
 ```
 
+- One combined estimate for everything sliced together (all parts on one plate); for per-part numbers slice
+  them one at a time: `cad slice clamp_top`.
 - Reports print time, grams and metres per filament (one per material; multi-material via `--3mf-mode
   multimaterial`), layers, whether supports were used, time by feature, and writes `out/r<N>/<name>.gcode.3mf`
   (open it in Bambu Studio or send it to the printer). Results are cached per revision and settings.
