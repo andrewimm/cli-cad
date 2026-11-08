@@ -1,0 +1,52 @@
+id = "standoff_tray"
+title = "PCB tray with standoffs"
+category = "advanced"
+split = "dev"
+prompt = """
+Design a tray for a 60 x 40 mm circuit board.
+
+- Floor plate 76 mm (X) x 56 mm (Y) x 2 mm thick, bottom on Z = 0, centred on the origin.
+- A perimeter wall around the floor's outer edge, 2 mm thick, 10 mm tall above the floor top (so the tray is 12 mm tall overall), open at the top.
+- Four cylindrical standoffs rising from the floor top, 6 mm outer diameter, 5 mm tall (tops at Z = 7), centred at the board's mounting holes: (X, Y) = (+-26, +-16).
+- Each standoff has a 2.5 mm diameter hole, 4 mm deep, drilled from its top face (blind; it must not go through the floor).
+- Two 3.2 mm through holes in the floor at (X, Y) = (0, +-24) for screwing the tray down.
+- Name the part "tray". It must be a single solid.
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [76, 56, 12]
+min = [-38, -28, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 2.5
+axis = "z"
+positions = [[-26, -16], [26, -16], [-26, 16], [26, 16]]
+depth = 4
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 3.2
+axis = "z"
+positions = [[0, -24], [0, 24]]
+tol = 0.1
+
+[[checks]]
+type = "points_inside"
+points = [[28.5, 16, 5], [-26, -13.5, 6.5], [26, 16, 2.5], [37, 0, 11], [0, 27, 11], [0, 0, 1]]
+note = "standoff walls, solid below each standoff hole, perimeter wall, floor"
+
+[[checks]]
+type = "points_outside"
+points = [[26, 16, 6], [0, 0, 5], [29.5, 16, 5], [0, 0, 12.5]]
+note = "standoff hole, open interior, standoff outer radius 3, open top"

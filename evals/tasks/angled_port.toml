@@ -1,0 +1,70 @@
+id = "angled_port"
+title = "Block with an angled port"
+category = "advanced"
+split = "dev"
+prompt = """
+Design a small manifold block with two intersecting ports.
+
+- Block 40 mm (X) x 30 mm (Y) x 25 mm (Z), bottom on Z = 0, centred on the origin in X and Y.
+- Port A: a 6 mm diameter hole drilled straight down from the top face at (X, Y) = (-10, 0), 15 mm deep (blind, flat bottom at Z = 10).
+- Port B: a 6 mm diameter hole drilled from the top face along a straight axis that lies in the XZ plane (Y = 0), passes through the point (-10, 0, 10) and is tilted 30 degrees from vertical, leaning toward +X as it rises. Drill it from where its axis meets the top face down to the point (-10, 0, 10), and no further.
+- A 4.5 mm diameter through hole along Y at (X, Z) = (15, 5).
+- Name the part "manifold".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [40, 30, 25]
+min = [-20, -15, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 6
+axis = "z"
+positions = [[-10, 0]]
+depth = 15
+tol = 0.15
+
+[[checks]]
+type = "holes"
+diameter = 4.5
+axis = "y"
+positions = [[15, 5]]
+tol = 0.1
+
+[[checks]]
+type = "python"
+code = '''
+import math
+def check(parts):
+    from cadeval.grade import _classify
+    p = next(iter(parts.values()))
+    s, c = math.sin(math.radians(30)), math.cos(math.radians(30))
+    base = (-10.0, 0.0, 10.0)
+    def at(t, off=0.0):
+        # point at distance t along the axis from base, offset 'off' perpendicular (in XZ plane)
+        return (base[0] + t * s + off * c, 0.0, base[2] + t * c - off * s)
+    fails = []
+    for t in (6.0, 10.0, 15.0):
+        if _classify(p, at(t)) != "out":
+            fails.append(f"axis point t={t} should be empty")
+        if _classify(p, at(t, 2.6)) != "out":
+            fails.append(f"t={t} r=2.6 should be empty (hole radius 3)")
+        if _classify(p, at(t, 3.5)) != "in":
+            fails.append(f"t={t} r=3.5 should be material")
+    # nothing drilled past the base point along the axis (below Z=10 on the axis line)
+    if _classify(p, at(-3.0)) != "in":
+        fails.append("material expected beyond (-10,0,10) along the axis")
+    entry_x = -10 + 15 * math.tan(math.radians(30))
+    if _classify(p, (entry_x, 0.0, 24.9)) != "out":
+        fails.append(f"port B must open on the top face near X={entry_x:.2f}")
+    return not fails, "; ".join(fails) or "angled port ok"
+'''

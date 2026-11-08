@@ -1,0 +1,37 @@
+id = "phone_stand"
+title = "Desk phone stand"
+category = "advanced"
+split = "dev"
+prompt = """
+Design a one-piece desk phone stand, printed lying on its side. Model it standing upright as used.
+
+- Width 70 mm along X, centred on X = 0. The side profile (in the YZ plane) is the same across the whole width.
+- Base: a flat foot 90 mm deep along Y, from Y = -45 to Y = +45, 6 mm thick, bottom on Z = 0.
+- Back rest: a 6 mm thick plate leaning back at 65 degrees from horizontal. Its front (lower) face starts at the top of the base at Y = -10 and rises toward +Y; the back rest is 100 mm long measured along the slope.
+- Front lip: a 12 mm tall (above the base top), 5 mm thick (along Y) lip at the front of the base, from Y = -45 to Y = -40, to stop the phone from sliding.
+- A charging-cable slot through the base and lip: 14 mm wide (X), centred on X = 0, cut through the base from Y = -45 to Y = -25 (all the way through in Z).
+- Name the part "stand". It must be a single solid.
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [70, 90, 96.6]
+min = [-35, -45, 0]
+tol = 0.8
+
+[[checks]]
+type = "points_inside"
+points = [[20, 0, 3], [20, -42.5, 15], [20, 9.0, 40], [20, 23.0, 70]]
+note = "base, lip, back rest along the 65 degree slope"
+
+[[checks]]
+type = "points_outside"
+points = [[0, -35, 3], [0, -43, 10], [20, -5, 40], [20, -30, 12]]
+note = "cable slot through base and lip; open space in front of the back rest"
