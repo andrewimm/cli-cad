@@ -1,0 +1,123 @@
+id = "robot_leg"
+title = "Articulated robot leg assembly"
+category = "assembly"
+split = "dev"
+source = "E12"
+# recreate agent-produced artifacts for the reference solution (see `cadeval selftest`)
+selftest_commands = ["build", "render --views front --size 320x240", "set knee_angle 60", "render --views front --size 320x240"]
+# grade the static checks at the default pose even if the agent left another pose in params.toml
+grade_overrides = { knee_angle = 0 }
+prompt = """
+Design a simplified articulated robot leg made of three separately printable parts, modelled as an assembly.
+
+Frame: the leg lies in the XZ plane and every joint axis is parallel to Y. Pins are not modelled: leave all pivot holes empty.
+
+Parts:
+- "base_mount": attaches the leg to the robot body. It carries the hip pivot: a 6.2 mm diameter hole whose axis is the Y axis through the origin. Give it a flat mounting face with two 3.4 mm mounting holes (layout up to you).
+- "upper_link": a 6.2 mm hip pivot hole coaxial with the base mount's (axis through (0, 0, 0)), and a 6.2 mm knee pivot hole 85 mm below it (axis through (0, 0, -85)). The upper link hangs straight down.
+- "lower_link": a 6.2 mm knee pivot hole coaxial with the upper link's knee hole, and a 6.2 mm foot pivot hole 110 mm from it.
+
+Motion:
+- Declare a parameter named knee_angle (degrees, default 0, range 0..90) that rotates the lower link about the knee axis. At knee_angle = 0 the lower link points straight down (foot pivot axis through (0, 0, -195)); positive angles swing the foot toward +X, so the foot pivot axis passes through (110 sin a, 0, -85 - 110 cos a).
+
+Constraints:
+- No two parts may touch or intersect at any knee angle from 0 to 90 degrees; keep at least 0.5 mm clearance between parts everywhere (e.g. offset the links along Y at the joints).
+- Minimum wall thickness 4 mm in both links, including around the pivot holes.
+- Every part must fit a 220 x 220 x 250 mm printer build volume.
+- Before finishing, render the assembly at two or more different knee angles (keep the renders in this directory).
+"""
+
+[[checks]]
+type = "part_count"
+names = ["base_mount", "upper_link", "lower_link"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "no_voids"
+
+[[checks]]
+type = "holes"
+part = "base_mount"
+diameter = 6.2
+axis = "y"
+positions = [[0, 0]]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+part = "upper_link"
+diameter = 6.2
+axis = "y"
+positions = [[0, 0], [0, -85]]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+part = "lower_link"
+diameter = 6.2
+axis = "y"
+positions = [[0, -85], [0, -195]]
+tol = 0.05
+
+[[checks]]
+type = "param_rebuild"
+note = "knee at 90 degrees: foot pivot at (110, -85)"
+overrides = { knee_angle = 90 }
+
+  [[checks.checks]]
+  type = "holes"
+  part = "lower_link"
+  diameter = 6.2
+  axis = "y"
+  positions = [[0, -85], [110, -85]]
+  tol = 0.05
+
+[[checks]]
+type = "param_rebuild"
+note = "knee at 45 degrees: foot pivot at (77.78, -162.78)"
+overrides = { knee_angle = 45 }
+
+  [[checks.checks]]
+  type = "holes"
+  part = "lower_link"
+  diameter = 6.2
+  axis = "y"
+  positions = [[0, -85], [77.782, -162.782]]
+  tol = 0.05
+
+[[checks]]
+type = "param_sweep"
+note = "no collisions and >= 0.5 mm clearance across the knee range"
+parameter = "knee_angle"
+values = [0, 15, 30, 45, 60, 75, 90]
+
+  [[checks.checks]]
+  type = "clearance"
+  min_distance = 0.45
+
+[[checks]]
+type = "min_thickness"
+part = "upper_link"
+min = 3.9
+percentile = 2
+
+[[checks]]
+type = "min_thickness"
+part = "lower_link"
+min = 3.9
+percentile = 2
+
+[[checks]]
+type = "fits_build_volume"
+size = [220, 220, 250]
+
+[[checks]]
+type = "export"
+formats = ["step", "stl"]
+
+[[checks]]
+type = "rendered_configurations"
+parameter = "knee_angle"
+min_distinct = 2

@@ -25,7 +25,29 @@ Each task is a natural-language design request plus declarative checks:
 | `holes` | holes of a diameter/axis at given positions (positions in the two axes perpendicular to the hole axis), optional depth, `exact_count` |
 | `points_inside` / `points_outside` | point-membership probes that pin down features (ribs, cut-outs, clearances, chamfers) |
 | `interference` | shared volume between two parts below `max_volume` |
+| `no_voids` | no solid contains an internal cavity (extra inner shell) |
+| `clearance` | minimum distance between part pairs (default: all pairs) |
+| `keepout` | reference solids (component envelopes, clearance slabs, shaft columns) that no part may enter |
+| `contact` | some part touches a reference solid (e.g. supports a component's face) |
+| `min_thickness` | local wall thickness, sampled by inward rays from every face, at a low percentile ≥ `min` |
+| `export` | STEP re-imports as a valid solid with the same volume; STL is watertight, manifold, consistently oriented, volume within 2% |
+| `fits_build_volume` | every part fits a printer volume in some axis-aligned orientation |
+| `param_rebuild` / `param_sweep` | rebuild with parameter overrides (one set, or a sweep of one parameter) and run nested checks |
+| `file` | a workspace file exists, has content and mentions given words (e.g. PRINT.md) |
+| `rendered_configurations` | the agent rendered ≥ N distinct values of a parameter (render sidecars → revision manifests) |
 | `python` | escape hatch: `def check(parts) -> (ok, message)` |
+
+`holes` also accepts `diameter_range`, `min_count` and `access` (a clear cylinder
+from each hole's exit, e.g. for screw heads), `part_count` accepts
+`required_names`/`min`/`max`, and `bbox` accepts `min_x`/`min_y`/`min_z` alone.
+
+Task-level options: `grade_overrides` pins parameters for grading (so an agent may
+leave a different pose in params.toml), and `selftest_commands` recreates
+agent-produced artifacts (e.g. renders) for the reference solution in a scratch copy.
+`tests/test_eval_checks.py` checks that each rich check rejects realistic wrong answers.
+
+Tasks `param_hole_pattern`, `split_shaft_clamp`, `servo_envelope_bracket` and `robot_leg` come from an external
+proposal (E02, E08, E09, E12); their briefs state frames and parameter names so the hidden criteria are gradable.
 
 `split = "heldout"` tasks are not used while developing improvements; run them
 periodically (`--split heldout`) to detect overfitting. Reference solutions in

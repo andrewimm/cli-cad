@@ -1,0 +1,102 @@
+id = "param_hole_pattern"
+title = "Parametric hole pattern"
+category = "parametric"
+split = "dev"
+source = "E02"
+prompt = """
+Create a rectangular plate, 100 mm (X) x 70 mm (Y) x 6 mm thick (Z). Place it with one corner at the origin: it spans X 0..100, Y 0..70, Z 0..6.
+
+Add a 3 x 2 pattern of 4.5 mm diameter through-holes, perpendicular to the plate. Hole centres are spaced 35 mm apart along X and 40 mm apart along Y, and the whole pattern is centred on the plate.
+
+The model must stay correct when its parameters change. Declare these parameters (exact names) and drive the geometry from them:
+
+- plate_width  (X size, default 100)
+- plate_height (Y size, default 70)
+- hole_diameter (default 4.5)
+- hole_spacing_x (default 35)
+- hole_spacing_y (default 40)
+
+The plate keeps its corner at the origin for any parameter values, and the pattern stays centred on the plate. Name the part "plate".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [100, 70, 6]
+min = [0, 0, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 4.5
+axis = "z"
+positions = [[15, 15], [50, 15], [85, 15], [15, 55], [50, 55], [85, 55]]
+depth = 6
+exact_count = true
+tol = 0.05
+
+[[checks]]
+type = "param_rebuild"
+note = "width 100 -> 120 keeps the pattern centred"
+overrides = { plate_width = 120 }
+
+  [[checks.checks]]
+  type = "valid"
+
+  [[checks.checks]]
+  type = "bbox"
+  size = [120, 70, 6]
+  min = [0, 0, 0]
+  tol = 0.05
+
+  [[checks.checks]]
+  type = "holes"
+  diameter = 4.5
+  axis = "z"
+  positions = [[25, 15], [60, 15], [95, 15], [25, 55], [60, 55], [95, 55]]
+  exact_count = true
+  tol = 0.05
+
+[[checks]]
+type = "param_rebuild"
+note = "hole diameter 4.5 -> 5 updates all six holes"
+overrides = { hole_diameter = 5 }
+
+  [[checks.checks]]
+  type = "valid"
+
+  [[checks.checks]]
+  type = "holes"
+  diameter = 5
+  axis = "z"
+  positions = [[15, 15], [50, 15], [85, 15], [15, 55], [50, 55], [85, 55]]
+  exact_count = true
+  tol = 0.05
+
+[[checks]]
+type = "param_rebuild"
+note = "spacing and plate height drive the pattern"
+overrides = { hole_spacing_x = 30, hole_spacing_y = 30, plate_height = 80 }
+
+  [[checks.checks]]
+  type = "valid"
+
+  [[checks.checks]]
+  type = "bbox"
+  size = [100, 80, 6]
+  min = [0, 0, 0]
+  tol = 0.05
+
+  [[checks.checks]]
+  type = "holes"
+  diameter = 4.5
+  axis = "z"
+  positions = [[20, 25], [50, 25], [80, 25], [20, 55], [50, 55], [80, 55]]
+  exact_count = true
+  tol = 0.05

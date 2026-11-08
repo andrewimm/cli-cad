@@ -22,6 +22,40 @@ from pathlib import Path
 from .tasks import EVALS, load_task, load_tasks
 
 
+def prepared_solution(task) -> Path:
+    """The reference solution, after running the task's selftest_commands in a scratch copy.
+
+    Some checks grade workspace artifacts (e.g. renders an agent must produce); the
+    commands recreate them without committing generated files.
+    """
+    import os
+    import shutil
+    import tempfile
+
+    if not task.selftest_commands:
+        return task.solution
+    from cad.cli import main as cad_main
+    from cad.engine import Engine
+
+    tmp = Path(tempfile.mkdtemp(prefix=f"selftest-{task.id}-"))
+    ws = tmp / "ws"
+    shutil.copytree(task.solution, ws, ignore=shutil.ignore_patterns(".cad", "renders", "out"))
+    old = os.environ.get("CAD_STATE_DIR")
+    os.environ["CAD_STATE_DIR"] = str(tmp / "state")
+    try:
+        engine = Engine()
+        for cmd in task.selftest_commands:
+            code, out, err = cad_main(cmd, ws, engine)
+            if code != 0:
+                raise SystemExit(f"selftest command {' '.join(cmd)} failed for {task.id}: {err or out}")
+    finally:
+        if old is None:
+            os.environ.pop("CAD_STATE_DIR", None)
+        else:
+            os.environ["CAD_STATE_DIR"] = old
+    return ws
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="cadeval", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -70,7 +104,7 @@ def main(argv=None) -> None:
                 bad += 1
                 continue
             rd = EVALS.parent / "eval-runs" / "selftest" / t.id if a.render else None
-            g = grade(t, t.solution, rd)
+            g = grade(t, prepared_solution(t), rd)
             status = "PASS" if g["passed"] else "FAIL"
             print(f"{t.id:<18} {status}  score={g['score']}")
             for c in g.get("checks", []):

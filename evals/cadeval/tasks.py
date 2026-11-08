@@ -22,6 +22,8 @@ class Task:
     setup_dir: Path | None = None
     limits: dict = field(default_factory=dict)
     path: Path | None = None
+    selftest_commands: list[list[str]] = field(default_factory=list)
+    grade_overrides: dict = field(default_factory=dict)
 
     @property
     def solution(self) -> Path | None:
@@ -45,6 +47,8 @@ def load_task(path: Path) -> Task:
         setup_dir=(path.parent / setup) if setup else None,
         limits=raw.get("limits", {}),
         path=path,
+        selftest_commands=[c.split() for c in raw.get("selftest_commands", [])],
+        grade_overrides=raw.get("grade_overrides", {}),
     )
 
 

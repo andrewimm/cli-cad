@@ -1,0 +1,83 @@
+id = "servo_envelope_bracket"
+title = "Servo bracket designed around an envelope"
+category = "open_design"
+split = "dev"
+source = "E09"
+prompt = """
+Design a printable bracket that holds a servo to a flat surface. The servo itself is NOT part of your model; design around its envelope.
+
+Servo envelope, in assembly coordinates:
+- Body: the box X -20..20, Y -10..10, Z 10..50 (40 x 20 x 40 mm, standing upright, its bottom face 10 mm above the mounting surface).
+- Output shaft: a 6 mm diameter cylinder on the top face at (X, Y) = (10, 0), projecting 5 mm (to Z = 55).
+- The servo has no mounting tabs. Do not invent any; retain it some other way (e.g. walls plus a removable clamping plate).
+
+Requirements:
+- The bracket sits on the mounting surface Z = 0 and is fixed to it with four M3 clearance holes (3.2-3.6 mm) drilled vertically. Each screw head needs a clear 6 mm diameter vertical path above its hole (nothing, including the servo, above it).
+- The bracket supports the servo's bottom face. Contact with the servo is allowed only on its bottom and top faces; keep at least 0.5 mm clearance from its four side faces.
+- Do not obstruct the output shaft: keep a 7 mm diameter vertical column above the shaft's position clear of all parts.
+- Nominal minimum wall thickness 3 mm for every part.
+- Every part must be a separate printable solid; name the main part "bracket" (an optional clamping plate may be a second part).
+- Write PRINT.md describing the recommended print orientation of each part (choose orientations that avoid unnecessary supports).
+"""
+
+[[checks]]
+type = "part_count"
+required_names = ["bracket"]
+max = 3
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "no_voids"
+
+[[checks]]
+type = "bbox"
+part = "bracket"
+min_z = 0
+tol = 0.05
+
+[[checks]]
+type = "contact"
+note = "something supports the servo's bottom face"
+solid = { box = { min = [-20, -10, 9.98], max = [20, 10, 10] } }
+max_distance = 0.05
+
+[[checks]]
+type = "keepout"
+note = "servo body, 0.5 mm side clearance, shaft column"
+solids = [
+  { label = "servo body", box = { min = [-20, -10, 10], max = [20, 10, 50] } },
+  { label = "-X side clearance", box = { min = [-20.5, -10.5, 10.05], max = [-20, 10.5, 49.95] } },
+  { label = "+X side clearance", box = { min = [20, -10.5, 10.05], max = [20.5, 10.5, 49.95] } },
+  { label = "-Y side clearance", box = { min = [-20.5, -10.5, 10.05], max = [20.5, -10, 49.95] } },
+  { label = "+Y side clearance", box = { min = [-20.5, 10, 10.05], max = [20.5, 10.5, 49.95] } },
+  { label = "shaft column", cylinder = { center = [10, 0, 50], axis = [0, 0, 1], diameter = 7, from = 0, to = 100 } },
+]
+
+[[checks]]
+type = "holes"
+part = "bracket"
+diameter_range = [3.2, 3.6]
+axis = "z"
+min_count = 4
+note = "four vertical M3 clearance holes with clear screw-head access from above"
+access = { direction = [0, 0, 1], diameter = 6, length = 150, obstacles = [
+  { box = { min = [-20, -10, 10], max = [20, 10, 50] } },
+  { cylinder = { center = [10, 0, 50], axis = [0, 0, 1], diameter = 6, from = 0, to = 5 } },
+] }
+
+[[checks]]
+type = "min_thickness"
+min = 2.9
+percentile = 2
+
+[[checks]]
+type = "export"
+formats = ["step", "stl"]
+
+[[checks]]
+type = "file"
+path = "PRINT.md"
+min_chars = 30
+must_mention = ["bracket"]

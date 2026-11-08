@@ -1,0 +1,98 @@
+id = "split_shaft_clamp"
+title = "Split shaft clamp"
+category = "multi_part"
+split = "dev"
+source = "E08"
+prompt = """
+Design a two-piece clamp for an 8 mm shaft, modelled as assembled.
+
+Frame and envelope:
+- The shaft axis is the X axis. The clamp is 16 mm long along X (X -8..8), 30 mm along Y (Y -15..15) and 24 mm along Z (Z -12..12).
+- It is split at Z = 0 into two separately printable parts that touch at Z = 0 (no gap in the model): "clamp_top" (Z 0..12) and "clamp_bottom" (Z -12..0).
+
+Features:
+- A bore of 8.2 mm diameter along the X axis through the whole clamp; each half carries one half of it, concentric when assembled.
+- Two clamp screws along Z at (X, Y) = (0, -10) and (0, +10): M3 clearance holes of 3.4 mm diameter through both halves, aligned with each other. The screw heads sit on the top face of clamp_top.
+- Captive hex-nut pockets in clamp_bottom, opening on its bottom face (Z = -12), one under each screw and coaxial with it. The M3 nut is 5.5 mm across flats and 2.4 mm thick; add 0.2 mm clearance to both, so each pocket is 5.7 mm across flats and 2.6 mm deep. Orient each hexagon with two of its flats parallel to the X axis.
+- The two halves must not intersect each other.
+"""
+
+[[checks]]
+type = "part_count"
+names = ["clamp_top", "clamp_bottom"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "no_voids"
+
+[[checks]]
+type = "bbox"
+part = "clamp_top"
+size = [16, 30, 12]
+min = [-8, -15, 0]
+tol = 0.05
+
+[[checks]]
+type = "bbox"
+part = "clamp_bottom"
+size = [16, 30, 12]
+min = [-8, -15, -12]
+tol = 0.05
+
+[[checks]]
+type = "interference"
+a = "clamp_top"
+b = "clamp_bottom"
+max_volume = 0.001
+
+[[checks]]
+type = "points_outside"
+points = [[0, 0, 4.0], [0, 0, -4.0], [0, 4.0, 0.3], [0, -4.0, -0.3], [7.9, 0, 3.9], [-7.9, 0, -3.9]]
+note = "8.2 mm bore through both halves (radius 4.1)"
+
+[[checks]]
+type = "points_inside"
+part = "clamp_top"
+points = [[0, 0, 4.25], [0, 4.25, 0.3], [5, 0, 4.25]]
+note = "bore is not oversize (top half)"
+
+[[checks]]
+type = "points_inside"
+part = "clamp_bottom"
+points = [[0, 0, -4.25], [0, -4.25, -0.3], [-5, 0, -4.25]]
+note = "bore is not oversize (bottom half)"
+
+[[checks]]
+type = "holes"
+part = "clamp_top"
+diameter = 3.4
+axis = "z"
+positions = [[0, -10], [0, 10]]
+depth = 12
+tol = 0.05
+
+[[checks]]
+type = "holes"
+part = "clamp_bottom"
+diameter = 3.4
+axis = "z"
+positions = [[0, -10], [0, 10]]
+tol = 0.05
+
+[[checks]]
+type = "points_outside"
+part = "clamp_bottom"
+points = [[0, 12.75, -11], [0, 7.25, -11], [3.2, 10, -11], [-3.2, 10, -11], [0, -12.75, -9.5], [3.2, -10, -11]]
+note = "nut pockets: 5.7 across flats (flats at Y = +-2.85 from the screw), corners on X at +-3.29, 2.6 deep"
+
+[[checks]]
+type = "points_inside"
+part = "clamp_bottom"
+points = [[0, 13.0, -11], [0, 7.0, -11], [3.5, 10, -11], [0, -13.0, -11], [2.5, 10, -9.2], [2.5, -10, -9.2]]
+note = "pockets are hexagonal (not round), not oversize, and not deeper than 2.6 mm"
+
+[[checks]]
+type = "export"
+formats = ["step", "stl"]

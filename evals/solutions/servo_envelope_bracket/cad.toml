@@ -1,0 +1,3 @@
+[project]
+name = "servo_bracket"
+entry = "model.py"

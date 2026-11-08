@@ -13,7 +13,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from cad import CadError, Part
+from cad import CadError, Part, _occ
 from cad.project import read_overlay
 from cad.runner import run_script
 
@@ -22,8 +22,11 @@ from .tasks import Task
 AXES = {"x": 0, "y": 1, "z": 2}
 
 
-def load_submission(path: Path) -> tuple[dict[str, Part], dict]:
-    """Build a project directory (cad.toml) or a single script; returns (parts, info)."""
+def load_submission(path: Path, overrides: dict | None = None) -> tuple[dict[str, Part], dict]:
+    """Build a project directory (cad.toml) or a single script; returns (parts, info).
+
+    ``overrides`` are applied on top of the project's params.toml (for parameter checks).
+    """
     path = Path(path)
     info: dict[str, Any] = {}
     if path.is_dir():
@@ -39,6 +42,7 @@ def load_submission(path: Path) -> tuple[dict[str, Part], dict]:
         params = read_overlay(path)
     else:
         script, params = path, {}
+    params = {**params, **(overrides or {})}
     info["script"] = str(script)
     info["params"] = params
     t = time.perf_counter()
@@ -73,7 +77,42 @@ def _parts_for(check, parts):
     return list(parts.values())
 
 
-def run_check(check: dict, parts: dict[str, Part]) -> dict:
+class Context:
+    """What a check can see: the built parts, the submission, and rebuilds with overrides."""
+
+    def __init__(self, submission: Path, parts: dict[str, Part], overrides: dict | None = None):
+        self.submission = Path(submission)
+        self.parts = parts
+        self.overrides = overrides or {}
+        self._cache: dict[str, dict[str, Part]] = {}
+
+    @property
+    def workspace(self) -> Path:
+        return self.submission if self.submission.is_dir() else self.submission.parent
+
+    def rebuild(self, overrides: dict) -> "Context":
+        import json
+
+        merged = {**self.overrides, **overrides}
+        key = json.dumps(merged, sort_keys=True)
+        if key not in self._cache:
+            self._cache[key] = load_submission(self.submission, merged)[0]
+        ctx = Context(self.submission, self._cache[key], merged)
+        ctx._cache = self._cache
+        return ctx
+
+
+def _obstacles(ctx: "Context", check: dict, exclude: str | None = None) -> list:
+    from .geom_checks import make_solid
+
+    obs = [p.shape for n, p in ctx.parts.items() if n != exclude]
+    obs += [make_solid(s) for s in check.get("obstacles", [])]
+    return obs
+
+
+def run_check(check: dict, parts_or_ctx) -> dict:
+    ctx = parts_or_ctx if isinstance(parts_or_ctx, Context) else Context(Path("."), parts_or_ctx)
+    parts = ctx.parts
     t = check["type"]
     tol = float(check.get("tol", 1e-3))
     res: dict[str, Any] = {"type": t}
@@ -84,19 +123,37 @@ def run_check(check: dict, parts: dict[str, Part]) -> dict:
     try:
         if t == "part_count":
             names = check.get("names")
-            ok = len(parts) == check["count"] and (not names or sorted(names) == sorted(parts))
-            res.update(ok=ok, actual=sorted(parts), expected={"count": check["count"], "names": names})
+            req = check.get("required_names", [])
+            n = len(parts)
+            ok = (("count" not in check or n == check["count"]) and n >= check.get("min", 0) and n <= check.get("max", 10**9)
+                  and (not names or sorted(names) == sorted(parts)) and all(r in parts for r in req))
+            res.update(ok=ok, actual=sorted(parts),
+                       expected={k: check[k] for k in ("count", "min", "max", "names", "required_names") if k in check})
         elif t == "valid":
             bad = {n: p.solid_count for n, p in parts.items() if not p.is_valid() or p.solid_count != check.get("solids", 1)}
             res.update(ok=not bad, actual=bad or "all valid, single solid")
+        elif t == "no_voids":
+            # an internal cavity is an extra (inner) shell inside a solid
+            bad = {}
+            for n, p in parts.items():
+                for i, so in enumerate(_occ.solids(p.shape)):
+                    k = len(_occ.shells(so))
+                    if k != 1:
+                        bad[f"{n}[{i}]"] = k
+            res.update(ok=not bad, actual=bad or "no internal voids")
         elif t == "bbox":
             p = _pick(parts, check.get("part"))
             bb = p.bbox
-            ok = all(abs(a - b) <= tol for a, b in zip(bb.size, check["size"]))
+            ok = True
+            if "size" in check:
+                ok = all(abs(a - b) <= tol for a, b in zip(bb.size, check["size"]))
+            for i, ax in enumerate("xyz"):
+                if f"min_{ax}" in check:
+                    ok = ok and abs(bb.min[i] - check[f"min_{ax}"]) <= tol
             if "min" in check:
                 ok = ok and all(abs(a - b) <= tol for a, b in zip(bb.min, check["min"]))
             res.update(ok=ok, actual={"size": [round(v, 4) for v in bb.size], "min": [round(v, 4) for v in bb.min]},
-                       expected={k: check[k] for k in ("size", "min") if k in check})
+                       expected={k: v for k, v in check.items() if k in ("size", "min", "min_x", "min_y", "min_z")})
         elif t == "volume":
             p = _pick(parts, check.get("part"))
             v = p.volume
@@ -106,18 +163,36 @@ def run_check(check: dict, parts: dict[str, Part]) -> dict:
             p = _pick(parts, check.get("part"))
             ax = AXES[check["axis"]]
             others = [i for i in range(3) if i != ax]
-            cands = [h for h in p.find_holes() if abs(h["diameter"] - check["diameter"]) <= max(tol, 0.01)
-                     and abs(abs(h["axis"][ax]) - 1) < 1e-6]
+            if "diameter_range" in check:
+                lo_d, hi_d = check["diameter_range"]
+                dia_ok = lambda h: lo_d - 1e-6 <= h["diameter"] <= hi_d + 1e-6  # noqa: E731
+            else:
+                dia_ok = lambda h: abs(h["diameter"] - check["diameter"]) <= max(tol, 0.01)  # noqa: E731
+            cands = [h for h in p.find_holes() if dia_ok(h) and abs(abs(h["axis"][ax]) - 1) < 1e-6]
             missing = []
-            for pos in check["positions"]:
+            for pos in check.get("positions", []):
                 hit = [h for h in cands if math.dist([h["position"][i] for i in others], pos) <= tol]
                 if check.get("depth") is not None:
                     hit = [h for h in hit if abs(h["depth"] - check["depth"]) <= max(tol, 0.05)]
                 if not hit:
                     missing.append(pos)
             ok = not missing and (not check.get("exact_count") or len(cands) == len(check["positions"]))
-            res.update(ok=ok, missing=missing, found=[{k: h[k] for k in ("diameter", "axis", "position", "depth")} for h in cands],
-                       expected={k: check[k] for k in ("diameter", "axis", "positions") if k in check})
+            if "min_count" in check:
+                ok = ok and len(cands) >= check["min_count"]
+            blocked = []
+            if check.get("access") and cands:
+                from .geom_checks import hole_access_volume
+
+                acc = check["access"]
+                obs = _obstacles(ctx, acc)  # every part (including this one) plus reference obstacles
+                for h in cands:
+                    v = hole_access_volume(h, acc["direction"], acc["diameter"], acc.get("length", 200), obs)
+                    if v > 1e-3:
+                        blocked.append({"position": h["position"], "blocked_volume": round(v, 3)})
+                ok = ok and not blocked
+            res.update(ok=ok, missing=missing, blocked=blocked,
+                       found=[{k: h[k] for k in ("diameter", "axis", "position", "depth")} for h in cands],
+                       expected={k: check[k] for k in ("diameter", "diameter_range", "axis", "positions", "min_count") if k in check})
         elif t in ("points_inside", "points_outside"):
             want = "in" if t == "points_inside" else "out"
             fails = []
@@ -131,6 +206,114 @@ def run_check(check: dict, parts: dict[str, Part]) -> dict:
             a, b = _pick(parts, check["a"]), _pick(parts, check["b"])
             v = a.interference(b)
             res.update(ok=v <= check.get("max_volume", 0.001), actual=round(v, 4))
+        elif t == "clearance":
+            # minimum distance between part pairs (and no overlap)
+            pairs = check.get("pairs") or [[a, b] for i, a in enumerate(sorted(parts)) for b in sorted(parts)[i + 1:]]
+            worst = []
+            for a, b in pairs:
+                pa, pb = _pick(parts, a), _pick(parts, b)
+                d = pa.distance_to(pb)
+                inter = pa.interference(pb) if d < 1e-9 else 0.0
+                worst.append({"pair": [a, b], "distance": round(d, 4), "interference": round(inter, 4)})
+            ok = all(w["distance"] >= check["min_distance"] - 1e-6 for w in worst)
+            res.update(ok=ok, actual=worst, expected={"min_distance": check["min_distance"]})
+        elif t == "keepout":
+            # reference solids (component envelopes, shaft paths) that no part may enter
+            from .geom_checks import common_volume, make_solid
+
+            targets = _parts_for(check, parts)
+            hits = []
+            for i, spec in enumerate(check["solids"]):
+                zone = make_solid(spec)
+                for p in targets:
+                    v = common_volume(zone, p.shape)
+                    if v > check.get("max_volume", 1e-3):
+                        hits.append({"zone": spec.get("label", i), "part": p.name, "volume": round(v, 4)})
+            res.update(ok=not hits, intrusions=hits)
+        elif t == "contact":
+            # some part must touch (be within max_distance of) a reference solid, e.g. support a component
+            from .geom_checks import make_solid
+
+            zone = make_solid(check["solid"])
+            ds = {p.name: round(_occ.distance(p.shape, zone)[0], 4) for p in _parts_for(check, parts)}
+            res.update(ok=min(ds.values()) <= check.get("max_distance", 0.05), actual=ds)
+        elif t == "min_thickness":
+            from .geom_checks import thickness_samples
+
+            pct = check.get("percentile", 2.0)
+            per_part = {}
+            for p in _parts_for(check, parts):
+                samples = thickness_samples(p, check.get("samples_per_face", 5))
+                ts = sorted(s_[0] for s_ in samples)
+                k = min(len(ts) - 1, max(0, int(len(ts) * pct / 100.0)))
+                per_part[p.name] = {
+                    "value": round(ts[k], 4) if ts else 0.0,
+                    "samples": len(ts),
+                    "thinnest": [{"thickness": round(a, 3), "point": [round(c, 3) for c in b]} for a, b, _ in sorted(samples)[:3]],
+                }
+            ok = all(v["value"] >= check["min"] - 1e-6 and v["samples"] for v in per_part.values())
+            res.update(ok=ok, actual=per_part, expected={"min": check["min"], "percentile": pct})
+        elif t == "export":
+            from .geom_checks import export_report
+
+            reps = {p.name: export_report(p, check.get("formats", ["step", "stl"]), check.get("stl_tolerance", 0.01))
+                    for p in _parts_for(check, parts)}
+            ok = all(r["ok"] for rep in reps.values() for r in rep.values())
+            res.update(ok=ok, actual=reps)
+        elif t == "fits_build_volume":
+            from .geom_checks import fits
+
+            sizes = {p.name: [round(v, 3) for v in p.bbox.size] for p in _parts_for(check, parts)}
+            bad = {n: sz for n, sz in sizes.items() if not fits(sz, check["size"])}
+            res.update(ok=not bad, actual=sizes, too_large=bad, expected=check["size"])
+        elif t in ("param_rebuild", "param_sweep"):
+            # rebuild with parameter overrides and re-run nested checks
+            if t == "param_rebuild":
+                runs = [check["overrides"]]
+            else:
+                runs = [{check["parameter"]: v} for v in check["values"]]
+            failures, n = [], 0
+            for ov in runs:
+                try:
+                    sub = ctx.rebuild(ov)
+                except CadError as e:
+                    failures.append({"overrides": ov, "build_error": e.to_dict()})
+                    continue
+                for c in check["checks"]:
+                    n += 1
+                    r = run_check(c, sub)
+                    if not r["ok"]:
+                        failures.append({"overrides": ov, **r})
+            res.update(ok=not failures, nested_checks=n, failures=failures[:10])
+        elif t == "file":
+            f = ctx.workspace / check["path"]
+            text = f.read_text(errors="ignore") if f.is_file() else ""
+            missing_words = [w for w in check.get("must_mention", []) if w.lower() not in text.lower()]
+            ok = f.is_file() and len(text.strip()) >= check.get("min_chars", 1) and not missing_words
+            res.update(ok=ok, exists=f.is_file(), chars=len(text.strip()), missing_mentions=missing_words)
+        elif t == "rendered_configurations":
+            # count distinct parameter values among revisions the agent actually rendered
+            import json as _json
+
+            param = check["parameter"]
+            seen: dict = {}
+            for meta in ctx.workspace.rglob("*.json"):
+                if ".cad" in meta.parts:
+                    continue
+                try:
+                    m = _json.loads(meta.read_text())
+                except Exception:
+                    continue
+                rev = (m.get("model") or {}).get("revision") if isinstance(m, dict) else None
+                if rev is None:
+                    continue
+                man = ctx.workspace / ".cad" / "revisions" / str(rev) / "manifest.json"
+                if not man.exists():
+                    continue
+                pv = _json.loads(man.read_text()).get("parameters", {}).get(param, {}).get("value")
+                if pv is not None:
+                    seen.setdefault(pv, []).append(str(meta.relative_to(ctx.workspace)))
+            res.update(ok=len(seen) >= check["min_distinct"], actual=sorted(seen), expected={"min_distinct": check["min_distinct"]})
         elif t == "python":
             env: dict[str, Any] = {"parts": parts, "math": math}
             exec(check["code"], env)
@@ -146,7 +329,7 @@ def run_check(check: dict, parts: dict[str, Part]) -> dict:
 def grade(task: Task, submission: Path, render_dir: Path | None = None) -> dict:
     out: dict[str, Any] = {"task": task.id, "submission": str(submission)}
     try:
-        parts, info = load_submission(submission)
+        parts, info = load_submission(submission, task.grade_overrides)
     except CadError as e:
         out.update(built=False, passed=False, score=0.0, error=e.to_dict(), checks=[])
         return out
@@ -155,7 +338,8 @@ def grade(task: Task, submission: Path, render_dir: Path | None = None) -> dict:
                                                                   "traceback": traceback.format_exc()[-2000:]}, checks=[])
         return out
     out["build"] = info
-    results = [run_check(c, parts) for c in task.checks]
+    ctx = Context(Path(submission), parts, task.grade_overrides)
+    results = [run_check(c, ctx) for c in task.checks]
     n_ok = sum(1 for r in results if r["ok"])
     out.update(built=True, checks=results, passed=n_ok == len(results), score=round(n_ok / max(1, len(results)), 4),
                parts={n: p.summary() for n, p in parts.items()})
