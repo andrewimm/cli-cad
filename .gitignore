@@ -10,3 +10,6 @@ eval-runs/
 *.egg-info/
 .DS_Store
 stress-runs/
+dist/
+/*.log
+/result.json

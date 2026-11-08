@@ -23,8 +23,9 @@ def _coaster():
 
 def _bambu_parts(tmp_path, src: Path) -> str:
     out = tmp_path / ("bambu_" + src.name)
+    # cwd=tmp_path: Bambu Studio writes result.json into the current directory
     p = subprocess.run([str(BAMBU), "--outputdir", str(tmp_path), "--export-3mf", out.name, str(src)],
-                       capture_output=True, text=True, timeout=300)
+                       capture_output=True, text=True, timeout=300, cwd=tmp_path)
     assert p.returncode == 0, p.stdout[-2000:]
     with zipfile.ZipFile(out) as z:
         return z.read("Metadata/model_settings.config").decode()
