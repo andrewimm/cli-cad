@@ -42,7 +42,7 @@ QUALITY = {  # bbox diagonal / max element size, elements per full circle on cur
     "normal": (24, 8, 0.4),  # second pass with elements this fraction of the size around the hot spots
     "fine": (42, 14, 1 / 4),
 }
-SOLVER_VERSION = "fea-14"
+SOLVER_VERSION = "fea-16"
 DIRECT_SOLVE_MAX_DOFS = 8_000
 MAX_DOFS = 3_000_000
 
@@ -128,6 +128,7 @@ class TetMesh:
     size: float
     seconds: float
     typical_wall: float | None = None  # mm, 25th percentile of sampled wall thickness
+    tri_mid: np.ndarray | None = None  # (S, 3, 3) positions of each boundary triangle's edge midpoints 01, 12, 20 (on the surface)
 
 
 def mesh_sizes(part, quality: str) -> dict:
@@ -191,9 +192,11 @@ def mesh_part(part, quality: str = "normal", *, refine: list | None = None, time
                            hint="check `cad validate`; tiny slivers or self-touching faces stop meshing. --quality draft can help")
         d = np.load(out)
         nodes, tets, tris, owner = d["nodes"], d["tets"], d["tris"], d["tri_surface"]
+        tri_mid = nodes[d["tri_mid"]] if "tri_mid" in d.files else None
         com, area = d["surface_com"], d["surface_area"]
     face_of_surface = _match_surfaces(part.shape, com, area, sizes["diag"])
-    return TetMesh(nodes, tets, tris, face_of_surface[owner], sizes["size_max"], time.perf_counter() - t0, sizes["typical_wall"])
+    return TetMesh(nodes, tets, tris, face_of_surface[owner], sizes["size_max"], time.perf_counter() - t0, sizes["typical_wall"],
+                   tri_mid)
 
 
 def _match_surfaces(shape, com: np.ndarray, area: np.ndarray, diag: float) -> np.ndarray:
@@ -388,7 +391,12 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
                                hint="a bearing load is a pin pushing sideways on a hole wall: use a direction across the hole; "
                                     "for a push along the axis use force() on the face the pin's head or shoulder presses")
             p0 = ld["newtons"] / denom
-            f += asm(LinearForm(lambda v, w, p0=p0: -p0 * cos_push(w) * (w.n[0] * v[0] + w.n[1] * v[1] + w.n[2] * v[2])), fb)
+            # the cosine distribution on a faceted bore leaves a small sideways resultant: cancel it with a uniform
+            # traction so the pin's net force is exactly the requested one
+            net = [_integrate(fb, lambda w, k=k: -p0 * cos_push(w) * w.n[k]) for k in range(3)]
+            fix = (np.array(d) * ld["newtons"] - np.array(net)) / area
+            f += asm(LinearForm(lambda v, w, p0=p0, fix=fix: -p0 * cos_push(w) * (w.n[0] * v[0] + w.n[1] * v[1] + w.n[2] * v[2])
+                                + fix[0] * v[0] + fix[1] * v[1] + fix[2] * v[2]), fb)
             info["total_N"] = ld["newtons"]
             info["direction"] = ld["direction"]
             info["peak_pressure_MPa"] = round(p0, 4)
@@ -411,7 +419,18 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
                 t = [k * (a[1] * r[2] - a[2] * r[1]), k * (a[2] * r[0] - a[0] * r[2]), k * (a[0] * r[1] - a[1] * r[0])]
                 return t[0] * v[0] + t[1] * v[1] + t[2] * v[2]
 
-            f += asm(LinearForm(tq), fb)
+            net = []
+            for comp_k in range(3):
+                def tk(w, comp_k=comp_k, a=a, k=k):
+                    r = rperp(w)
+                    return k * [a[1] * r[2] - a[2] * r[1], a[2] * r[0] - a[0] * r[2], a[0] * r[1] - a[1] * r[0]][comp_k]
+                net.append(_integrate(fb, tk))
+            fix = -np.array(net) / area  # a pure twist: no net force
+
+            def tq_fixed(v, w, fix=fix):
+                return tq(v, w) + fix[0] * v[0] + fix[1] * v[1] + fix[2] * v[2]
+
+            f += asm(LinearForm(tq_fixed), fb)
             info["total_Nm"] = ld["newton_metres"]
         info["_facets"] = fac
         loaded_facets.append(fac)
@@ -528,44 +547,64 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
                          "hint": h["suggestions"][0]})
     rest = rest_layer = None
     exclude = max(tm.typical_wall or 0.0, 0.03 * diag)  # Saint-Venant: idealised supports disturb about a wall thickness
-    if edges_seen or any(h.get("at_support") for h in hotspots):
-        far = np.ones(nv, dtype=bool)
-        for e in edges_seen:
-            pts = _sample_edge(e)
-            d = np.min(np.linalg.norm(P.T[:, None, :] - pts[None, :, :], axis=2), axis=1)
-            far &= d > exclude
-        if len(support_v):
-            tree_pts = P.T[support_v]
-            for chunk in np.array_split(np.arange(nv), max(1, nv // 4000)):
-                d = np.min(np.linalg.norm(P.T[chunk][:, None, :] - tree_pts[None, :, :], axis=2), axis=1)
-                far[chunk] &= d > exclude
-        if far.any():
-            rest = float(vm[far].max())
-            rest_layer = float(max(layer[far].max(), 0.0))
+    near_support = np.zeros(nv, dtype=bool)
+    if any(h.get("at_support") for h in hotspots) and len(support_v):
+        tree_pts = P.T[support_v]
+        for chunk in np.array_split(np.arange(nv), max(1, nv // 4000)):
+            d = np.min(np.linalg.norm(P.T[chunk][:, None, :] - tree_pts[None, :, :], axis=2), axis=1)
+            near_support[chunk] = d <= exclude
+    near_edge = np.zeros(nv, dtype=bool)
+    for e in edges_seen:
+        pts = _sample_edge(e)
+        near_edge |= np.min(np.linalg.norm(P.T[:, None, :] - pts[None, :, :], axis=2), axis=1) <= exclude
+    if (near_support | near_edge).any() and not (near_support | near_edge).all():
+        far = ~(near_support | near_edge)
+        rest = float(vm[far].max())
+        rest_layer = float(max(layer[far].max(), 0.0))
     for h in hotspots:
         h.get("edge", {}).pop("_edge", None)
-    # layers: judged away from supports and sharp edges when there are any (clamps inflate every component)
-    lm, ls = (rest_layer, mat.strength / max(rest, 1e-12)) if rest is not None else (layer_max, sf_strength)
-    sfl = mat.layer_strength / lm if (mat.layer_strength and lm > 1e-12) else None
-    if sfl is not None and sfl < ls and sfl < target:
-        warnings.append({"code": "LAYER_TENSION", "message": f"stress pulling the print layers apart ({lm:.1f} MPa) limits the part: "
-                         f"layer safety factor {sfl:.2f} vs {ls:.2f} along the layers",
+
+    # the verdict: an ideal clamp inflates stress at its edge without limit, so judge the part away from fixed
+    # faces; a sharp inside corner is a real weakness (it needs a fillet), so it keeps the part from passing
+    def factor(mask):
+        v = float(vm[mask].max())
+        lay = float(max(layer[mask].max(), 0.0))
+        f_s = mat.strength / max(v, 1e-12)
+        f_l = mat.layer_strength / lay if (mat.layer_strength and lay > 1e-12) else None
+        return (min(f_s, f_l) if f_l is not None else f_s), f_s, f_l, v, lay
+
+    judged_mask = ~near_support if near_support.any() and not near_support.all() else np.ones(nv, dtype=bool)
+    sf_j, sf_j_strength, sf_j_layer, vm_j, layer_j = factor(judged_mask)
+    judged_where = (f"away from the fixed faces (ignoring {exclude:.3g} mm around them, where the ideal clamp inflates stress)"
+                    if near_support.any() and not near_support.all() else "everywhere")
+    if sf_j_layer is not None and sf_j_layer < sf_j_strength and sf_j_layer < target:
+        warnings.append({"code": "LAYER_TENSION", "message": f"stress pulling the print layers apart ({layer_j:.1f} MPa) limits the part: "
+                         f"layer safety factor {sf_j_layer:.2f} vs {sf_j_strength:.2f} along the layers",
                          "hint": "print it in another orientation (part.print_on(...)) so the load runs along the layers, or thicken it"})
-    if sf < target:
-        h = hotspots[0] if hotspots else None
-        where = f" at hotspot 1 ({_where(h)})" if h else ""
-        msg = f"safety factor {sf:.2f} is below the target {target:g}{where}"
-        if rest is not None:
-            msg += f"; away from supports and sharp inside edges it is {mat.strength / max(rest, 1e-12):.2f}"
-        warnings.insert(0, {"code": "LOW_SAFETY_FACTOR", "message": msg,
+    if sf_j < target:
+        h = next((x for x in hotspots if not (x.get("at_support") and near_support.any())), None)
+        where = f" at hotspot {h['id']} ({_where(h)})" if h else ""
+        warnings.insert(0, {"code": "LOW_SAFETY_FACTOR", "message": f"safety factor {sf_j:.2f} is below the target {target:g}{where}",
                             "hint": "add material or round the inside corner at the hot spot (see hotspots[].suggestions), then re-run"})
+    singular_ids = [h["id"] for h in singular]
+    ok = sf_j >= target and not singular_ids
+    if sf_j >= target and singular_ids:
+        elsewhere = (f"; away from it the safety factor is about "
+                     f"{min(mat.strength / max(rest, 1e-12), mat.layer_strength / rest_layer if (mat.layer_strength and rest_layer > 1e-12) else 1e9):.3g}"
+                     if rest is not None else "")
+        verdict = f"BELOW TARGET until the sharp inside corner at hotspot {singular_ids[0]} is rounded{elsewhere}"
+    elif ok:
+        verdict = f"OK: safety factor {sf_j:.3g} >= {target:g}, judged {judged_where}"
+    else:
+        verdict = f"BELOW TARGET: safety factor {sf_j:.3g} < {target:g}, judged {judged_where}"
     at_sup = [h["id"] for h in hotspots if h.get("at_support")]
     if at_sup:
         warnings.append({"code": "PEAK_AT_SUPPORT", "hotspot": at_sup[0], "hotspots": at_sup,
                          "message": f"hotspot{'s' if len(at_sup) > 1 else ''} {', '.join(map(str, at_sup))} "
-                         f"{'are' if len(at_sup) > 1 else 'is'} on a fixed face; an ideal clamp exaggerates stress right at its edge",
-                         "hint": "judge the part by away_from_supports_and_sharp_edges, or fix a larger, more realistic area "
-                                 "(e.g. the face under a screw head instead of the screw hole)"})
+                         f"{'are' if len(at_sup) > 1 else 'is'} on a fixed face, where an ideal clamp exaggerates stress: "
+                         f"the verdict is judged away from the fixed faces (peak there {vm_j:.3g} MPa)",
+                         "hint": "if the real support is a screw head or a clamp face, fix that face instead of the hole for a more "
+                                 "realistic peak"})
     assumptions = ["linear elastic, small deflections", "isotropic material, strength along the layers = yield_strength"]
     if part.material is None or part.material.kind == "filament":
         assumptions.append("printed solid (100 % infill) near the hot spots: use more walls / infill there")
@@ -577,8 +616,11 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
         "part": spec["part"],
         "description": spec.get("description"),
         "material": mat.to_dict(),
-        "ok": bool(sf >= target),
-        "safety_factor": round(sf, 3),
+        "ok": bool(ok),
+        "verdict": verdict,
+        "safety_factor": round(sf_j, 3),
+        "judged": judged_where,
+        "peak_safety_factor": round(sf, 3),
         "target": target,
         "max_von_mises_MPa": round(float(vm.max()), 4),
         "max_von_mises_at": [round(float(c), 3) for c in P[:, imax]],
@@ -587,13 +629,14 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
             "max_von_mises_MPa": round(rest, 4),
             "safety_factor": round(min(mat.strength / max(rest, 1e-12),
                                        mat.layer_strength / rest_layer if (mat.layer_strength and rest_layer > 1e-12) else 1e9), 3),
-            "note": f"ignoring {exclude:.3g} mm around fixed faces and sharp inside edges, where idealised supports and "
-                    "corners inflate the stress"}} if rest is not None else {}),
+            "note": f"ignoring {exclude:.3g} mm around fixed faces and sharp inside edges: roughly what the part would reach "
+                    "with its sharp inside corners rounded"}} if rest is not None else {}),
+        "mass_g": round(part.mass(), 3) if mat.density else None,
         "max_displacement_mm": round(float(disp.max()), 5),
         "max_displacement_at": [round(float(c), 3) for c in P[:, idmax]],
-        "strength": {"along_layers_safety_factor": round(sf_strength, 3),
-                     "across_layers_safety_factor": round(sf_layer, 3) if sf_layer is not None else None,
-                     "max_tension_across_layers_MPa": round(layer_max, 4) if mat.layer_strength else None,
+        "strength": {"along_layers_safety_factor": round(sf_j_strength, 3),
+                     "across_layers_safety_factor": round(sf_j_layer, 3) if sf_j_layer is not None else None,
+                     "max_tension_across_layers_MPa": round(layer_j, 4) if mat.layer_strength else None,
                      "build_direction": [round(float(c), 6) for c in build]},
         "loads": loads_out,
         "hotspots": hotspots,
@@ -605,9 +648,14 @@ def solve(part, spec: dict, *, quality: str = "normal", mesh: TetMesh | None = N
                     "total": round(time.perf_counter() - t_start + (0 if mesh is None else t_mesh), 3)},
         "solver_version": SOLVER_VERSION,
     }
-    arrays = {"vertices": P.T.astype(np.float64), "tris": _outward(m, tris), "tri_face": tm.tri_face,
+    out_tris, flipped = _outward(m, tris)
+    arrays = {"vertices": P.T.astype(np.float64), "tris": out_tris, "tri_face": tm.tri_face,
               "displacement": U, "von_mises": vm, "layer": layer, "principal": principal,
               "safety": np.where(vm > 1e-12, mat.strength / np.maximum(vm, 1e-12), 1e9)}
+    if tm.tri_mid is not None:  # edge midpoints follow the triangle's winding (a flip swaps edges 01 and 20)
+        mid = tm.tri_mid.copy()
+        mid[flipped] = mid[flipped][:, [2, 1, 0]]
+        arrays["tri_mid"] = mid
     if mat.layer_strength:
         arrays["safety"] = np.minimum(arrays["safety"], np.where(layer > 1e-12, mat.layer_strength / np.maximum(layer, 1e-12), 1e9))
     return Solution(report, arrays)
@@ -661,8 +709,8 @@ def _facets_of_triangles(m, tris: np.ndarray) -> np.ndarray:
     return hit
 
 
-def _outward(m, tris: np.ndarray) -> np.ndarray:
-    """Boundary triangles wound so their normals point out of the part."""
+def _outward(m, tris: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Boundary triangles wound so their normals point out of the part, and which ones were flipped."""
     p = m.p.T
     fac = _facets_of_triangles(m, tris)
     tet = m.f2t[0, fac]
@@ -673,7 +721,7 @@ def _outward(m, tris: np.ndarray) -> np.ndarray:
     inward = np.einsum("ij,ij->i", nrm, p[apex] - a) > 0
     out = tris.copy()
     out[inward] = out[inward][:, [0, 2, 1]]
-    return out
+    return out, inward
 
 
 def _rigid_modes(ib) -> tuple[np.ndarray, np.ndarray]:
@@ -794,18 +842,9 @@ def _hotspots(part, P, vm, layer, on_surface, vertex_faces, support_v, loaded_v,
 
 
 def _sharp_concave_edges(shape) -> list[tuple]:
-    """(edge, face_a, face_b) for every sharp inside edge (where stresses concentrate without limit)."""
-    efmap = _occ.edge_face_map(shape)
-    out = []
-    for e in _occ.edges(shape):
-        fs = _occ.faces_of_edge(efmap, e)
-        if len(fs) == 2 and not fs[0].IsSame(fs[1]):
-            try:
-                if _occ.edge_convexity(e, fs[0], fs[1]) > 0.02:  # concave by more than ~1 degree
-                    out.append((e, fs[0], fs[1]))
-            except Exception:
-                continue
-    return out
+    from .analysis import sharp_inside_edges
+
+    return sharp_inside_edges(shape)
 
 
 def _sample_edge(e, n: int = 40) -> np.ndarray:

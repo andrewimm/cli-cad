@@ -178,6 +178,12 @@ rib = Profile.polygon([(0, 0), (20, 0), (0, 20)])
 p.extrude(rib, 3, plane="XZ", symmetric=True)
 ```
 
+`Profile.tapered_slot(start, start_diameter, end, end_diameter)`: the smooth outline around two circles (a link
+with round ends of different sizes, sides tangent to both). Extrude it for an arm or link in one piece: no inside
+corners where the ends meet the sides (unioning a box onto cylinders leaves corners, or narrow strips that cannot
+be filleted when the box is slightly wider than a boss).
+
+
 ## Lofts, sweeps and drafts
 
 ```python
@@ -285,7 +291,7 @@ Filters (chainable; each returns a new selection):
 | `.planar()` `.cylindrical()` `.of_type("cone")` | `.linear()` `.circular(radius=None)` | `.max("z")` `.min("x")` — extreme centroid along an axis |
 | `.facing("+z")` — planar, outward normal along a direction | `.vertical()` (∥Z) `.horizontal()` (in planes ⟂Z) | `.at("z", 4)` `.between("x", -5, 5)` |
 | `.holes(diameter=None)` — hole walls (concave, ≥180°) | `.parallel_to("x")` `.perpendicular_to("z")` | `.nearest((x, y, z), count=1)` |
-| `.larger_than(a)` `.smaller_than(a)` `.largest()` | `.convex()` outside corners, `.concave()` inside corners | `.named(name)` `.created_by("hole1")` |
+| `.larger_than(a)` `.smaller_than(a)` `.largest()` | `.convex()` outside corners, `.concave()` inside corners (`min_angle=15` skips near-tangent kinks, which cannot be filleted) | `.named(name)` `.created_by("hole1")` |
 | `.edges()` — edges bounding these faces | `.of(face_selection)` `.longer_than(l)` `.shorter_than(l)` | `.exclude(sel)`, `a | b`, `a - b`, `.where(lambda info: ...)` |
 
 Checks: `.one()` (exactly one, else `AMBIGUOUS_SELECTION`/`EMPTY_SELECTION` listing
@@ -556,13 +562,18 @@ cad sweep arm.width 8:16:2 --fea pushrod   # safety factor, peak, deflection and
 
 Reading the report (`--json` for everything):
 
-- `safety_factor` = strength / peak stress (the lower of along-layers and across-layers for prints). `ok` = it meets `target`.
+- `verdict`, `ok`, `safety_factor`: strength / highest stress (the lower of along-layers and across-layers for prints),
+  judged **away from fixed faces** when the peak sits on one (an ideal clamp inflates stress at its edge without
+  limit; `judged` says which, `peak_safety_factor` is the raw value there). A sharp inside corner at a hot spot
+  keeps `ok` false whatever the number ("BELOW TARGET until the sharp inside corner ... is rounded"): fillet it.
+  `cad fea` exits 4 when any study is not ok. `mass_g` is reported for weight-vs-strength trade-offs.
 - `hotspots[]` (highest first, numbered as in the picture): stress, location, the faces and their reference names,
   `features` that made them, `parameters` that set those features (e.g. `arm.root_fillet` -> fillet radius),
   `suggestions`, and `change_on_refinement_pct`. Fix the geometry at hotspot 1, rebuild, re-run.
 - `away_from_supports_and_sharp_edges`: the peak ignoring a wall thickness around fixed faces and sharp inside
-  edges. An ideal clamp (`fixed`) and a perfectly sharp inside corner both inflate stress without limit; judge
-  the part by this number when the peak is there (`PEAK_AT_SUPPORT`, `STRESS_SINGULARITY`).
+  edges, roughly what the part reaches once its sharp inside corners are rounded.
+- `cad fea` refuses to run after a failed build (`STALE_REVISION`: the newest revision is not your script; pass
+  `-r N` to analyse it on purpose) and warns when the script changed since the revision it analyses.
 - `loads[]`: area, centroid, `reaction_N` at supports (should balance the loads), `moves_mm` and
   `stiffness_N_per_mm` for forces, for designing for stiffness (robot links that must not sag).
 - `strength.across_layers_safety_factor`: printed parts are about half as strong pulling layers apart; layers stack
@@ -573,8 +584,8 @@ Warnings and what to do:
 | code | meaning | fix |
 |---|---|---|
 | `LOW_SAFETY_FACTOR` | below target | thicken the loaded section (bending stress ~ 1/thickness^2), enlarge the fillet at the hot spot |
-| `STRESS_SINGULARITY` | hot spot on a sharp inside edge | fillet that edge; the hint has the exact `fillet(...nearest(...))` call |
-| `PEAK_AT_SUPPORT` | peak where the part is held | read `away_from_supports_and_sharp_edges`; fix a realistic area (the face under a screw head) |
+| `STRESS_SINGULARITY` | hot spot on a sharp inside edge (blocks `ok`) | fillet that edge; the hint has the exact `fillet(...nearest(...))` call; `cad inspect` lists all sharp inside edges |
+| `PEAK_AT_SUPPORT` | peak where the part is held (the verdict is already judged away from it) | for a realistic peak, fix the face under a screw head instead of the hole |
 | `LAYER_TENSION` | across-layer stress governs | `print_on(...)` so the load runs along layers, or thicken |
 | `LOAD_FACE_SHARED` | coplanar faces merged; the load covers the whole merged face | add `at=(x, y, z), radius=r` |
 | `LARGE_DEFLECTION` | moves > 5 % of its size: linear results drift | stiffen; trust trends |

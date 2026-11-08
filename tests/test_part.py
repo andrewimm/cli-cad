@@ -321,3 +321,34 @@ def test_regular_polygon_across_flats():
     hexa = Profile.regular_polygon(6, across_flats=8)
     p = Part("h"); p.extrude(hexa, 5)
     assert p.bbox.depth == pytest.approx(8) and p.bbox.width == pytest.approx(8 / math.cos(math.pi / 6))
+
+
+def test_tapered_slot_and_concave_min_angle():
+    import math
+
+    from cad import Part, Profile
+    from cad.analysis import sharp_inside_edges
+
+    p = Part("link")
+    p.extrude(Profile.tapered_slot((0, 0), 24, (90, 0), 14), 5)
+    r1, r2, d = 12, 7, 90
+    phi = math.asin((r1 - r2) / d)
+    area = r1 * r1 * (math.pi / 2 + phi) + r2 * r2 * (math.pi / 2 - phi) + (r1 + r2) * d * math.cos(phi)
+    assert p.volume == pytest.approx(5 * area, rel=1e-9)
+    assert not sharp_inside_edges(p.shape)
+    q = Part("kink")
+    q.box(80, 9.8, 5, at=(40, 0, 0), align=("center", "center", "min"))
+    q.cylinder(10, 5, at=(80, 0, 0))
+    assert len(q.edges().concave()) == 2 and len(q.edges().concave(min_angle=15)) == 0  # ~11 degree kinks
+
+
+def test_fillet_hint_names_the_narrow_face():
+    from cad import CadError, Part
+
+    q = Part("arm")
+    q.cylinder(24, 6, name="hub")
+    q.box(90, 16, 6, at=(45, 0, 0), align=("center", "center", "min"), name="beam")
+    q.cylinder(14, 6, at=(90, 0, 0), name="tip")
+    with pytest.raises(CadError) as e:
+        q.fillet(q.edges().concave(), 3)
+    assert "beam.right" in e.value.hint and "tapered_slot" in e.value.hint

@@ -393,15 +393,19 @@ class EdgeSelection(_Selection):
             self.__dict__["_cvx"] = out
         return self.__dict__["_cvx"]
 
-    def convex(self, tol: float = 1e-3):
-        """Outside corners (where material is less than 180 degrees around the edge)."""
+    def convex(self, tol: float = 1e-3, *, min_angle: float = 0.0):
+        """Outside corners (where material is less than 180 degrees around the edge).  ``min_angle`` (degrees)
+        skips nearly tangent edges where the surface turns by less than that (they cannot be filleted)."""
         c = self._convexity()
-        return self._derive([e for e in self if c[id(e)] < -tol], "convex()")
+        lim = max(tol, math.sin(math.radians(min_angle)))
+        return self._derive([e for e in self if c[id(e)] < -lim], "convex()" if not min_angle else f"convex(min_angle={min_angle:g})")
 
-    def concave(self, tol: float = 1e-3):
-        """Inside corners (where material wraps more than 180 degrees around the edge)."""
+    def concave(self, tol: float = 1e-3, *, min_angle: float = 0.0):
+        """Inside corners (where material wraps more than 180 degrees around the edge).  ``min_angle`` (degrees)
+        skips nearly tangent kinks where the surface turns by less than that (they cannot be filleted)."""
         c = self._convexity()
-        return self._derive([e for e in self if c[id(e)] > tol], "concave()")
+        lim = max(tol, math.sin(math.radians(min_angle)))
+        return self._derive([e for e in self if c[id(e)] > lim], "concave()" if not min_angle else f"concave(min_angle={min_angle:g})")
 
     def of(self, faces: FaceSelection):
         """Edges that bound any face in ``faces``."""

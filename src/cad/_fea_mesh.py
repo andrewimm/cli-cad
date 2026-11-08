@@ -8,7 +8,8 @@ and an optional install.  Output: vertex coordinates, linear tetrahedra and, per
 gmsh surface, its boundary triangles plus exact centre of mass and area (used to
 match surfaces to the part's faces).  With ``order`` 2 the tetrahedra have 10
 nodes, the edge nodes placed on the curved surfaces (gmsh order: vertices, then
-edges 01 12 02 03 23 13); triangles are reported by their 3 corner vertices.
+edges 01 12 02 03 23 13); triangles are reported by their 3 corner vertices plus their edge
+nodes (01, 12, 20) on the curved surface, used to draw curved faces smoothly.
 """
 
 import json
@@ -67,9 +68,9 @@ def main(brep: str, out: str, options: str) -> None:
             t, _, en = gmsh.model.mesh.getElements(2, tag)
             if tri_type not in list(t):
                 continue
-            tri = np.asarray(en[list(t).index(tri_type)], dtype=np.int64).reshape(-1, 6 if order == 2 else 3)[:, :3]
+            tri = np.asarray(en[list(t).index(tri_type)], dtype=np.int64).reshape(-1, 6 if order == 2 else 3)
             stags.append(tag)
-            tris.append(tri)
+            tris.append(tri if order == 2 else np.concatenate([tri, tri[:, [0, 1, 2]]], axis=1))  # always 6 columns
             owner.append(np.full(len(tri), len(stags) - 1))
             com.append(gmsh.model.occ.getCenterOfMass(2, tag))
             area.append(gmsh.model.occ.getMass(2, tag))
@@ -83,7 +84,8 @@ def main(brep: str, out: str, options: str) -> None:
     def idx(a):
         return np.searchsorted(tags, a)
 
-    np.savez(out, nodes=xyz, tets=idx(tets), tris=idx(np.concatenate(tris)), tri_surface=np.concatenate(owner),
+    tri6 = idx(np.concatenate(tris))
+    np.savez(out, nodes=xyz, tets=idx(tets), tris=tri6[:, :3], tri_mid=tri6[:, 3:], tri_surface=np.concatenate(owner),
              surface_com=np.asarray(com, dtype=float), surface_area=np.asarray(area, dtype=float))
     print(json.dumps({"nodes": int(len(xyz)), "tets": int(len(tets)), "seconds": round(time.time() - t0, 3)}))
 

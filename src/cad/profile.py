@@ -319,6 +319,44 @@ class Profile:
         return p
 
     @staticmethod
+    def tapered_slot(start: Vec2, start_diameter: float, end: Vec2, end_diameter: float) -> "Profile":
+        """The smooth outline around two circles (a link with round ends of different sizes): straight sides
+        tangent to both circles, so there is no corner to fillet where the ends meet the sides.
+        E.g. a robot arm link: ``Profile.tapered_slot((0, 0), 24, (90, 0), 14)``."""
+        _positive(start_diameter=start_diameter, end_diameter=end_diameter)
+        (ax, ay), (bx, by) = (float(start[0]), float(start[1])), (float(end[0]), float(end[1]))
+        r1, r2 = start_diameter / 2, end_diameter / 2
+        d = math.hypot(bx - ax, by - ay)
+        if d <= abs(r1 - r2) + 1e-9:
+            raise CadError(INVALID_ARGUMENT, "tapered_slot: one end circle lies inside the other",
+                           hint="move the ends further apart or make the diameters closer")
+        ux, uy = (bx - ax) / d, (by - ay) / d
+        nx, ny = -uy, ux
+        sin_p = (r1 - r2) / d
+        cos_p = math.sqrt(max(0.0, 1 - sin_p * sin_p))
+
+        def pt(x, y):
+            return gp_Pnt(x, y, 0)
+
+        sides = []
+        for sgn in (1, -1):
+            mx, my = ux * sin_p + sgn * nx * cos_p, uy * sin_p + sgn * ny * cos_p
+            sides.append(((ax + r1 * mx, ay + r1 * my), (bx + r2 * mx, by + r2 * my)))
+        (a1, b1), (a2, b2) = sides
+        edges = [
+            BRepBuilderAPI_MakeEdge(pt(*a1), pt(*b1)).Edge(),
+            BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(pt(*b1), pt(bx + r2 * ux, by + r2 * uy), pt(*b2)).Value()).Edge(),
+            BRepBuilderAPI_MakeEdge(pt(*b2), pt(*a2)).Edge(),
+            BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(pt(*a2), pt(ax - r1 * ux, ay - r1 * uy), pt(*a1)).Value()).Edge(),
+        ]
+        mw = BRepBuilderAPI_MakeWire()
+        for e in edges:
+            mw.Add(e)
+        face = BRepBuilderAPI_MakeFace(mw.Wire(), True).Face()
+        return Profile(face, {"type": "tapered_slot", "start": [ax, ay], "start_diameter": start_diameter,
+                              "end": [bx, by], "end_diameter": end_diameter})
+
+    @staticmethod
     def regular_polygon(sides: int, diameter: float | None = None, center: Vec2 = (0, 0), angle: float = 0.0,
                         *, across_flats: float | None = None) -> "Profile":
         """Regular polygon, sized by ``diameter`` (corner to corner, i.e. the circumscribed

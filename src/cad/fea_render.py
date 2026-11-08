@@ -18,7 +18,7 @@ from .errors import INVALID_ARGUMENT, CadError
 from .renderer import SceneItem, _arrowhead, _font
 from .tessellate import Mesh
 
-VERSION = "fea-render-3"  # part of render cache keys: bump when the picture changes
+VERSION = "fea-render-5"  # part of render cache keys: bump when the picture changes
 FIELDS = ("stress", "safety", "displacement", "layers")
 SAFETY_BANDS = ((0.0, (0.84, 0.19, 0.17), "below 1: breaks"), (1.0, (0.95, 0.62, 0.15), "1 to target"),
                 (None, (0.27, 0.67, 0.36), "target or more"))
@@ -34,6 +34,32 @@ def turbo(x: np.ndarray) -> np.ndarray:
     b = np.array([0.10667330, 12.64194608, -60.58204836, 110.36276771, -89.90310912, 27.34824973])
     powers = x ** np.arange(6)
     return np.clip(np.stack([powers @ r, powers @ g, powers @ b], axis=-1), 0, 1)
+
+
+def refined(arrays: dict) -> dict:
+    """Split each boundary triangle into four at its edge midpoints, which lie on the curved surface, so holes and
+    fillets draw round; vertex fields are interpolated linearly to the new points."""
+    if "tri_mid" not in arrays:
+        return arrays
+    V, T, mid = arrays["vertices"], arrays["tris"], arrays["tri_mid"]
+    n = len(V)
+    pairs = np.stack([T[:, [0, 1]], T[:, [1, 2]], T[:, [2, 0]]], axis=1)  # (S, 3 edges, 2)
+    key = np.sort(pairs, axis=2).reshape(-1, 2)
+    uniq, inv = np.unique(key, axis=0, return_inverse=True)
+    inv = inv.reshape(-1, 3) + n  # new vertex index of each triangle's edge midpoints
+    pos = np.zeros((len(uniq), 3))
+    pos[inv.reshape(-1) - n] = mid.reshape(-1, 3)
+    out = {k: v for k, v in arrays.items() if k not in ("vertices", "tris", "tri_mid", "tri_face")}
+    for k, v in list(out.items()):
+        if isinstance(v, np.ndarray) and v.ndim >= 1 and len(v) == n:
+            out[k] = np.concatenate([v, 0.5 * (v[uniq[:, 0]] + v[uniq[:, 1]])])
+    out["vertices"] = np.concatenate([V, pos])
+    a, b, c = T[:, 0], T[:, 1], T[:, 2]
+    ab, bc, ca = inv[:, 0], inv[:, 1], inv[:, 2]
+    out["tris"] = np.concatenate([np.stack([a, ab, ca], 1), np.stack([ab, b, bc], 1), np.stack([ca, bc, c], 1),
+                                  np.stack([ab, bc, ca], 1)])
+    out["tri_face"] = np.tile(arrays["tri_face"], 4)
+    return out
 
 
 def field_values(arrays: dict, field: str) -> tuple[np.ndarray, str]:
@@ -162,7 +188,7 @@ def overlay(arrays: dict, report: dict, legend: dict, scale: float, diag: float,
                     d.polygon([(ox, cy), (ox - s / 2, cy + s), (ox + s / 2, cy + s)], outline=SUPPORT, width=2)
                 d.line((cx - 2 * s, cy + s + 3, cx + 2 * s, cy + s + 3), fill=SUPPORT, width=2)
                 lab = f"fixed {ld['faces']}"
-                d.text((cx - d.textlength(lab, font=f) / 2, cy + s + 6), lab, fill=SUPPORT, font=f)
+                _label(d, (cx - d.textlength(lab, font=f) / 2, cy + s + 6), lab, SUPPORT, f)
             elif ld["type"] in ("force", "bearing"):
                 dv = np.asarray(ld["direction"], dtype=float)
                 tx, ty = scr(c - dv * L)
@@ -174,34 +200,47 @@ def overlay(arrays: dict, report: dict, legend: dict, scale: float, diag: float,
                 else:
                     d.line((tx, ty, cx, cy), fill=LOAD, width=3)
                     _arrowhead(d, (tx, ty), (cx, cy), LOAD, max(9, H / 55))
-                d.text((tx + 4, ty - fs - 2), f"{ld['type']} {ld['total_N']:g} N", fill=LOAD, font=f)
+                _label(d, (tx + 4, ty - fs - 2), f"{ld['type']} {ld['total_N']:g} N", LOAD, f)
             elif ld["type"] == "torque":
                 r = max(14, H / 30)
                 pts = [(cx + r * math.cos(math.radians(t)), cy - r * math.sin(math.radians(t))) for t in range(30, 300, 12)]
                 d.line(pts, fill=LOAD, width=2)
                 _arrowhead(d, pts[-2], pts[-1], LOAD, r * 0.5)
-                d.text((cx + r + 4, cy - r), f"torque {ld['total_Nm']:g} N*m", fill=LOAD, font=f)
+                _label(d, (cx + r + 4, cy - r), f"torque {ld['total_Nm']:g} N*m", LOAD, f)
             elif ld["type"] == "pressure":
-                d.text((cx + 4, cy - fs - 2), f"pressure {ld.get('total_N', 0):g} N total", fill=LOAD, font=f)
+                _label(d, (cx + 4, cy - fs - 2), f"pressure {ld.get('total_N', 0):g} N total", LOAD, f)
 
+        # hot spots: markers that would overlap on screen share one marker ("1, 3")
+        r = max(9, H / 55)
+        groups: list[dict] = []
         for h in report["hotspots"]:
             p = moved(h["at"])
             x, y = scr(p)
             vis = visible(p)
-            r = max(9, H / 55)
+            g = next((g for g in groups if math.hypot(g["x"] - x, g["y"] - y) < 2.8 * r), None)
+            if g is None:
+                groups.append({"x": x, "y": y, "ids": [h["id"]], "vis": vis, "first": h})
+            else:
+                g["ids"].append(h["id"])
+                g["vis"] = g["vis"] or vis
+        for g in groups:
+            x, y, vis = g["x"], g["y"], g["vis"]
             col = (20, 20, 20) if vis else (120, 120, 120)
-            d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255) if vis else None, outline=col, width=2)
-            label = str(h["id"])
+            label = ", ".join(map(str, g["ids"]))
             tw = d.textlength(label, font=f)
+            half = max(r, tw / 2 + 5)
+            d.rounded_rectangle((x - half, y - r, x + half, y + r), radius=r, fill=(255, 255, 255) if vis else None,
+                                outline=col, width=2)
             d.text((x - tw / 2, y - fs / 2 - 1), label, fill=col, font=f)
-            if h["id"] == 1:
-                txt = f"{h['von_mises_MPa']:.3g} MPa" + ("" if vis else " (behind)")
-                d.text((x + r + 3, y - fs / 2), txt, fill=col, font=f)
+            if 1 in g["ids"]:  # the peak's value, above its marker (neighbours sit beside it)
+                txt = f"peak {g['first']['von_mises_MPa']:.3g} MPa" + ("" if vis else " (behind)")
+                _label(d, (x - d.textlength(txt, font=f) / 2, y - r - fs - 6), txt, col, f)
 
         _legend(d, W, H, f, fs, legend, field, report)
         verdict = "OK" if report["ok"] else "BELOW TARGET"
-        foot = (f"{verdict}: safety factor {report['safety_factor']:g} (target {report['target']:g}), "
-                f"peak {report['max_von_mises_MPa']:.3g} MPa, moves up to {report['max_displacement_mm']:.3g} mm")
+        foot = (f"{verdict}: safety factor {report['safety_factor']:g} (target {report['target']:g})"
+                + (" away from the fixed faces" if report.get("peak_safety_factor") != report["safety_factor"] else "")
+                + f", peak {report['max_von_mises_MPa']:.3g} MPa, moves up to {report['max_displacement_mm']:.3g} mm")
         if scale > 0:
             foot += f"  |  bend drawn x{scale:.3g}" + (" (true scale)" if abs(scale - 1) < 1e-9 else "")
         grav = [ld for ld in report["loads"] if ld["type"] == "gravity"]
@@ -212,6 +251,14 @@ def overlay(arrays: dict, report: dict, legend: dict, scale: float, diag: float,
         return img
 
     return draw
+
+
+def _label(d, xy, text: str, color, font) -> None:
+    """Text on a white backing so it stays readable over the coloured part."""
+    x, y = xy
+    l, t, rr, b = d.textbbox((x, y), text, font=font)
+    d.rectangle((l - 2, t - 1, rr + 2, b + 1), fill=(255, 255, 255))
+    d.text((x, y), text, fill=color, font=font)
 
 
 def _legend(d, W, H, f, fs, legend: dict, field: str, report: dict) -> None:

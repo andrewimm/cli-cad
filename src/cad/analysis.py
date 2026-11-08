@@ -213,3 +213,28 @@ def _loop_info(wire, axis_index: int) -> dict:
 
 def _r(v):
     return [round(float(x), 4) for x in v]
+
+
+def sharp_inside_edges(shape, min_turn: float = 0.02) -> list[tuple]:
+    """(edge, face_a, face_b) for every sharp inside (concave) edge: where stress concentrates without limit.
+    ``min_turn`` is the sine of the smallest turn between the faces counted (0.02 ~ 1 degree)."""
+    efmap = _occ.edge_face_map(shape)
+    out = []
+    for e in _occ.edges(shape):
+        fs = _occ.faces_of_edge(efmap, e)
+        if len(fs) == 2 and not fs[0].IsSame(fs[1]):
+            try:
+                if _occ.edge_convexity(e, fs[0], fs[1]) > min_turn:
+                    out.append((e, fs[0], fs[1]))
+            except Exception:
+                continue
+    return out
+
+
+def sharp_inside_report(part, limit: int = 10) -> dict:
+    edges = sharp_inside_edges(part.shape)
+    items = []
+    for e, fa, fb in edges[:limit]:
+        items.append({"centroid": [round(c, 3) + 0.0 for c in _occ.edge_centroid(e)], "length": round(_occ.length(e), 3),
+                      "between": [part._names_of(fa, "face") or ["(unnamed)"], part._names_of(fb, "face") or ["(unnamed)"]]})
+    return {"count": len(edges), "edges": items}

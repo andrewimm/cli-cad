@@ -1795,15 +1795,34 @@ class Part:
             with _phase(feat, "kernel"):
                 ok, why = self._dressup_result_ok(mk)
             if not ok:
-                bad = []
+                bad, tangent = [], []
+                efmap = _occ.edge_face_map(self.shape)
                 for e in edges.shapes:
                     good, _ = self._dressup_result_ok(self._make_dressup(ftype, [e], size))
                     if not good:
-                        bad.append(edges._info(e))
+                        info = edges._info(e)
+                        fs = _occ.faces_of_edge(efmap, e)
+                        if len(fs) == 2:
+                            turn = math.degrees(math.asin(min(1.0, abs(_occ.edge_convexity(e, fs[0], fs[1])))))
+                            info["turn_deg"] = round(turn, 2)
+                            if turn < 15:
+                                tangent.append(info)
+                        bad.append(info)
                 max_hint = self._dressup_limit(edges.shapes)
-                if bad:
-                    hint = (f"try a {key} below ~{max_hint:.3g} mm (the shortest edge adjacent to the selection); "
-                            "large radii cannot fit next to short edges or thin walls")
+                if tangent:
+                    worst = min(t["turn_deg"] for t in tangent)
+                    hint = (f"{len(tangent)} failing edge(s) are nearly tangent: the faces there turn by only {worst:g} degrees, so "
+                            f"there is almost no corner to round and the kernel cannot {ftype} it at any size. Leave them out "
+                            f"(edges().concave(min_angle=15)), or draw the outline so it blends smoothly in the first place "
+                            "(e.g. Profile.tapered_slot for a link between two round ends)")
+                elif bad:
+                    lim, names = self._dressup_limit_detail([e for e in edges.shapes if any(
+                        edges._info(e)["midpoint"] == b["midpoint"] for b in bad)] or edges.shapes)
+                    where = f" ({', '.join(names[:2])})" if names else ""
+                    hint = (f"try a {key} below ~{lim:.3g} mm: a face next to the failing edges{where} is only that narrow, "
+                            "and a round cannot be wider than the faces it blends. A narrow strip like that usually means "
+                            "two bodies barely overlap (a beam slightly wider than the boss it meets): make them line up, "
+                            "or build the outline in one piece (e.g. Profile.tapered_slot)")
                 else:
                     hint = ("the edges interfere with each other or with earlier fillets: apply them in separate "
                             f"{ftype}() calls, change the order, or narrow the selection")
@@ -1857,14 +1876,18 @@ class Part:
         return mk
 
     def _dressup_limit(self, edge_list) -> float:
+        return self._dressup_limit_detail(edge_list)[0]
+
+    def _dressup_limit_detail(self, edge_list) -> tuple[float, list[str]]:
+        """(length of the shortest edge next to the selection, names of the face it bounds)."""
         efmap = _occ.edge_face_map(self.shape)
-        shortest = math.inf
+        shortest, names = math.inf, []
         for e in edge_list:
             for f in _occ.faces_of_edge(efmap, e):
                 for fe in _occ.edges(f):
-                    if not fe.IsSame(e):
-                        shortest = min(shortest, _occ.length(fe))
-        return shortest if shortest < math.inf else 0.0
+                    if not fe.IsSame(e) and _occ.length(fe) < shortest:
+                        shortest, names = _occ.length(fe), self._names_of(f, "face")
+        return (shortest if shortest < math.inf else 0.0), names
 
     def shell(self, thickness: float, *, open_faces: FaceSelection | None = None, name: str | None = None) -> FeatureRef:
         """Hollow the part leaving walls of ``thickness`` (material removed inward).

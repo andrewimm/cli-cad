@@ -142,7 +142,8 @@ s.force("beam.right", 10, "-z")              # N; also bearing() for pins in hol
 
 - `cad fea` (exit 4 below target); fix hotspot 1 (its `parameters` / `suggestions` name what to change), rebuild,
   re-run. Iterate with `-q draft` (~2 s), confirm with the default `normal`.
-- A peak on a fixed face or a sharp inside edge is an artifact: read `away_from_supports_and_sharp_edges` and
-  fillet sharp inside edges (`STRESS_SINGULARITY` gives the exact call).
+- The verdict is judged away from fixed faces (ideal clamps inflate stress there). A hot spot on a sharp inside
+  edge keeps it failing until you fillet that edge (`STRESS_SINGULARITY` gives the exact call; `cad inspect` lists
+  sharp inside edges). For links with round ends use `Profile.tapered_slot`: no inside corners to fillet.
 - Coplanar faces merge when bodies join: load part of a merged face with `at=(x, y, z), radius=r`.
 - Optional install; if `cad fea` says `FEA_UNAVAILABLE`, run the command in its hint (or tell the user).

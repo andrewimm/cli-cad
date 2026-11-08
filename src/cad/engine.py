@@ -238,8 +238,11 @@ class ProjectSession:
             "parts": {},
         }
         for n, p in sel.items():
+            from .analysis import sharp_inside_report
+
             d = p.summary()
             d["hole_list"] = p.find_holes()
+            d["sharp_inside_edges"] = sharp_inside_report(p)
             if refs:
                 d["references"] = p.references()
             if features:
@@ -394,7 +397,10 @@ class ProjectSession:
                                hint="render the stress map from several views instead (e.g. --views iso,front,bottom)")
             if fea_field not in fea_render.FIELDS:
                 raise CadError(INVALID_ARGUMENT, f"unknown --fea-field {fea_field!r}", hint=f"use one of {', '.join(fea_render.FIELDS)}")
+            if rev is None:
+                self._head_freshness()
             r, report, arrays = self.fea_fields(fea, r, quality)
+            arrays = fea_render.refined(arrays)
             parts = [report["part"]]
             lo_, hi_ = arrays["vertices"].min(0), arrays["vertices"].max(0)
             diag = float(np.linalg.norm(hi_ - lo_))
@@ -638,6 +644,7 @@ class ProjectSession:
         """Solve the script's Study load cases (all of them, or one by name); results are cached per revision."""
         from . import fea
 
+        notes = self._head_freshness() if rev is None else []
         r, studies = self.studies(rev)
         if not studies:
             raise CadError(NOT_FOUND, f"revision {r} declares no stress studies",
@@ -660,7 +667,28 @@ class ProjectSession:
             report = self._fea_one(r, m, part, spec, quality, meshes)
             results.append(report)
         out = {"revision": r, "quality": quality, "ok": all(x["ok"] for x in results), "studies": results}
+        if notes:
+            out["warnings"] = notes
         return out
+
+    def _head_freshness(self) -> list[dict]:
+        """Refuse to analyse an old revision silently: after a failed build the head is not the current script."""
+        lb = self.store.last_build() or {}
+        head = self.store.head()
+        if lb.get("status") == "failed":
+            err = (lb.get("error") or {}).get("message", "")
+            raise CadError("STALE_REVISION", f"the last build failed ({err}), so the newest revision r{head} is not your current script",
+                           hint=f"fix the build first (`cad build`), or analyse the old revision on purpose with -r {head}",
+                           details={"head": head, "last_build": lb})
+        if head is not None:
+            try:
+                current, _ = self.store.source_hash()
+            except Exception:
+                return []
+            if current != self.store.manifest(head).get("source_hash"):
+                return [{"code": "STALE_REVISION", "message": f"the script changed since revision r{head} was built; "
+                         f"these results are for r{head}", "hint": "run `cad build` first"}]
+        return []
 
     def _fea_key(self, m: dict, part: Part, spec: dict, quality: str) -> str:
         from . import fea
@@ -757,12 +785,9 @@ class ProjectSession:
                 row["warnings"] = b.get("warnings", [])
                 if fea:
                     st = self.fea(fea, rev=r, quality=quality)["studies"][0]
-                    away = st.get("away_from_supports_and_sharp_edges") or {}
-                    part = parts[st["part"]]
                     row["fea"] = {"safety_factor": st["safety_factor"], "ok": st["ok"], "max_von_mises_MPa": st["max_von_mises_MPa"],
-                                  "away_safety_factor": away.get("safety_factor"),
-                                  "max_displacement_mm": st["max_displacement_mm"],
-                                  "mass_g": round(part.mass(), 3) if part.material and part.material.density else None,
+                                  "peak_safety_factor": st.get("peak_safety_factor"),
+                                  "max_displacement_mm": st["max_displacement_mm"], "mass_g": st.get("mass_g"),
                                   "hotspot": (st["hotspots"][0]["features"] if st["hotspots"] else []),
                                   "warnings": [w["code"] for w in st["warnings"]]}
                 if views:

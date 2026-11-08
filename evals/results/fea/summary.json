@@ -1,0 +1,144 @@
+{
+  "run": {
+    "label": "fea",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "strengthen_arm"
+    ],
+    "git": "bf65f1a",
+    "started": 1794157808.5557592
+  },
+  "overall": {
+    "attempts": 3,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 30,
+    "mean_failed_builds": 1.333,
+    "mean_turns": 20.667,
+    "mean_cost_usd": 0.279,
+    "total_cost_usd": 0.836,
+    "implementation_peeks": 0,
+    "feedback_received": 3
+  },
+  "tasks": {
+    "strengthen_arm": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 30,
+      "mean_builds": 10,
+      "mean_failed_builds": 1.333,
+      "mean_render_inspections": 0,
+      "mean_doc_lookups": 3.333,
+      "mean_turns": 20.667,
+      "mean_duration_s": 181.333,
+      "mean_cost_usd": 0.279,
+      "failed_checks": {},
+      "visual_overall_match": null
+    }
+  },
+  "cad_errors": {
+    "VALIDATION_FAILED": 17,
+    "FILLET_FAILED": 3,
+    "INVALID_ARGUMENT": 1,
+    "EMPTY_SELECTION": 1
+  },
+  "issue_categories": {
+    "docs_unclear/medium": 2,
+    "other/medium": 1,
+    "api_confusing/low": 1,
+    "api_confusing/medium": 1,
+    "error_unhelpful/medium": 1,
+    "api_missing/low": 1
+  },
+  "issues": [
+    {
+      "task": "strengthen_arm",
+      "category": "other",
+      "description": "cad fea exits 4 / reports BELOW TARGET for 'payload' (plain SF 1.25) even though the away-from-supports SF is 3.6; the peak sits on the horn screw-hole walls (idealised clamp). The task says to judge by the away-from-supports number, but the headline verdict and exit code still use the plain one, so a passing design looks failing.",
+      "severity": "medium"
+    },
+    {
+      "task": "strengthen_arm",
+      "category": "api_confusing",
+      "description": "A tapered beam joined to hub/tip cylinders by a polygon leaves nearly tangent concave kinks; fillet of these failed with a generic FILLET_FAILED (even for radius 6 with hint 'below ~4.5 mm'). I built the beam with exact tangent points to avoid inside corners instead.",
+      "severity": "low"
+    },
+    {
+      "task": "strengthen_arm",
+      "category": "api_confusing",
+      "description": "A rectangular beam unioned with hub/tip circles of equal width gives near-tangent concave vertical edges and a tangent junction at the tip; fillet of those failed with FILLET_FAILED even at 3 mm. I switched to a tangent-line hull outline (computed by hand) which has no concave corners at all.",
+      "severity": "medium"
+    },
+    {
+      "task": "strengthen_arm",
+      "category": "docs_unclear",
+      "description": "'cad build' exits 4 (validation failed) when the plain safety factor is below target, even though the task says to judge by the away-from-supports value. Final design: pushrod plain SF 3.2, payload plain SF 1.85 (at the clamped screw-hole edge) but away-from-supports SF 4.8.",
+      "severity": "medium"
+    },
+    {
+      "task": "strengthen_arm",
+      "category": "error_unhelpful",
+      "description": "Filleting all concave edges at radius 3 with a beam wider than the 14 mm tip failed (FILLET_FAILED). The failing edges were listed by coordinates but the cause was not explained, and the 'try a radius below ~1 mm' hint was misleading. After the failed build, `cad fea` silently analysed the previous revision.",
+      "severity": "medium"
+    },
+    {
+      "task": "strengthen_arm",
+      "category": "docs_unclear",
+      "description": "Pass/fail semantics: at --quality fine the plain payload safety factor at the fixed horn holes is 1.6 while the away-from-supports value is ~3. The CLI exits 4 (VALIDATION_FAILED) on the plain value even though the task rule says to judge away from supports. Results also shift 5-10% between draft/normal/fine near the margin.",
+      "severity": "medium"
+    },
+    {
+      "task": "strengthen_arm",
+      "category": "api_missing",
+      "description": "No tapered / variable-width beam helper; a mass-efficient design (wide at the hub, narrow at the tip) needs profile or loft work.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "strengthen_arm",
+      "suggestion": "Let Study take an option (or report a second verdict line) so 'ok' is judged on away_from_supports_and_sharp_edges when the peak is flagged PEAK_AT_SUPPORT."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "Provide a Profile helper for the tangent hull of two circles (slot with different end diameters / 'tapered slot')."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "Report mass in cad fea / sweep output alongside SF (sweep does, fea does not)."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "A Profile helper for the tangent hull of two circles (slot/taper) would avoid hand-computed tangent points."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "Report a per-study pass/fail that uses the away-from-supports value explicitly so build validation matches the stated criterion."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "cad inspect could list concave (sharp inside) edges so the no-sharp-corner requirement can be verified directly."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "Let `cad fea` use the away-from-supports safety factor for ok/exit code when PEAK_AT_SUPPORT applies, or offer a flag for it."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "When a build fails, make `cad fea` refuse to run or state loudly which revision it analyses."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "Let `cad sweep` sweep two parameters (or fillet radius) and report the lightest passing combination under a mass limit."
+    },
+    {
+      "task": "strengthen_arm",
+      "suggestion": "Explain FILLET_FAILED causes using the geometry (e.g. edge ends on a tangent or short edge)."
+    }
+  ]
+}

@@ -660,7 +660,7 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
             if "fea" in row:
                 fr = row["fea"]
                 desc += (f"{'OK ' if fr['ok'] else 'LOW'} safety factor {fr['safety_factor']:<6g}"
-                         + (f" (away from supports/corners {fr['away_safety_factor']:g})" if fr.get("away_safety_factor") else "")
+                         + (f" (peak {fr['peak_safety_factor']:g} at a support)" if fr.get("peak_safety_factor") != fr["safety_factor"] else "")
                          + f", peak {fr['max_von_mises_MPa']:.3g} MPa, moves {fr['max_displacement_mm']:.3g} mm"
                          + (f", {fr['mass_g']:g} g" if fr.get("mass_g") is not None else ""))
             lines.append(f"  {param.strip()}={row['value']}: r{row['revision']} {desc}{bad}")
@@ -699,10 +699,13 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
             return {"revision": r, "studies": studies}, "\n".join(lines)
         r = s.fea(args.study, rev=args.revision, quality=args.quality)
         text = "\n\n".join(_fmt_fea(r["revision"], x) for x in r["studies"])
+        for w in r.get("warnings", []):
+            text = f"warning {w['code']}: {w['message']} ({w['hint']})\n" + text
         fail = None
         if not r["ok"]:
-            bad = [f"{x['study']} ({x['safety_factor']:g} < {x['target']:g})" for x in r["studies"] if not x["ok"]]
-            fail = {"code": "VALIDATION_FAILED", "message": f"safety factor below target: {', '.join(bad)}",
+            bad = [f"{x['study']} ({x['safety_factor']:g} vs target {x['target']:g}"
+                   + (", sharp inside corner" if x["safety_factor"] >= x["target"] else "") + ")" for x in r["studies"] if not x["ok"]]
+            fail = {"code": "VALIDATION_FAILED", "message": f"below target: {', '.join(bad)}",
                     "hint": "see hotspots: fix the geometry there, rebuild and re-run `cad fea`"}
         return r, text, fail
     if c == "joints":
@@ -799,18 +802,19 @@ def _fmt_load(ld: dict) -> str:
 def _fmt_fea(rev: int, r: dict) -> str:
     mat = r["material"]
     st = r["strength"]
-    head = "OK" if r["ok"] else "BELOW TARGET"
     lines = [f"revision {rev}, study {r['study']} on {r['part']} ({mat['name']}), {r['mesh']['quality']} mesh"
              + (" (cached)" if r.get("cached") else "") + ":",
-             f"  {head}: safety factor {r['safety_factor']:g} (target {r['target']:g}); peak von Mises {r['max_von_mises_MPa']:.4g} MPa "
-             f"vs {mat['yield_strength_MPa']:g} MPa strength, at {_pt(r['max_von_mises_at'])}"]
+             f"  {r['verdict']}",
+             f"  peak von Mises {r['max_von_mises_MPa']:.4g} MPa vs {mat['yield_strength_MPa']:g} MPa strength at {_pt(r['max_von_mises_at'])}"
+             + (f" (safety factor {r['peak_safety_factor']:g} right there)" if r.get("peak_safety_factor") != r["safety_factor"] else "")
+             + (f"; mass {r['mass_g']:g} g" if r.get("mass_g") is not None else "")]
     if st.get("across_layers_safety_factor") is not None:
         lines.append(f"  across layers: {st['max_tension_across_layers_MPa']:.4g} MPa tension vs {mat['layer_strength_MPa']:g} MPa "
                      f"(safety factor {st['across_layers_safety_factor']:g}); layers stack along {_pt(st['build_direction'])}")
     away = r.get("away_from_supports_and_sharp_edges")
-    if away:
-        lines.append(f"  away from supports and sharp inside edges: peak {away['max_von_mises_MPa']:.4g} MPa, "
-                     f"safety factor {away['safety_factor']:g}")
+    if away and any(w["code"] == "STRESS_SINGULARITY" for w in r["warnings"]):
+        lines.append(f"  with the sharp inside corners rounded, roughly: safety factor {away['safety_factor']:g} "
+                     f"(peak {away['max_von_mises_MPa']:.4g} MPa elsewhere)")
     lines.append(f"  max displacement {r['max_displacement_mm']:.4g} mm at {_pt(r['max_displacement_at'])}")
     for ld in r["loads"]:
         extra = ""
@@ -995,6 +999,12 @@ def _fmt_inspect(r: dict) -> str:
             lines.append(f"  material {p['material']}" + (f", mass {p['mass_g']} g" if p.get("mass_g") is not None else ""))
         for h in p["hole_list"]:
             lines.append(f"  hole d={h['diameter']} axis={h['axis']} at {h['position']} depth {h['depth']} {h['names']}")
+        sh = p.get("sharp_inside_edges")
+        if sh and sh["count"]:
+            lines.append(f"  sharp inside edges: {sh['count']} (stress concentrates there; round with "
+                         "fillet(edges().concave(min_angle=15), r)):")
+            for e in sh["edges"][:6]:
+                lines.append(f"    at {e['centroid']} length {e['length']} between {'/'.join(e['between'][0])} and {'/'.join(e['between'][1])}")
         if "feature_list" in p:
             lines.append("  features: " + ", ".join(p["feature_list"]))
         if "references" in p:

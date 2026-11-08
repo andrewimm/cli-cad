@@ -41,7 +41,9 @@ def test_cantilever_matches_beam_theory():
     assert np.median(a["von_mises"][top] / theory) == pytest.approx(1, rel=0.04)
     fixed = next(ld for ld in r["loads"] if ld["type"] == "fixed")
     assert fixed["reaction_N"] == pytest.approx([0, 0, 10], abs=1e-6)  # equilibrium
-    assert r["ok"] and r["safety_factor"] == pytest.approx(100 / r["max_von_mises_MPa"], rel=1e-3)
+    assert r["peak_safety_factor"] == pytest.approx(100 / r["max_von_mises_MPa"], rel=1e-3)
+    # the peak sits at the clamped end: the verdict is judged away from it
+    assert r["ok"] and r["safety_factor"] > r["peak_safety_factor"] and "fixed faces" in r["judged"]
 
 
 def test_plate_with_hole_concentration():
@@ -80,7 +82,7 @@ def test_shaft_torsion():
     tangential = (v[:, 0] * u[:, 1] - v[:, 1] * u[:, 0]) / (np.linalg.norm(v[:, :2], axis=1) ** 2)
     assert np.mean(tangential) == pytest.approx(T * 1000 * z / (G * J), rel=0.05)
     fixed = next(ld for ld in sol.report["loads"] if ld["type"] == "fixed")
-    assert fixed["reaction_N"] == pytest.approx([0, 0, 0], abs=0.05)  # a pure twist: no net force
+    assert fixed["reaction_N"] == pytest.approx([0, 0, 0], abs=0.005)  # a pure twist: no net force
 
 
 def test_thick_tube_internal_pressure():
@@ -107,7 +109,7 @@ def test_bearing_and_gravity_balance_and_layers():
     r = sol.report
     weight = arm.volume * 1.24e-3 * 9.81e-3 * 10
     fixed = next(ld for ld in r["loads"] if ld["type"] == "fixed")
-    assert fixed["reaction_N"] == pytest.approx([0, 20, weight], rel=0.01, abs=0.1)  # within 0.5 % of the load
+    assert fixed["reaction_N"] == pytest.approx([0, 20, weight], rel=0.01, abs=0.005)
     b = next(ld for ld in r["loads"] if ld["type"] == "bearing")
     assert b["moves_mm"] < 0 or b["moves_mm"] > 0  # reported
     assert r["strength"]["build_direction"] == [0, 0, 1]
@@ -295,3 +297,58 @@ def test_cli_fea_missing_packages(servo_arm, monkeypatch):
     assert "gmsh pyamg" in r["error"]["hint"]
     c, r = _cli(["capabilities"], servo_arm)
     assert r["result"]["stress_analysis"]["available"] is False
+
+
+def test_sharp_corner_blocks_a_pass_even_when_strong():
+    p = Part("L", material="PETG")
+    p.box(10, 12, 40, name="post")
+    p.box(50, 12, 5, at=(25, 0, 20), name="arm")
+    s = Study("t", p)
+    s.fixed("post.bottom")
+    s.force("arm.right", 1, "-z")
+    r = fea.analyse(p, s.resolve("L"), "draft")[0].report
+    assert r["safety_factor"] > 2 and not r["ok"]
+    assert r["verdict"].startswith("BELOW TARGET until the sharp inside corner")
+    p.fillet(p.edges().concave(), 2, name="r")
+    s = Study("t2", p)
+    s.fixed("post.bottom")
+    s.force("arm.right", 1, "-z")
+    r = fea.analyse(p, s.resolve("L"), "draft")[0].report
+    assert r["ok"] and r["verdict"].startswith("OK")
+
+
+def test_stale_revision_is_refused_after_failed_build(servo_arm):
+    from cad.engine import Engine
+
+    e = Engine()
+    _cli(["build"], servo_arm, e)
+    model = servo_arm / "model.py"
+    good = model.read_text()
+    model.write_text(good + "\nundefined_name\n")
+    assert _cli(["build"], servo_arm, e)[0] != 0
+    c, r = _cli(["fea", "-q", "draft"], servo_arm, e)
+    assert r["error"]["code"] == "STALE_REVISION" and "-r 1" in r["error"]["hint"]
+    c, r = _cli(["fea", "pushrod", "-q", "draft", "-r", "1"], servo_arm, e)  # on purpose: allowed
+    assert r["result"]["revision"] == 1
+    model.write_text(good)
+    assert _cli(["build"], servo_arm, e)[0] == 0
+    model.write_text(good + "\n# edited\n")  # changed but not rebuilt: results are for the old revision
+    c, r = _cli(["fea", "pushrod", "-q", "draft"], servo_arm, e)
+    assert [w["code"] for w in r["result"]["warnings"]] == ["STALE_REVISION"]
+
+
+def test_render_draws_curved_surfaces_from_edge_nodes():
+    from cad import fea_render
+
+    p = Part("plate", material="PLA")
+    p.box(60, 20, 4, name="b")
+    p.hole(8, at=(0, 0), name="h")
+    s = Study("t", p)
+    s.fixed("b.left")
+    s.force("b.right", 20, "+x")
+    a = fea.analyse(p, s.resolve("plate"), "draft")[0].arrays
+    ref = fea_render.refined(a)
+    assert len(ref["tris"]) == 4 * len(a["tris"])
+    r = np.hypot(ref["vertices"][:, 0], ref["vertices"][:, 1])
+    on_hole = (r < 4.05) & (np.abs(ref["vertices"][:, 2] - 2) < 2.1)
+    assert np.abs(r[on_hole] - 4).max() < 0.02  # new points lie on the true hole surface, not on its chords
