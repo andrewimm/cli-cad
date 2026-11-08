@@ -88,8 +88,9 @@ fail and why). Non-fatal geometry smells are warnings attached to features.
 
 ## Known limitations
 
-- No sketch constraints, splines/lofts/sweeps, drafts, text, threads, or assembly constraints/mates; parts are positioned explicitly.
-- Rendering is orthographic only; no section views, transparency, highlighting or exploded views yet. Worker peak memory during rendering is ~0.8 GB (float buffers at 2× supersampling).
+- No sketch constraints, splines/lofts/sweeps, drafts, threads, or assembly constraints/mates; parts are positioned explicitly. Text is flat-face only (no wrapping onto curved surfaces).
+- Rendering is orthographic only, with section views; no transparency, feature highlighting or exploded views yet. Worker peak memory during rendering is ~0.8 GB (float buffers at 2× supersampling).
+- Adding features one call at a time is quadratic in the number of features (full re-validation each time); use batch positions for repeated features.
 - `find_holes()` recognises cylindrical holes; slots, tapered holes and holes split into >2 faces may be reported partially.
 - Feature graph is a record, not a re-executable DAG; edits happen in the script.
 - Resource limits: RLIMIT_AS is not enforced by macOS.
