@@ -444,7 +444,7 @@ class ProjectSession:
                 R.save_png(img, cpng)
                 cjson.write_text(json.dumps(meta, indent=1))
                 cached = False
-            suffix = f"_section_{R._safe_name(section)}" if section else ""
+            suffix = (f"_section_{R._safe_name(section)}" if section else "") + ("_joints" if joints else "")
             dst = out / f"{prefix}_{cam.name}{suffix}.png"
             shutil.copyfile(cpng, dst)
             meta = dict(meta)
@@ -458,7 +458,7 @@ class ProjectSession:
         if sheet and len(images) > 1:
             from PIL import Image
 
-            sheet_path = out / f"{prefix}_sheet{'_section_' + R._safe_name(section) if section else ''}.png"
+            sheet_path = out / f"{prefix}_sheet{'_section_' + R._safe_name(section) if section else ''}{'_joints' if joints else ''}.png"
             R.save_png(R.contact_sheet([(p.stem, Image.open(p)) for p in images], size), sheet_path)
         return {"revision": r, "parts": names, "out_dir": str(out), "images": results,
                 "sheet": str(sheet_path) if sheet_path else None}
