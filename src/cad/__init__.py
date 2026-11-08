@@ -15,6 +15,7 @@ See docs/REFERENCE.md for the full API and conventions.
 """
 
 from .errors import CadError, CadWarning
+from .materials import Material
 from .params import Parameter
 from .part import BBox, Feature, FeatureRef, Part
 from .profile import Plane, Profile
@@ -30,6 +31,7 @@ __all__ = [
     "FaceSelection",
     "Feature",
     "FeatureRef",
+    "Material",
     "Parameter",
     "Part",
     "Plane",

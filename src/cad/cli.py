@@ -61,7 +61,8 @@ COMMANDS: dict[str, dict] = {
     "measure": {"summary": "Measure a part or named reference: volume, area, bbox, com, holes, distance", "project": True},
     "query": {"summary": "Evaluate a selection expression, e.g. \"faces().facing('+z')\", and list matches", "project": True},
     "render": {"summary": "Render PNG views (iso, front, back, left, right, top, bottom, az=..,el=.., dir=x,y,z)", "project": True},
-    "export": {"summary": "Export STEP / STL / BREP files for a revision (reference parts are skipped)", "project": True},
+    "export": {"summary": "Export STEP / STL / 3MF (with materials) / BREP for a revision (reference parts are skipped)", "project": True},
+    "materials": {"summary": "List built-in materials (density, colour) for Part(..., material=...)", "project": False},
     "clearance": {"summary": "Minimum distance / overlap between every pair of parts (including reference envelopes)", "project": True},
     "sweep": {"summary": "Rebuild over a range of one parameter, checking clearances (and rendering) at each value", "project": True},
     "params": {"summary": "List declared parameters and the override overlay", "project": True},
@@ -128,7 +129,8 @@ def _parser() -> _Parser:
     s.add_argument("script")
     s.add_argument("--param", "-p", action="append", default=[], metavar="NAME=VALUE")
     s.add_argument("--render", metavar="VIEWS", help="comma-separated views, e.g. iso,front or all")
-    s.add_argument("--export", metavar="FORMATS", help="comma-separated: step,stl,brep")
+    s.add_argument("--export", metavar="FORMATS", help="comma-separated: step,stl,3mf,brep")
+    s.add_argument("--3mf-mode", dest="threemf_mode", default="objects", choices=["objects", "multimaterial"])
     s.add_argument("--out", help="output directory (default ./out/<script-name>)")
     s.add_argument("--size", default="1024x768")
     s.add_argument("--style", default="shaded_edges", choices=["shaded_edges", "shaded", "lines"])
@@ -167,11 +169,15 @@ def _parser() -> _Parser:
     s.add_argument("--no-sheet", action="store_true", help="do not write the combined contact sheet")
 
     s = cmd("export")
-    s.add_argument("--format", "-f", help="comma-separated: step,stl,brep (default from cad.toml)")
+    s.add_argument("--format", "-f", help="comma-separated: step,stl,3mf,brep (default from cad.toml)")
+    s.add_argument("--3mf-mode", dest="threemf_mode", default="objects", choices=["objects", "multimaterial"],
+                   help="objects: one printable object per part; multimaterial: one object, parts as material regions in place")
     s.add_argument("--revision", "-r")
     s.add_argument("--part", action="append")
     s.add_argument("--out", help="output directory (default out/r<rev>)")
     s.add_argument("--tolerance", type=float, default=0.01, help="STL chordal tolerance in mm")
+
+    cmd("materials")
 
     s = cmd("clearance")
     s.add_argument("--min", type=float, help="required clearance in mm; violations exit with code 4")
@@ -404,6 +410,12 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         return _docs(args)
     if c == "examples":
         return _examples(args, cwd)
+    if c == "materials":
+        from .materials import library
+
+        lib = library()
+        text = "\n".join(f"{m['name']:<10} {m['density']:>5} g/cm3  {m['color']}  {m['kind']:<8} {m['notes']}" for m in lib)
+        return {"materials": lib}, text + "\n\nuse: Part('lid', material='PETG')  or  Material('name', density=1.2, color='#rrggbb')"
     if c == "init":
         from .project import init_project
 
@@ -459,10 +471,13 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         return r, "\n".join(lines)
     if c == "export":
         fmts = [f.strip() for f in args.format.split(",")] if args.format else None
-        r = s.export(fmts, rev=args.revision, parts=args.part, out_dir=args.out, tolerance=args.tolerance)
+        r = s.export(fmts, rev=args.revision, parts=args.part, out_dir=args.out, tolerance=args.tolerance,
+                     threemf_mode=args.threemf_mode)
         lines = [f"revision {r['revision']}:"]
         for f in r["files"]:
             lines.append(f"  {f['path']}  ({f['bytes']} bytes)")
+            for m in f.get("materials", []):
+                lines.append(f"      material slot {m['slot']} (extruder {m['extruder']}): {m['name']} {m['color']} <- {', '.join(m['parts'])}")
             pr = f.get("printability")
             if pr:
                 state = "watertight, manifold" if pr["watertight"] else f"NOT watertight ({pr.get('open_edges')} open / {pr.get('non_manifold_edges')} non-manifold edges)"
@@ -642,7 +657,15 @@ def _run(args, cwd: Path):
     if args.export:
         files = []
         for fmt in [f.strip() for f in args.export.split(",")]:
-            for n, p in out.parts.items():
+            deliver = {n: p for n, p in out.parts.items() if not p.reference}
+            if fmt == "3mf":  # one file with every part and its material
+                from .threemf import export_3mf
+
+                rep = export_3mf(deliver, outdir / f"{script.stem}.3mf", mode=args.threemf_mode, title=script.stem)
+                files.append(rep["path"])
+                result.setdefault("warnings", []).extend(rep["warnings"])
+                continue
+            for n, p in deliver.items():
                 files.append(p.export(str(outdir / f"{n}.{fmt}")))
         result["exports"] = files
     result["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
@@ -690,6 +713,8 @@ def _fmt_inspect(r: dict) -> str:
         lines.append(f"part {n}{' (reference: not exported)' if p.get('reference') else ''}: valid={p['valid']} solids={p['solids']} faces={p['faces']} edges={p['edges']}")
         lines.append(f"  bbox min {b['min']} max {b['max']} size {b['size']}")
         lines.append(f"  volume {p['volume']} mm3, area {p['area']} mm2, center of mass {p['center_of_mass']}")
+        if p.get("material"):
+            lines.append(f"  material {p['material']}" + (f", mass {p['mass_g']} g" if p.get("mass_g") is not None else ""))
         for h in p["hole_list"]:
             lines.append(f"  hole d={h['diameter']} axis={h['axis']} at {h['position']} depth {h['depth']} {h['names']}")
         if "feature_list" in p:
@@ -798,7 +823,7 @@ GETTING_STARTED = """getting started:
   # edit model.py:  from cad import Part;  p = Part("plate");  p.box(80, 50, 4);  p.hole(5, at=(30, 15))
   cad build                     run the model -> revision 1 (errors point at your script line)
   cad render --views iso,top    PNGs in renders/r1/ to look at
-  cad export --format stl       printable files in out/r1/
+  cad export --format stl       printable files in out/r1/  (3mf keeps materials: Part("seal", material="TPU"))
 
 documentation:
   cad docs                      full API reference      cad docs --list    section titles

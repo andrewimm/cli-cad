@@ -106,7 +106,8 @@ class ProjectSession:
                 (tmp / "parts" / f"{name}.json").write_text(json.dumps(graph, indent=1, default=str))
                 geom[name] = {"brep": f"parts/{name}.brep", "geometry_hash": ghash, "summary": summary,
                               "color": part.color if not isinstance(part.color, tuple) else list(part.color),
-                              "reference": part.reference}
+                              "reference": part.reference,
+                              "material": part.material.to_dict() if part.material else None}
             src = tmp / "source"
             for rel in files:
                 dst = src / rel
@@ -189,7 +190,8 @@ class ProjectSession:
             graph = json.loads(gpath.read_text()) if gpath.exists() else {}
             color = info.get("color")
             parts[name] = Part._rehydrate(name, shape, tuple(color) if isinstance(color, list) else color,
-                                          graph.get("persisted_refs"), graph.get("features"), info.get("reference", False))
+                                          graph.get("persisted_refs"), graph.get("features"), info.get("reference", False),
+                                          info.get("material"))
         self._remember(r, parts)
         return r, parts
 
@@ -447,7 +449,7 @@ class ProjectSession:
 
     # ------------------------------------------------------------------ export
     def export(self, formats: list[str] | None = None, *, rev=None, parts: list[str] | None = None,
-               out_dir: str | None = None, tolerance: float = 0.01) -> dict:
+               out_dir: str | None = None, tolerance: float = 0.01, threemf_mode: str = "objects") -> dict:
         from .export import FORMATS
 
         r, all_parts = self.parts(rev)
@@ -462,7 +464,22 @@ class ProjectSession:
             out = self.root / out
         files = []
         skipped = [] if parts else [n for n, p in all_parts.items() if p.reference]
-        for n in parts or [n for n in all_parts if n not in skipped]:
+        chosen = parts or [n for n in all_parts if n not in skipped]
+        threemf = None
+        if "3mf" in formats:
+            # one 3MF holds every part (with its material) - that is the point of the format
+            from .threemf import export_3mf
+
+            for n in chosen:
+                if n not in all_parts:
+                    raise CadError(NOT_FOUND, f"no part named '{n}'", details={"parts": list(all_parts)})
+            dst = out / f"{self.config.name}.3mf"
+            threemf = export_3mf({n: all_parts[n] for n in chosen}, dst, mode=threemf_mode, tolerance=tolerance,
+                                 title=self.config.name)
+            files.append({"part": ",".join(chosen), "format": "3mf", "path": str(dst), "bytes": threemf["bytes"],
+                          "materials": threemf["materials"], "mode": threemf_mode})
+            formats = [f for f in formats if f != "3mf"]
+        for n in chosen:
             if n not in all_parts:
                 raise CadError(NOT_FOUND, f"no part named '{n}'", details={"parts": list(all_parts)})
             for fmt in formats:
@@ -484,6 +501,8 @@ class ProjectSession:
                     entry["printability"] = stl_check(dst)
                 files.append(entry)
         out = {"revision": r, "files": files}
+        if threemf and threemf["warnings"]:
+            out["warnings"] = threemf["warnings"]
         if skipped:
             out["skipped_reference_parts"] = skipped
         return out

@@ -247,13 +247,19 @@ def _wrap_occ(fid: str, what: str, code: str, exc: Exception, hint: str | None =
 class Part:
     """A single solid body built from features.  See module docs for conventions."""
 
-    def __init__(self, name: str = "part", *, color: str | Sequence[float] | None = None, reference: bool = False):
-        """``reference=True`` marks a body you design *around* (a servo, a PCB, a bearing):
+    def __init__(self, name: str = "part", *, color: str | Sequence[float] | None = None, reference: bool = False,
+                 material=None):
+        """``material`` is a built-in name ("PLA", "PETG", "TPU", ...) or a :class:`~cad.Material`;
+        it sets mass, the default render colour and the material slot in 3MF exports.
+        ``reference=True`` marks a body you design *around* (a servo, a PCB, a bearing):
         it is rendered and measured against, but never exported."""
+        from .materials import resolve
+
         if not isinstance(name, str) or not name:
             raise CadError(INVALID_ARGUMENT, "Part name must be a non-empty string")
         self.name = name
         self.color = color
+        self.material = resolve(material)
         self.reference = bool(reference)
         self._shape: TopoDS_Shape | None = None
         self._refs: dict[str, list[TopoDS_Shape]] = {}
@@ -1237,8 +1243,13 @@ class Part:
     def solid_count(self) -> int:
         return len(_occ.solids(self.shape))
 
-    def mass(self, density_g_cm3: float) -> float:
-        """Mass in grams for a material density in g/cm^3 (PLA ~1.24, PETG ~1.27, Al ~2.70)."""
+    def mass(self, density_g_cm3: float | None = None) -> float:
+        """Mass in grams: from the part's material, or an explicit density in g/cm^3."""
+        if density_g_cm3 is None:
+            if self.material is None or self.material.density is None:
+                raise CadError(INVALID_ARGUMENT, f"part '{self.name}' has no material density",
+                               hint="give the part a material (Part(..., material='PETG')) or pass a density in g/cm^3")
+            density_g_cm3 = self.material.density
         return self.volume / 1000.0 * density_g_cm3
 
     def is_valid(self) -> bool:
@@ -1361,10 +1372,13 @@ class Part:
         """JSON-friendly geometric summary used by ``cad inspect``."""
         if self._shape is None:
             return {"name": self.name, "has_body": False, "features": len(self.features)}
+        mat = self.material
         return {
             "name": self.name,
             "has_body": True,
             "reference": self.reference,
+            "material": mat.name if mat else None,
+            "mass_g": round(self.mass(), 3) if mat and mat.density else None,
             "valid": self.is_valid(),
             "solids": self.solid_count,
             "faces": len(_occ.faces(self._shape)),
@@ -1392,7 +1406,11 @@ class Part:
 
     # ================================================================== output
     def export(self, path: str, **kwargs) -> str:
-        """Write STEP (.step/.stp), STL (.stl) or BREP (.brep) depending on the extension."""
+        """Write STEP (.step/.stp), STL (.stl), 3MF (.3mf, with the part's material) or BREP (.brep)."""
+        if str(path).lower().endswith(".3mf"):
+            from .threemf import export_3mf
+
+            return export_3mf({self.name: self}, path, title=self.name, **kwargs)["path"]
         from .export import export_shape
 
         return export_shape(self.shape, path, name=self.name, **kwargs)
@@ -1401,7 +1419,7 @@ class Part:
         """Independent copy (geometry is shared immutably, history is copied)."""
         import copy as _copy
 
-        p = Part(name or self.name, color=self.color, reference=self.reference)
+        p = Part(name or self.name, color=self.color, reference=self.reference, material=self.material)
         p._shape = self._shape
         p._refs = {k: list(v) for k, v in self._refs.items()}
         p._ref_kind = dict(self._ref_kind)
@@ -1435,9 +1453,11 @@ class Part:
 
     @classmethod
     def _rehydrate(cls, name: str, shape: TopoDS_Shape, color=None, refs: dict | None = None, features: list[dict] | None = None,
-                   reference: bool = False) -> "Part":
+                   reference: bool = False, material: dict | None = None) -> "Part":
         """Rebuild a queryable Part from stored geometry (no script re-execution)."""
-        p = cls(name, color=color, reference=reference)
+        from .materials import Material
+
+        p = cls(name, color=color, reference=reference, material=Material(**material) if material else None)
         p._shape = shape
         refs = refs or {}
         index = {"face": _occ.faces(shape), "edge": _occ.edges(shape)}

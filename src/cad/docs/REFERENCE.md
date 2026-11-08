@@ -303,7 +303,8 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad measure [part[.ref]] [--volume --area --bbox --com --holes --thickness] [--distance OTHER] [--density D]` | numbers, or the faces of a reference (e.g. `bracket.base.top`); `--distance` accepts parts or references on both sides, e.g. `cad measure lid.lip --distance box.shell1.inner` |
 | `cad query [part] "<expr>"` | evaluate a selection, e.g. `cad query "edges().vertical().convex()"` |
 | `cad render [--views ...] [--section y=0] [--part P] [--size WxH] [--style shaded_edges|shaded|lines] [-r REV]` | PNG + JSON metadata per view, plus a contact sheet; `--section` cuts away the half facing the camera (`x=5:+` keeps the +X side) |
-| `cad export [--format step,stl,brep] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files |
+| `cad export [--format step,stl,3mf,brep] [--3mf-mode objects|multimaterial] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files; 3MF carries materials; STL reports watertightness |
+| `cad materials` | built-in materials (density, colour) |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
 | `cad clearance [--min D] [--part P]` | gaps / contact / overlap for every pair of parts; per-face gaps for reference envelopes; exit 4 below `--min` |
 | `cad sweep PARAM START:STOP:STEP [--min D] [--render VIEWS]` | rebuild across a parameter range, check clearances and optionally render each value |
@@ -318,6 +319,35 @@ Views: `iso front back left right top bottom iso_back iso_left iso_bottom all`,
 `dir=x,y,z[,up=x,y,z]` (direction from the model toward the camera).
 Every PNG has a sidecar JSON with the camera vectors, `mm_per_pixel`, and the
 model bbox; images are annotated with the view, screen axes, an axis triad and a scale bar.
+
+## Materials and 3D printing (3MF)
+
+```python
+from cad import Part, Material
+
+housing = Part("housing", material="PETG")          # built-in: PLA PETG ABS ASA TPU PA12 PC Resin Aluminium Steel Brass
+gasket  = Part("gasket",  material="TPU")
+badge   = Part("badge",   material=Material("PLA", color="#e8a050"))     # built-in density, own colour
+insert  = Part("insert",  material=Material("CF-PA", density=1.15, color="#333333"))  # custom
+housing.mass()                                      # grams, from the material density
+```
+
+- One material per part. A multi-material print is several parts in their assembled positions
+  (a TPU seal sitting in a PETG groove, a coloured inlay in a recess); make them touch, not overlap.
+- Renders use the material colour unless the part sets `color=`. `cad inspect` shows material and mass.
+- `cad materials` lists the library (density, colour, notes).
+
+```bash
+cad export --format 3mf                          # out/r1/<project>.3mf: every part as its own object + its material
+cad export --format 3mf --3mf-mode multimaterial # one object, parts as material regions in place (multi-material printer)
+cad export --format stl                          # one STL per part, with a watertightness check
+```
+
+The 3MF file holds all parts (reference parts excluded): mesh units mm, closed oriented meshes, one
+`<basematerials>` slot per distinct material (name + colour) and, in `multimaterial` mode, per-triangle
+material indices plus PrusaSlicer/OrcaSlicer extruder assignments (slot k → extruder k+1). Overlapping
+parts are reported (`MATERIAL_OVERLAP`) because two materials would claim the same volume.
+In Python: `part.export("x.3mf")`, or `from cad.threemf import export_3mf; export_3mf({"a": a, "b": b}, "x.3mf", mode="multimaterial")`.
 
 ## Assemblies, motion and designing around components
 

@@ -1,0 +1,3 @@
+[project]
+name = "coaster"
+entry = "model.py"

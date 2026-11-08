@@ -337,6 +337,41 @@ def run_check(check: dict, parts_or_ctx) -> dict:
                               "triangles": rep["triangles"], "signed_volume": rep["signed_volume"]})
             ok = any(x["watertight"] and x["matches_parts"] for x in found)
             res.update(ok=ok, files=found, note=check.get("note", "a watertight STL matching the final model exists in the workspace"))
+        elif t == "threemf_artifact":
+            # a .3mf the agent exported: readable by lib3mf, closed meshes, and each part's material
+            # covering that part's geometry (works for one-object-per-part and multi-material layouts)
+            from .geom_checks import read_3mf
+
+            want = check["materials"]  # {part: material-name substring}
+            files = [f for f in sorted(ctx.workspace.rglob("*.3mf")) if ".cad" not in f.parts]
+            reports = []
+            for f in files:
+                try:
+                    info = read_3mf(f)
+                except Exception as e:
+                    reports.append({"file": str(f.relative_to(ctx.workspace)), "error": str(e)})
+                    continue
+                problems = []
+                if not info["closed"]:
+                    problems.append("mesh not closed/oriented")
+                for part, mname in want.items():
+                    p = parts.get(part)
+                    if p is None:
+                        problems.append(f"no part {part}")
+                        continue
+                    groups = [g for m, g in info["by_material"].items() if mname.lower() in m.lower()]
+                    if not groups:
+                        problems.append(f"no material matching {mname!r} (have {sorted(info['by_material'])})")
+                        continue
+                    bb = p.bbox
+                    if not any(max(abs(a - b) for a, b in zip(g["min"] + g["max"], list(bb.min) + list(bb.max))) <= check.get("bbox_tol", 0.15)
+                               for g in groups):
+                        problems.append(f"{mname} triangles do not match part '{part}' "
+                                        f"(part bbox {[round(v, 2) for v in bb.min + bb.max]}, material groups {groups})")
+                reports.append({"file": str(f.relative_to(ctx.workspace)), "objects": info["objects"],
+                                "materials": sorted(info["by_material"]), "problems": problems})
+            ok = any("problems" in r and not r["problems"] for r in reports)
+            res.update(ok=ok, files=reports or "no .3mf file in the workspace")
         elif t == "plate":
             # orientation-agnostic plate: two bbox dimensions match `footprint`, the third is the thickness,
             # with `holes` through-holes along the thickness axis

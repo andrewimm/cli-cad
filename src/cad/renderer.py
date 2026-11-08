@@ -201,14 +201,17 @@ def model_items(model: Any) -> list[tuple]:
     from .part import Part
 
     items: list[tuple[str, Any, Any]] = []
+    def col(p):  # explicit colour, else the material's colour
+        return p.color if p.color is not None else (p.material.color if getattr(p, "material", None) else None)
+
     if isinstance(model, Part):
-        items.append((model.name, model.shape, model.color, model.reference))
+        items.append((model.name, model.shape, col(model), model.reference))
     elif isinstance(model, dict):
         for k, p in model.items():
-            items.append((k, p.shape if isinstance(p, Part) else p, getattr(p, "color", None), getattr(p, "reference", False)))
+            items.append((k, p.shape if isinstance(p, Part) else p, col(p) if isinstance(p, Part) else None, getattr(p, "reference", False)))
     elif isinstance(model, (list, tuple)):
         for p in model:
-            items.append((getattr(p, "name", "shape"), p.shape if isinstance(p, Part) else p, getattr(p, "color", None),
+            items.append((getattr(p, "name", "shape"), p.shape if isinstance(p, Part) else p, col(p) if isinstance(p, Part) else None,
                           getattr(p, "reference", False)))
     else:
         items.append(("shape", model, None, False))

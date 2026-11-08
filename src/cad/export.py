@@ -15,7 +15,7 @@ from OCP.TopoDS import TopoDS_Shape
 
 from .errors import EXPORT_FAILED, INVALID_ARGUMENT, CadError
 
-FORMATS = {".step": "step", ".stp": "step", ".stl": "stl", ".brep": "brep"}
+FORMATS = {".step": "step", ".stp": "step", ".stl": "stl", ".brep": "brep", ".3mf": "3mf"}
 
 
 def export_shape(

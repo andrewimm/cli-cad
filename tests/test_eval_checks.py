@@ -148,3 +148,29 @@ def test_onboarding_checks_reject_wrong_answers(tmp_path):
     stale = project(tmp_path / "stale", "p.box(60, 40, 4)\np.hole_pattern(4, spacing=(48, 28))\n")
     (stale / "model.py").write_text("from cad import Part\np = Part('plate')\np.box(60, 40, 6)\np.hole_pattern(4, spacing=(48, 28))\n")
     assert failed(grade(t, stale)) == {"stl_artifact"}
+
+
+def test_threemf_artifact_check(tmp_path):
+    pytest.importorskip("lib3mf")
+    from cad.cli import main
+    from cad.engine import Engine
+
+    t = task("multimaterial_coaster")
+    src = (SOLUTION_DIR / "multimaterial_coaster" / "model.py").read_text()
+
+    def project(name, text, fmt_args):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "cad.toml").write_text('[project]\nname = "c"\nentry = "model.py"\n')
+        (d / "model.py").write_text(text)
+        e = Engine()
+        assert main(["build"], d, e)[0] == 0
+        if fmt_args:
+            assert main(["export", *fmt_args], d, e)[0] == 0
+        return d
+
+    assert grade(t, project("objects", src, ["--format", "3mf"]))["passed"]
+    assert grade(t, project("mm", src, ["--format", "3mf", "--3mf-mode", "multimaterial"]))["passed"]
+    swapped = src.replace('material="PLA"', 'material="X"').replace('material="TPU"', 'material="PLA"').replace('material="X"', 'material="TPU"')
+    assert failed(grade(t, project("swapped", swapped, ["--format", "3mf"]))) == {"threemf_artifact"}
+    assert failed(grade(t, project("none", src, ["--format", "stl"]))) == {"threemf_artifact"}

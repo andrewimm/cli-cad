@@ -1,0 +1,55 @@
+id = "multimaterial_coaster"
+title = "Two-material coaster (3MF)"
+category = "printing"
+split = "dev"
+selftest_commands = ["build", "export --format 3mf --3mf-mode multimaterial"]
+prompt = """
+Design a two-material drink coaster for a multi-material 3D printer.
+
+- "coaster": a round disc 90 mm in diameter and 5 mm thick, bottom face on Z = 0, centred on the origin, made of PLA.
+- Its top face has a circular recess 80 mm in diameter and 2 mm deep, centred.
+- "insert": a TPU disc that exactly fills the recess (80 mm diameter, 2 mm thick, flush with the coaster's top face). The two parts must touch but not overlap.
+- Export a single 3MF file containing both parts with their materials, so the coaster can be printed in one go.
+"""
+
+[[checks]]
+type = "part_count"
+names = ["coaster", "insert"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+part = "coaster"
+size = [90, 90, 5]
+min = [-45, -45, 0]
+tol = 0.05
+
+[[checks]]
+type = "bbox"
+part = "insert"
+size = [80, 80, 2]
+min = [-40, -40, 3]
+tol = 0.05
+
+[[checks]]
+type = "interference"
+a = "coaster"
+b = "insert"
+max_volume = 0.001
+
+[[checks]]
+type = "points_inside"
+part = "coaster"
+points = [[0, 0, 1.5], [42, 0, 4], [0, 0, 2.9]]
+note = "floor under the recess and the rim"
+
+[[checks]]
+type = "points_inside"
+part = "insert"
+points = [[0, 0, 4], [39, 0, 3.5]]
+
+[[checks]]
+type = "threemf_artifact"
+materials = { coaster = "PLA", insert = "TPU" }
