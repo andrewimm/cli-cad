@@ -256,9 +256,12 @@ def section_scene(items: list[tuple[str, Any, Any]], cam: Camera, section: str, 
             continue
         mesh, caps, bounds = hit
         default = REFERENCE_COLOR if rest and rest[0] else PALETTE[i % len(PALETTE)]
-        scene.append(SceneItem(name, mesh, _parse_color(color, default), bounds, {c: SECTION_COLOR for c in caps}))
+        base = _parse_color(color, default)
+        # cut faces: the part's own colour pushed toward the section red, so different parts/materials stay distinct
+        cap = tuple(0.55 * b + 0.45 * r for b, r in zip(base, SECTION_COLOR))
+        scene.append(SceneItem(name, mesh, base, bounds, {c: cap for c in caps}))
     info = {"plane": f"{'xyz'[axis]}={value:g}", "kept_side": "+" if keep > 0 else "-",
-            "cap_color": list(SECTION_COLOR), "parts_cut": [it.name for it in scene]}
+            "cap_color": "each part's colour blended with red", "parts_cut": [it.name for it in scene]}
     return scene, info
 
 
@@ -604,7 +607,7 @@ def render_one(
     img, framing = rasterize(scene, cam, size[0], size[1], style=style, background=background, supersample=supersample,
                              fit_bounds=(np.asarray(lo), np.asarray(hi)))
     if annotate_images:
-        label = title + (f"  |  SECTION {section['plane']} (cut faces red)" if section else "")
+        label = title + (f"  |  SECTION {section['plane']} (cut faces tinted red)" if section else "")
         img = annotate(img, cam, framing, label, [float(c) for c in (np.asarray(hi) - np.asarray(lo))])
     meta = {
         "image": {"width": size[0], "height": size[1], "format": "png"},

@@ -63,7 +63,7 @@ COMMANDS: dict[str, dict] = {
     "render": {"summary": "Render PNG views (iso, front, back, left, right, top, bottom, az=..,el=.., dir=x,y,z)", "project": True},
     "export": {"summary": "Export STEP / STL / 3MF (with materials) / BREP for a revision (reference parts are skipped)", "project": True},
     "materials": {"summary": "List built-in materials (density, colour) for Part(..., material=...)", "project": False},
-    "clearance": {"summary": "Minimum distance / overlap between every pair of parts (including reference envelopes)", "project": True},
+    "clearance": {"summary": "Clear / touching / overlap with minimum distance for every pair of parts (and per-face gaps for reference envelopes)", "project": True},
     "sweep": {"summary": "Rebuild over a range of one parameter, checking clearances (and rendering) at each value", "project": True},
     "params": {"summary": "List declared parameters and the override overlay", "project": True},
     "set": {"summary": "Override parameters (writes params.toml) and rebuild", "project": True},
@@ -164,14 +164,15 @@ def _parser() -> _Parser:
     s.add_argument("--style", default="shaded_edges", choices=["shaded_edges", "shaded", "lines"])
     s.add_argument("--background", default="#ffffff")
     s.add_argument("--out", help="output directory (default renders/r<rev>)")
-    s.add_argument("--section", metavar="PLANE", help="cut-away view: 'y=0' removes the half facing the camera; 'x=10:+' keeps the +X side; cut faces are red")
+    s.add_argument("--section", metavar="PLANE", help="cut-away view: 'y=0' removes the half facing the camera; 'x=10:+' keeps the +X side; cut faces are tinted red")
     s.add_argument("--no-annotate", action="store_true", help="omit the title, axis triad and scale bar")
     s.add_argument("--no-sheet", action="store_true", help="do not write the combined contact sheet")
 
     s = cmd("export")
     s.add_argument("--format", "-f", help="comma-separated: step,stl,3mf,brep (default from cad.toml)")
-    s.add_argument("--3mf-mode", dest="threemf_mode", default="objects", choices=["objects", "multimaterial"],
-                   help="objects: one printable object per part; multimaterial: one object, parts as material regions in place")
+    s.add_argument("--3mf-mode", dest="threemf_mode", default=None, choices=["objects", "multimaterial"],
+                   help="multimaterial: one print, parts as material regions in place; objects: separate pieces "
+                        "(default from cad.toml [export] threemf_mode, else objects)")
     s.add_argument("--revision", "-r")
     s.add_argument("--part", action="append")
     s.add_argument("--out", help="output directory (default out/r<rev>)")

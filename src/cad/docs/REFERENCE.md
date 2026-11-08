@@ -88,6 +88,7 @@ size = [1024, 768]
 
 [export]                  # optional defaults for `cad export`
 formats = ["step", "stl"]
+threemf_mode = "objects"  # or "multimaterial" (see Materials and 3D printing)
 ```
 
 `params.toml` holds parameter overrides written by `cad set` (commit it with the
@@ -338,10 +339,15 @@ housing.mass()                                      # grams, from the material d
 - `cad materials` lists the library (density, colour, notes).
 
 ```bash
-cad export --format 3mf                          # out/r1/<project>.3mf: every part as its own object + its material
-cad export --format 3mf --3mf-mode multimaterial # one object, parts as material regions in place (multi-material printer)
+cad export --format 3mf --3mf-mode multimaterial # ONE print, several filaments: parts touching in place (inlay, seal, two-tone)
+cad export --format 3mf                          # separate prints: every part its own object (box + lid, spare parts)
 cad export --format stl                          # one STL per part, with a watertightness check
 ```
+
+Which mode: parts that are printed together as one piece in different materials → `multimaterial`
+(the slicer gets one object whose parts are volumes on extruders 1, 2, …). Parts printed as separate
+pieces → `objects`. Set a default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. Check that
+parts touch without overlapping with `cad clearance` (every pair: clear / touching / overlap).
 
 The 3MF file holds all parts (reference parts excluded): mesh units mm, closed oriented meshes, one
 `<basematerials>` slot per distinct material (name + colour) and, in `multimaterial` mode, per-triangle
@@ -384,7 +390,7 @@ def build():
 - **Check it:**
 
 ```bash
-cad clearance --min 0.5                 # every pair: clear / touching / overlap, closest points;
+cad clearance --min 0.5                 # every pair of parts: clear / touching / overlap, closest points;
                                         # for reference parts, the gap in front of each of its faces
 cad clearance --min 0.5 --allow-contact # touching is fine (a part resting on its support), overlap is not
 cad sweep hinge_angle 0:135:15 --min 0.5 --render front    # rebuild at each value, report collisions,

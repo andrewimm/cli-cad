@@ -55,6 +55,7 @@ class ProjectConfig:
     size: tuple[int, int]
     export_formats: list[str]
     raw: dict
+    threemf_mode: str = "objects"
 
     @staticmethod
     def load(root: Path) -> "ProjectConfig":
@@ -76,6 +77,7 @@ class ProjectConfig:
             size=(int(size[0]), int(size[1])),
             export_formats=list(export.get("formats", ["step", "stl"])),
             raw=raw,
+            threemf_mode=str(export.get("threemf_mode", "objects")),
         )
 
 

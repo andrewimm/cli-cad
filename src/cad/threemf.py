@@ -124,6 +124,16 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
                                                "message": f"parts '{a}' and '{b}' overlap by {ov:.3f} mm3"
                                                + ("; two materials claim the same volume" if mode == "multimaterial" else ""),
                                                "parts": [a, b], "volume_mm3": round(ov, 4)})
+    if mode == "objects" and len(slots) > 1 and len(parts) > 1:
+        names = list(parts)
+        touching = [(a, b) for i, a in enumerate(names) for b in names[i + 1:]
+                    if slot_of[a] != slot_of[b] and parts[a].distance_to(parts[b]) < 1e-6]
+        if touching:
+            report["warnings"].append({"code": "CONSIDER_MULTIMATERIAL",
+                                       "message": f"parts in different materials touch ({', '.join(f'{a}/{b}' for a, b in touching[:4])}); "
+                                                  "to print them together as one piece use --3mf-mode multimaterial "
+                                                  "(or threemf_mode = \"multimaterial\" in cad.toml)",
+                                       "parts": [list(t) for t in touching]})
     for k, m in enumerate(slots):
         report["materials"].append({"slot": k, "name": m.name, "color": _color(m.color, "#808080")[:7],
                                     "density": m.density, "kind": m.kind, "extruder": k + 1,

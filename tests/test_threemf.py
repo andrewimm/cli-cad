@@ -49,7 +49,8 @@ def test_objects_mode_reads_back_with_materials(tmp_path):
     parts = _parts()
     rep = export_3mf(parts, tmp_path / "a.3mf", title="enclosure")
     assert [m["name"] for m in rep["materials"]] == ["PETG", "TPU", "PLA"]
-    assert not rep["warnings"]
+    codes = [w["code"] for w in rep["warnings"]]
+    assert "PARTS_OVERLAP" not in codes and "CONSIDER_MULTIMATERIAL" in codes  # touching parts in different materials
     w, model = _read(tmp_path / "a.3mf")
     assert model.GetUnit() == lib3mf.ModelUnit.MilliMeter
     objs = _objects(model)
