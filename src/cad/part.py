@@ -386,8 +386,13 @@ class Part:
 
     def _record_selection(self, feat: Feature, role: str, sel: _Selection) -> None:
         origins = set()
-        for s in sel.shapes:
-            for n in self._names_of(s, sel.kind):
+        if sel.kind == "edge":  # an edge depends on the features that made its adjacent faces
+            efmap = _occ.edge_face_map(self.shape)
+            named = [(f, "face") for e in sel.shapes for f in _occ.faces_of_edge(efmap, e)]
+        else:
+            named = [(s, sel.kind) for s in sel.shapes]
+        for s, kind in named:
+            for n in self._names_of(s, kind):
                 o = n.split(".", 1)[0]
                 if self._ref_origin.get(n) != "user" and o != feat.id:
                     origins.add(o)

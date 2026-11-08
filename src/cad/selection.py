@@ -221,6 +221,7 @@ class FaceSelection(_Selection):
             cyl = _occ.cylinder_info(s)
             if cyl:
                 d["radius"] = round(cyl["radius"], 6)
+                d["sweep_deg"] = round(math.degrees(cyl["angle"]), 3)
                 d["axis"] = _r(cyl["axis"])
                 d["concave"] = cyl["concave"]
             names = self._part._names_of(s, "face")
@@ -252,11 +253,15 @@ class FaceSelection(_Selection):
         return self._derive(keep, f"facing({direction!r})")
 
     def holes(self, diameter: float | None = None, tol: float = 1e-3):
-        """Concave cylindrical faces (hole walls), optionally of a given diameter."""
+        """Hole walls: concave cylindrical faces sweeping at least 180 degrees.
+
+        Concave fillets (quarter cylinders) are excluded.  Optionally filter by
+        ``diameter``.
+        """
         keep = []
         for f in self:
             i = self._info(f)
-            if i["type"] == "cylinder" and i.get("concave"):
+            if i["type"] == "cylinder" and i.get("concave") and i.get("sweep_deg", 0) >= 179.0:
                 if diameter is None or abs(2 * i["radius"] - diameter) <= tol:
                     keep.append(f)
         return self._derive(keep, f"holes({diameter})" if diameter is not None else "holes()")
