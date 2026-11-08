@@ -110,19 +110,19 @@ def init_project(root: Path, name: str | None = None, template: str | None = Non
     return root
 
 
-DEFAULT_TEMPLATE = '''"""{name}: describe the part here."""
+DEFAULT_TEMPLATE = '''"""{name}: describe the part here.
+
+Build with `cad build`, check with `cad inspect`, look with `cad render`.
+API reference: `cad docs`.  Worked examples: `cad examples list`, `cad examples show <name>`.
+"""
 from cad import Part, Parameter
 
-width = Parameter("width", 60, min=10, max=500)
-depth = Parameter("depth", 40, min=10, max=500)
-thickness = Parameter("thickness", 4, min=1, max=50)
+size = Parameter("size", 20, min=1, max=1000)
 
 
 def build():
     part = Part("{name}")
-    part.box(width, depth, thickness, name="base")
-    part.hole_pattern(3.2, spacing=(width - 12, depth - 12), count=(2, 2))
-    part.fillet(part.edges().vertical(), radius=3)
+    part.box(size, size, size, name="body")   # centred in X/Y, bottom face on Z = 0
     part.assert_valid()
     return part
 '''
