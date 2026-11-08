@@ -440,6 +440,9 @@ nut.threaded_hole("M8", at=(0, 0))                             # internal thread
   into), `insert` (heat-set insert pocket: blind, insert length + 0.5 mm), `nut` (hex pocket where the hole
   leaves the material). Metrics (`cad inspect --features`) give every dimension used, the material thickness
   and, for nuts, a standard screw length that fits. `INSERT_TOO_DEEP` when the material is too thin.
+- `HOLE_THROUGH_SEVERAL`: a through hole also crosses other material behind (a plate with a rod or wall behind
+  it). Start from a 3D point on the face you mean, e.g. `at=(0, 5, 20), direction="-y"`, with `depth=`.
+  `cad measure --holes` lists each hole with its `countersink` / `counterbore` diameter (and depth / angle).
 - Where things go: a 2D `at` starts at the first material along the drill direction (default -Z, from above),
   wherever the part sits, so `at=(18, 0)` on a part spanning Z 15..30 starts at Z = 30. Recesses (counterbore,
   countersink, insert lead-in) are at that entry; the `nut` pocket is at the far end, where the hole leaves the

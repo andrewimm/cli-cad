@@ -166,3 +166,19 @@ def test_3mf_overlap_check_uses_design_pose(tmp_path):
     lid = Part("lid", material="PETG"); lid.box(40, 30, 2, at=(0, 0, 10), name="plate"); lid.print_on(lid.faces("plate.top"))
     r = export_3mf({"base": base, "lid": lid}, tmp_path / "x.3mf")
     assert not r["warnings"] and r["oriented_for_print"]
+
+
+def test_hole_through_several_pieces_and_recess_report():
+    from cad import Path
+    p = Part("t"); p.box(40, 5, 60, at=(0, 0, -30), align=("center", "min", "min"))
+    p.sweep(Profile.circle(8), Path.polyline([(0, 2, 0), (0, 45, 0), (0, 45, 30)], radius=12))
+    f = p.screw_hole("M4", at=[(0, 20), (0, -20)], kind="countersunk", direction="-y")
+    assert [w.code for w in f.warnings] == ["HOLE_THROUGH_SEVERAL"]
+    q = p.copy("q")
+    g = q.screw_hole("M4", at=[(0, 5, 20), (0, 5, -20)], kind="countersunk", direction="-y")
+    assert not g.warnings
+    plate = Part("plate"); plate.box(40, 30, 6)
+    plate.screw_hole("M4", at=(-10, 0), kind="countersunk"); plate.screw_hole("M3", at=(10, 0), kind="counterbore")
+    hs = {h["diameter"]: h for h in plate.find_holes()}
+    assert hs[4.5]["countersink"] == {"diameter": 9.36, "angle": 90.0}
+    assert hs[3.4]["counterbore"] == {"diameter": 6.5, "depth": 3.2}

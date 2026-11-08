@@ -436,6 +436,32 @@ def first_hit(shape: TopoDS_Shape, origin, direction) -> float | None:
     return min(ts) if ts else None
 
 
+def material_spans(shape: TopoDS_Shape, origin, direction) -> list[tuple[float, float]]:
+    """Intervals (t0, t1), t >= 0, where the ray origin + t*direction runs through material."""
+    from OCP.BRepClass3d import BRepClass3d_SolidClassifier
+    from OCP.gp import gp_Dir, gp_Lin
+    from OCP.IntCurvesFace import IntCurvesFace_ShapeIntersector
+    from OCP.TopAbs import TopAbs_IN
+
+    inter = IntCurvesFace_ShapeIntersector()
+    inter.Load(shape, 1e-7)
+    inter.Perform(gp_Lin(gp_Pnt(*origin), gp_Dir(*direction)), -1e-6, 1e12)
+    ts = sorted({round(inter.WParameter(i), 7) for i in range(1, inter.NbPnt() + 1)})
+    ts = [t for t in ts if t >= -1e-6]
+    spans = []
+    for a, b in zip(ts, ts[1:]):
+        if b - a < 1e-6:
+            continue
+        m = (a + b) / 2
+        q = [o + m * d for o, d in zip(origin, direction)]
+        if BRepClass3d_SolidClassifier(shape, gp_Pnt(*q), 1e-7).State() == TopAbs_IN:
+            if spans and abs(spans[-1][1] - a) < 1e-6:
+                spans[-1] = (spans[-1][0], b)
+            else:
+                spans.append((a, b))
+    return spans
+
+
 def mesh_shape(shape: TopoDS_Shape, linear: float, angular: float) -> None:
     """Triangulate ``shape`` in place.
 

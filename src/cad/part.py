@@ -1608,6 +1608,20 @@ class Part:
                 refs_cs.append(cs_faces)
             flat_tools = [p for ps in tools for p in ps]
             feat.phases_ms["tools"] = (time.perf_counter() - t_tools) * 1000
+            if depth is None:  # a through hole that also runs through other, separate material behind
+                several = []
+                for pos, start in zip(positions, starts):
+                    spans = _occ.material_spans(body, start, d)
+                    if len(spans) > 1:
+                        several.append({"position": _jsonable(pos), "material_spans_mm": [[round(a, 3), round(b, 3)] for a, b in spans]})
+                if several:
+                    feat.warnings.append(CadWarning(
+                        "HOLE_THROUGH_SEVERAL", f"{len(several)} through hole(s) pass through {len(several[0]['material_spans_mm'])} "
+                        "separate pieces of material along their line (e.g. a plate and something behind it)", feat.id,
+                        {"holes": several[:6], "hint": "a 2D position starts where the line first meets material, which may not "
+                                                       "be the piece you meant: give a 3D start point on the face to drill and "
+                                                       "depth= that piece's thickness (spans along the line, from the start, are "
+                                                       "in material_spans_mm); ignore if drilling through all of them is intended"}))
             alg = BRepAlgoAPI_Cut()
             args, tl = List_TopoDS_Shape(), List_TopoDS_Shape()
             args.Append(body)
@@ -2092,14 +2106,60 @@ class Part:
                     lo, hi = min(lo, t), max(hi, t)
             ctr_lo = tuple(fc + lo * ac for fc, ac in zip(g["_foot"], a))
             names = sorted({n for f in g["_faces"] for n in self._names_of(f, "face")})
-            out.append({
+            entry = {
                 "diameter": round(g["diameter"], 6),
                 "axis": [round(c, 6) + 0.0 for c in a],
                 "position": [round(c, 4) + 0.0 for c in ctr_lo],
                 "depth": round(hi - lo, 4),
                 "names": names,
-            })
+            }
+            entry.update(self._hole_recesses(g, a, lo, hi, groups))
+            out.append(entry)
         out.sort(key=lambda h: (h["diameter"], h["position"]))
+        return out
+
+    def _hole_recesses(self, g, a, lo, hi, groups) -> dict:
+        """Countersink (coaxial cone) / counterbore (wider coaxial hole) at either end of a hole."""
+        from OCP.BRep import BRep_Tool
+
+        out = {}
+        for f in _occ.faces(self.shape):
+            if _occ.surface_type(f) != "cone":
+                continue
+            from OCP.BRepAdaptor import BRepAdaptor_Surface
+
+            cone = BRepAdaptor_Surface(f).Cone()
+            ax = cone.Axis().Direction()
+            cd = (ax.X(), ax.Y(), ax.Z())
+            if abs(abs(sum(x * y for x, y in zip(cd, a))) - 1) > 1e-6:
+                continue
+            loc = cone.Location()
+            p = (loc.X(), loc.Y(), loc.Z())
+            t = sum(pi * ai for pi, ai in zip(p, a))
+            if math.dist(tuple(pi - t * ai for pi, ai in zip(p, a)), g["_foot"]) > 1e-5:
+                continue
+            ts, rs = [], []
+            for v in _occ.vertices(f):
+                q = BRep_Tool.Pnt_s(v)
+                qq = (q.X(), q.Y(), q.Z())
+                tq = sum(x * y for x, y in zip(qq, a))
+                ts.append(tq)
+                rs.append(math.dist(tuple(x - tq * y for x, y in zip(qq, a)), g["_foot"]))
+            if not ts or min(abs(min(ts) - hi), abs(max(ts) - lo), abs(min(ts) - lo), abs(max(ts) - hi)) > 1e-4:
+                continue
+            out["countersink"] = {"diameter": round(2 * max(rs), 4), "angle": round(abs(2 * math.degrees(cone.SemiAngle())), 3)}
+        for o in groups:
+            if o is g or o["diameter"] <= g["diameter"] + 1e-6 or sum(x * y for x, y in zip(o["axis"], a)) < 1 - 1e-9 \
+                    or math.dist(o["_foot"], g["_foot"]) > 1e-6:
+                continue
+            olo, ohi = math.inf, -math.inf
+            for f in o["_faces"]:
+                for v in _occ.vertices(f):
+                    q = BRep_Tool.Pnt_s(v)
+                    tq = q.X() * a[0] + q.Y() * a[1] + q.Z() * a[2]
+                    olo, ohi = min(olo, tq), max(ohi, tq)
+            if abs(olo - hi) < 1e-4 or abs(ohi - lo) < 1e-4:
+                out["counterbore"] = {"diameter": round(o["diameter"], 4), "depth": round(ohi - olo, 4)}
         return out
 
     def summary(self) -> dict:
