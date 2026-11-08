@@ -156,5 +156,6 @@ PrusaSlicer volume config) loaded with correct geometry but every part on filame
 multi-material file was flattened into one part. The writer now uses a 3MF colour group (as Fusion
 does) and, for multi-material, an assembly plus Bambu's per-part settings: objects mode lands on
 filaments 1..n, multi-material mode loads as one object with one named part per filament
-(`tests/test_bambu.py`). Not verified: the GUI import dialog's filament-colour mapping, slicing with
-real two-filament profiles, PrusaSlicer.
+(`tests/test_bambu.py`). The multi-material example (`case_multimaterial.3mf`: PETG case, TPU feet,
+PLA inlay) was also opened in the Bambu Studio GUI by the user and works. Not verified: PrusaSlicer
+and OrcaSlicer.
