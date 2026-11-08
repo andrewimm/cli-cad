@@ -260,8 +260,11 @@ def slice_parts(parts: dict, *, title: str, out_dir: Path, printer: str | None =
     proc = ps.process(process, machine)
     mcfg, pcfg = ps.flat("machine", machine), ps.flat("process", proc)
 
-    # overall size check before spending time slicing
+    # overall size check before spending time slicing, on the parts as they will print
     from . import _occ
+    from .threemf import orient_for_print
+
+    parts, orient_notes = orient_for_print(parts, mode)
 
     lo = [float("inf")] * 3
     hi = [float("-inf")] * 3
@@ -378,7 +381,7 @@ def slice_parts(parts: dict, *, title: str, out_dir: Path, printer: str | None =
         "supports": {"enabled": pcfg.get("enable_support") == "1", "used": supports_used},
         "plate": {"size": _plate_size(mcfg), "objects": [o.get("name") for o in plate.get("objects", [])]},
         "time_by_feature_s": {k: round(v) for k, v in sorted(plate.get("feature_type_times", {}).items(), key=lambda kv: -kv[1]) if v >= 1},
-        "model_size": [round(s, 3) for s in size], "mode": mode,
+        "model_size": [round(s, 3) for s in size], "mode": mode, "oriented_for_print": orient_notes,
         "output": str(dst), "slice_seconds": round(elapsed, 2), "warnings": warnings,
     }
 

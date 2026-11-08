@@ -29,6 +29,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
 
+from . import _occ
 from .errors import EXPORT_FAILED, INVALID_ARGUMENT, CadError
 
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
@@ -87,6 +88,64 @@ def _mesh_xml(verts, tris, tri_attr: str = "") -> str:
     return f"<mesh><vertices>{vs}</vertices><triangles>{ts}</triangles></mesh>"
 
 
+def orient_for_print(parts: dict, mode: str = "objects") -> tuple[dict, list[str]]:
+    """Parts positioned for printing (Part.print_on).  In objects mode each part turns on its own;
+    in multimaterial mode the parts are one print, so they turn together (one orientation)."""
+    downs = {n: p.print_down for n, p in parts.items() if getattr(p, "print_down", None)}
+    if not downs:
+        return parts, []
+    if mode != "multimaterial":
+        return {n: p.as_printed() for n, p in parts.items()}, [f"{n}: printed on its {_dir_name(d)} face" for n, d in downs.items()]
+    distinct = {tuple(round(c, 6) for c in d) for d in downs.values()}
+    if len(distinct) > 1:
+        raise CadError(INVALID_ARGUMENT, "multi-material parts print as one object but have different print_on() orientations",
+                       details={"print_on": {n: list(d) for n, d in downs.items()}})
+    from .part import Part
+
+    down = next(iter(downs.values()))
+    ref = Part("_orient")
+    ref._shape = _occ.compound([p.shape for p in parts.values()])
+    ref.print_down = down
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+    trsf = _whole_trsf(ref.shape, down)  # one rotation + drop for the whole assembly
+    out = {}
+    for n, p in parts.items():
+        q = Part._rehydrate(p.name, BRepBuilderAPI_Transform(p.shape, trsf, True).Shape(), p.color, None, None, p.reference,
+                            p.material.to_dict() if p.material else None)
+        out[n] = q
+    return out, [f"all parts: printed on the {_dir_name(down)} side"]
+
+
+def _whole_trsf(before, down):
+    from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
+    import math as _m
+
+    n = down
+    target = (0.0, 0.0, -1.0)
+    dot = sum(a * b for a, b in zip(n, target))
+    t = gp_Trsf()
+    if dot < 1 - 1e-12:
+        if dot < -1 + 1e-12:
+            t.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), _m.pi)
+        else:
+            axis = (n[1] * target[2] - n[2] * target[1], n[2] * target[0] - n[0] * target[2], n[0] * target[1] - n[1] * target[0])
+            t.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(*axis)), _m.acos(max(-1.0, min(1.0, dot))))
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+    lo, _ = _occ.bbox(BRepBuilderAPI_Transform(before, t, True).Shape())
+    t2 = gp_Trsf()
+    t2.SetTranslation(gp_Vec(0, 0, -lo[2]))
+    return t2.Multiplied(t)
+
+
+def _dir_name(d) -> str:
+    axes = {(0, 0, -1): "bottom (-Z)", (0, 0, 1): "top (+Z)", (0, -1, 0): "front (-Y)", (0, 1, 0): "back (+Y)",
+            (-1, 0, 0): "left (-X)", (1, 0, 0): "right (+X)"}
+    key = tuple(int(round(c)) if abs(abs(c) - round(abs(c))) < 1e-6 else None for c in d)
+    return axes.get(key, f"({', '.join(f'{c:.3g}' for c in d)})")
+
+
 def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", tolerance: float = 0.01,
                angular_tolerance: float = 0.2, title: str | None = None, check_overlap: bool = True) -> dict:
     """Write ``parts`` ({name: Part}) to one .3mf file.  Returns a report (materials, objects, warnings)."""
@@ -98,6 +157,7 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         raise CadError(INVALID_ARGUMENT, f"unknown 3MF mode {mode!r}", hint=f"use one of {MODES}")
     if not parts:
         raise CadError(INVALID_ARGUMENT, "nothing to export")
+    parts, orient_notes = orient_for_print(parts, mode)
     # material slots, in first-use order; parts without a material get a per-part default slot
     slots: list[Material] = []
     slot_of: dict[str, int] = {}
@@ -110,7 +170,7 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
             idx = len(slots) - 1
         slot_of[name] = idx
     meshes = {}
-    report = {"mode": mode, "objects": [], "materials": [], "warnings": []}
+    report = {"mode": mode, "objects": [], "materials": [], "warnings": [], "oriented_for_print": orient_notes}
     for name, p in parts.items():
         v, t = welded_mesh(p.shape, tolerance, angular_tolerance)
         mr = manifold_report(v, t)

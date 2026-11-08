@@ -40,7 +40,7 @@ from OCP.BRepPrimAPI import (
     BRepPrimAPI_MakeSphere,
 )
 from OCP.collections import List_TopoDS_Shape
-from OCP.gp import gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
+from OCP.gp import gp_Ax3, gp_Ax1, gp_Ax2, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
 from OCP.Standard import Standard_Failure
 from OCP.TopoDS import TopoDS_Shape
 
@@ -262,6 +262,7 @@ class Part:
         self.color = color
         self.material = resolve(material)
         self.reference = bool(reference)
+        self.print_down: tuple[float, float, float] | None = None  # outward normal of the face that goes on the bed
         self._shape: TopoDS_Shape | None = None
         self._refs: dict[str, list[TopoDS_Shape]] = {}
         self._ref_kind: dict[str, str] = {}
@@ -843,6 +844,197 @@ class Part:
         params = {"path": str(path), "solid": solid, "scale": scale, "align": align, "at": at, "op": op}
         return self._run("import", name, params, build)
 
+    # ================================================================== threads
+    def thread(self, size: str, *, length: float, at: Sequence[float] = (0, 0, 0), direction: str | Sequence[float] = "+z",
+               pitch: float | None = None, name: str | None = None) -> FeatureRef:
+        """A threaded rod (external ISO metric thread) from ``at`` along ``direction``.
+
+        ``size`` "M8" (coarse pitch), "M8x1" or "M40x3"; ``length`` mm.  Fused into the part
+        (or the first body).  Prints best with the axis vertical (Z); below ~M6 printed
+        threads are weak, prefer a screw.  Named faces: ``<id>.thread``, ``<id>.end``.
+        """
+        from . import threads
+
+        d, p = threads.parse(size, pitch)
+        _pos(length=length)
+
+        def build(feat):
+            core, teeth = threads.bolt_tools(d, p, length)
+            trsf = _frame_trsf(_occ.vec(at), _axis_dir(direction))
+            shapes = [BRepBuilderAPI_Transform(s, trsf, True).Shape() for s in [core] + teeth]
+            rod = _fuse_all(shapes)
+            if not _occ.is_valid(rod):
+                raise CadError(OPERATION_FAILED, f"could not build a valid M{d:g}x{p:g} thread", feature=feat.id)
+            refs = {f"{feat.id}.thread": ("face", [f for f in _occ.faces(rod) if _occ.surface_type(f) != "plane"]),
+                    f"{feat.id}.end": ("face", [f for f in _occ.faces(rod) if _occ.surface_type(f) == "plane"])}
+            self._body_op(feat, rod, refs, "add")
+            feat.metrics["thread"] = {**threads.external_profile(d, p), "length": length, "turns": round(length / p, 2)}
+            self._thread_warnings(feat, d, p, _axis_dir(direction))
+
+        return self._run("thread", name, {"size": size, "pitch": p, "length": length, "at": at, "direction": direction}, build)
+
+    def threaded_hole(self, size: str, at: Sequence[float], *, depth: float | None = None, direction: str | Sequence[float] = "-z",
+                      clearance: float = 0.3, pitch: float | None = None, name: str | None = None) -> FeatureRef:
+        """A hole with an internal ISO metric thread (placement rules as :meth:`hole`).
+
+        ``clearance`` (mm, radial, default 0.3) is how far the thread is moved outward so a bolt
+        of the same size turns in it; the flanks get about half of it as play.  0.3 suits a
+        printed bolt, 0.15-0.2 a metal one.  ``depth=None``
+        threads through.  Below ~M6 use ``screw_hole(kind="insert")`` instead.
+        Named faces: ``<id>.thread``.
+        """
+        from . import threads
+
+        d, p = threads.parse(size, pitch)
+        if not 0 <= clearance <= 1:
+            raise CadError(INVALID_ARGUMENT, "clearance must be between 0 and 1 mm")
+        dvec = _axis_dir(direction)
+
+        def build(feat):
+            lo, hi = _occ.bbox(self.shape)
+            start = self._hole_start(at, dvec, lo, hi, feat.id)
+            ahead = _extent_along(lo, hi, start, dvec)
+            if ahead <= 1e-6:
+                raise CadError("HOLE_MISSED", f"the threaded hole at {_jsonable(at)} points away from the part", feature=feat.id)
+            back = 1.0 if len(at) == 2 else 0.01
+            length = depth if depth is not None else ahead + 1.0
+            bore, grooves, info = threads.hole_tools(d, p, -back, length, clearance)
+            trsf = _frame_trsf(start, dvec)
+            tools = [BRepBuilderAPI_Transform(s, trsf, True).Shape() for s in [bore] + grooves]
+            tool = _fuse_all(tools)
+            if not _occ.is_valid(tool):
+                raise CadError(OPERATION_FAILED, f"could not build a valid M{d:g}x{p:g} thread", feature=feat.id,
+                               hint="try a different clearance or pitch")
+            refs = {f"{feat.id}.thread": ("face", [f for f in _occ.faces(tool) if _occ.surface_type(f) != "plane"])}
+            if depth is not None:
+                refs[f"{feat.id}.floor"] = ("face", [f for f in _occ.faces(tool) if _occ.surface_type(f) == "plane"
+                                                      and sum(a * b for a, b in zip(_occ.face_normal(f), dvec)) > 0.5])
+            self._body_op(feat, tool, refs, "cut")
+            feat.metrics["thread"] = {**threads.external_profile(d, p), **info, "clearance": clearance,
+                                      "depth": round(length, 4), "start": _jsonable(start)}
+            self._thread_warnings(feat, d, p, dvec)
+
+        return self._run("threaded_hole", name, {"size": size, "pitch": p, "at": at, "depth": depth, "direction": direction,
+                                                 "clearance": clearance}, build)
+
+    def _thread_warnings(self, feat, d, p, axis) -> None:
+        if d < 6:
+            feat.warnings.append(CadWarning("THREAD_TOO_FINE", f"printed M{d:g} threads are weak and often fuse shut on FDM",
+                                            feat.id, {"hint": "use a heat-set insert (screw_hole(kind='insert')) or a "
+                                                              "self-tapping pilot hole (kind='tap') instead"}))
+        if abs(axis[2]) < 0.9:
+            feat.warnings.append(CadWarning("THREAD_ORIENTATION", "the thread axis is not vertical: the flanks facing down "
+                                            "print as overhangs and the thread comes out rough or oval", feat.id,
+                                            {"hint": "orient the part so the thread axis is along Z"}))
+
+    # ================================================================== snap fits
+    def snap_hook(self, *, on, length: float, thickness: float, width: float, catch: float = 1.0,
+                  hook: str | Sequence[float] | None = None, at: Sequence[float] | None = None,
+                  lead_in_angle: float = 30.0, retention_angle: float = 90.0, name: str | None = None) -> FeatureRef:
+        """A cantilever snap-fit hook standing on a flat face.
+
+        The beam grows out of ``on`` (one planar face) along its normal for ``length`` mm
+        (root to the catch), ``thickness`` mm thick in the bending direction and ``width`` mm
+        wide; at its tip a hook sticks out ``catch`` mm toward ``hook`` (a direction in the
+        face, e.g. "+x"; default the face's "up").  ``at`` = (u, v) from the face centre or a
+        3D point: the beam's outer face (the hook side) passes through it.
+        ``lead_in_angle`` (from the beam axis; 25-35 slides on easily) and
+        ``retention_angle`` (90 = permanent, ~45 = can be pulled apart) shape the hook.
+
+        Metrics: peak strain vs the material's allowable strain, deflection force, and the
+        catch face position; warnings SNAP_STRAIN_HIGH and SNAP_LAYER_ORIENTATION (a beam
+        printed upright breaks along its layers).  Named faces: ``<id>.catch`` (the face that
+        holds), ``<id>.lead_in``, ``<id>.beam``.  The mating part needs a ledge or window the
+        catch face hooks behind: put it at the catch position, ``catch`` mm deep.
+        """
+        from .snapfit import analyse
+
+        _pos(length=length, thickness=thickness, width=width, catch=catch)
+        if not 5 <= lead_in_angle <= 60:
+            raise CadError(INVALID_ARGUMENT, "lead_in_angle must be 5-60 degrees (from the beam axis)")
+        if not 20 <= retention_angle <= 90:
+            raise CadError(INVALID_ARGUMENT, "retention_angle must be 20-90 degrees (90 = square, permanent)")
+
+        def build(feat):
+            if isinstance(on, FaceSelection):
+                self._check_current(on, feat.id)
+                self._record_selection(feat, "on", on)
+            pl = Plane.from_face(on, at=at if at is not None and len(at) == 2 else None)
+            n = pl.normal
+            if hook is None:
+                h = pl.v
+            else:
+                hv = _axis_dir(hook)
+                dot = sum(a * b for a, b in zip(hv, n))
+                h = tuple(a - dot * b for a, b in zip(hv, n))
+                hn = math.sqrt(sum(c * c for c in h))
+                if hn < 1e-6:
+                    raise CadError(INVALID_ARGUMENT, "hook direction is along the face normal; give a direction within the face",
+                                   feature=feat.id)
+                h = tuple(c / hn for c in h)
+            origin = pl.origin
+            if at is not None and len(at) == 3:
+                p3 = _occ.vec(at)
+                dist = sum((a - b) * c for a, b, c in zip(p3, origin, n))
+                origin = tuple(a - dist * c for a, c in zip(p3, n))
+            w = (n[1] * h[2] - n[2] * h[1], n[2] * h[0] - n[0] * h[2], n[0] * h[1] - n[1] * h[0])
+            eps = 0.01  # sink the root into the face so the beam fuses
+            z_r = length
+            lead = catch / math.tan(math.radians(lead_in_angle))
+            land = min(0.4, 0.3 * catch + 0.1)
+            ret = 0.0 if retention_angle >= 90 else catch / math.tan(math.radians(retention_angle))
+            pts2 = [(-thickness, -eps), (0, -eps), (0, z_r - ret), (catch, z_r), (catch, z_r + land), (0, z_r + land + lead),
+                    (-thickness, z_r + land + lead)]
+            # profile plane spanned by h (x) and n (z), extruded along w by width, centred
+            prof_pl = Plane(tuple(o - w_ * width / 2 for o, w_ in zip(origin, w)), w, h)
+            # Plane(origin, normal, u): u = h, v = normal x u ... check v aligns with n
+            vv = prof_pl.v
+            sign = 1.0 if sum(a * b for a, b in zip(vv, n)) > 0 else -1.0
+            face = Profile.polygon([(x, sign * z) for x, z in pts2]).placed(prof_pl)
+            tool = BRepPrimAPI_MakePrism(face, gp_Vec(*[c * width for c in w])).Shape()
+            refs = {}
+            catch_faces, lead_faces, beam_faces = [], [], []
+            for f in _occ.faces(tool):
+                if _occ.surface_type(f) != "plane":
+                    continue
+                fn = _occ.face_normal(f)
+                dn, dh = sum(a * b for a, b in zip(fn, n)), sum(a * b for a, b in zip(fn, h))
+                c = _occ.face_centroid(f)
+                height = sum((a - b) * nn for a, b, nn in zip(c, origin, n))
+                if dn < -1e-6 and dh > -1e-6 and height > z_r * 0.5 and height <= z_r + 1e-6:
+                    catch_faces.append(f)
+                elif dn > 1e-6 and dh > 1e-6:
+                    lead_faces.append(f)
+                elif abs(dn) < 1e-6:
+                    beam_faces.append(f)
+            for role, fs in (("catch", catch_faces), ("lead_in", lead_faces), ("beam", beam_faces)):
+                if fs:
+                    refs[f"{feat.id}.{role}"] = ("face", fs)
+            self._body_op(feat, tool, refs, "add")
+            upright = abs(n[2]) > 0.7
+            a = analyse(length, thickness, width, catch, self.material, upright=upright)
+            catch_pt = tuple(o + z_r * nn for o, nn in zip(origin, n))
+            a.update(catch_face_at=_jsonable(catch_pt), hook_direction=_jsonable(h), beam_axis=_jsonable(n),
+                     total_height=round(z_r + land + lead, 4))
+            feat.metrics["snap"] = a
+            if not a["ok"]:
+                feat.warnings.append(CadWarning(
+                    "SNAP_STRAIN_HIGH", f"the hook bends to {a['strain_pct']}% strain; {a['material']} allows ~{a['allowable_strain_pct']}% "
+                    + ("(halved: printed upright) " if upright else "")
+                    + "for repeated snapping, so it will crack or take a set", feat.id,
+                    {"hint": f"lengthen the beam to >= {a['min_length_for_material']} mm, make it thinner, or reduce catch",
+                     **a}))
+            if upright and a["ok"]:
+                feat.warnings.append(CadWarning(
+                    "SNAP_LAYER_ORIENTATION", "the beam stands upright (along Z): printed this way it bends across its "
+                    f"layer lines, so strain was checked against half the usual limit ({a['strain_pct']}% of "
+                    f"{a['allowable_strain_pct']}%: ok)", feat.id,
+                    {"hint": "fine if the part must print this way; laying the beam flat (axis along X or Y) is stronger"}))
+
+        params = {"on": on, "length": length, "thickness": thickness, "width": width, "catch": catch, "hook": hook, "at": at,
+                  "lead_in_angle": lead_in_angle, "retention_angle": retention_angle}
+        return self._run("snap_hook", name, params, build)
+
     # ================================================================== text
     def emboss(self, text: str, *, on, size: float, height: float = 0.6, at: Sequence[float] | None = None,
                up: Sequence[float] | None = None, angle: float = 0.0, font: str | None = None, bold: bool = False,
@@ -1046,7 +1238,85 @@ class Part:
         extra = {"circle_diameter": circle_diameter, "count": count, "center": list(center), "start_angle": start_angle}
         return self._holes("bolt_circle", name, diameter, pts, depth, direction, counterbore, countersink, extra)
 
-    def _holes(self, ftype, name, diameter, positions, depth, direction, counterbore, countersink, extra) -> FeatureRef:
+    def screw_hole(self, size: str, at, *, kind: str = "clearance", depth: float | None = None,
+                   direction: str | Sequence[float] = "-z", name: str | None = None) -> FeatureRef:
+        """A hole sized for a metric screw (M2 .. M8), from the built-in fastener table.
+
+        ``kind``:
+          - ``"clearance"``  the screw passes through (ISO 273 medium fit)
+          - ``"counterbore"`` clearance hole with a recess so a socket head sits below the surface
+          - ``"countersunk"`` clearance hole with a 90-degree countersink for a flat head, flush
+          - ``"tap"``        undersized pilot hole the screw cuts its own thread into (plastic)
+          - ``"insert"``     pocket for a heat-set threaded insert (blind: insert length + 0.5 mm,
+                             with a lead-in chamfer); needs >= 1.5 mm of wall around it
+          - ``"nut"``        clearance hole with a hex pocket for a nut at the far side, where the
+                             drill line leaves the material
+        ``at`` is one position or a list (same rules as :meth:`hole`).  The feature's metrics give
+        the dimensions used, the material thickness along each hole and, for nuts and
+        counterbores, a standard screw length that fits.  `cad docs fasteners` lists the table.
+        """
+        from .fasteners import ALLOWANCE, KINDS, lookup, screw_length
+
+        f = lookup(size)
+        if kind not in KINDS:
+            raise CadError(INVALID_ARGUMENT, f"unknown screw hole kind {kind!r}", hint=f"use one of {', '.join(KINDS)}")
+        positions = [at] if isinstance(at, (list, tuple)) and at and isinstance(at[0], (int, float)) else list(at)
+        diameter, cb, cs, nut = f.clearance, None, None, None
+        if kind == "counterbore":
+            extra_d = 0.6 if f.d < 3 else ALLOWANCE["counterbore_d"]
+            cb = (round(f.head_d + extra_d, 3), round(f.head_h + ALLOWANCE["counterbore_h"], 3))
+        elif kind == "countersunk":
+            cs = (round(f.csk_head_d + ALLOWANCE["countersink_d"], 3), 90.0)
+        elif kind == "tap":
+            diameter = f.tap
+        elif kind == "insert":
+            diameter = f.insert_d
+            depth = depth if depth is not None else round(f.insert_len + ALLOWANCE["insert_extra_depth"], 3)
+            cs = (round(f.insert_d + ALLOWANCE["insert_lead_in"], 3), 90.0)
+        elif kind == "nut":
+            if depth is not None:
+                raise CadError(INVALID_ARGUMENT, "a nut trap goes where the hole leaves the material: leave depth=None")
+            nut = (round(f.nut_af + ALLOWANCE["nut_af"], 3), round(f.nut_h + ALLOWANCE["nut_h"], 3))
+
+        def report(feat, starts, exits):
+            thick = [round(math.dist(s0, e0), 4) if e0 is not None else None for s0, e0 in zip(starts, exits)]
+            info = {"size": f.size, "kind": kind, "hole_diameter": diameter, "depth": depth, "material_thickness": thick}
+            if cb:
+                info["counterbore"] = {"diameter": cb[0], "depth": cb[1]}
+            if cs:
+                info["countersink" if kind != "insert" else "lead_in"] = {"diameter": cs[0], "angle": 90}
+            if nut:
+                info["nut_pocket"] = {"across_flats": nut[0], "depth": nut[1]}
+            if kind == "insert":
+                info["insert"] = {"hole": f.insert_d, "length": f.insert_len,
+                                  "screw_engagement_max": f.insert_len}
+            t0 = next((t for t in thick if t), None)
+            if t0 and kind in ("nut", "counterbore", "countersunk", "clearance") and depth is None:
+                grip = t0 - (cb[1] if cb else 0.0)
+                if kind == "nut":
+                    L = screw_length(grip - 0.5 * f.nut_h)  # at least half the nut engaged
+                    info["screw_length"] = L
+                    info["screw_protrudes_mm"] = round(L - grip, 2) if L else None
+                else:
+                    info["material_grip"] = round(grip, 3)
+            recess = cb[1] if cb else ((cs[0] - diameter) / 2 if cs and kind == "countersunk" else 0.0)
+            if recess and t0 is not None and t0 - recess < 0.8:
+                feat.warnings.append(CadWarning(
+                    "RECESS_TOO_DEEP", f"the {kind} is {recess:.2f} mm deep in {t0} mm of material, leaving "
+                    f"{max(t0 - recess, 0):.2f} mm: a knife edge that breaks or will not print", feat.id,
+                    {"hint": f"make the material at least {recess + 1.2:.1f} mm thick here, or use kind='clearance' "
+                             "with a pan-head screw"}))
+            if kind == "insert" and t0 is not None and depth is not None and t0 < depth + 1.0:
+                feat.warnings.append(CadWarning("INSERT_TOO_DEEP", f"the {f.size} insert pocket ({depth} mm) is too deep for the "
+                                                f"material ({t0} mm): it breaks through or leaves under 1 mm of floor", feat.id,
+                                                {"hint": "use a thicker boss or a shorter insert"}))
+            feat.metrics["fastener"] = info
+
+        return self._holes("screw_hole", name, diameter, positions, depth, direction, cb, cs, {"size": f.size, "kind": kind},
+                           nut=nut, on_built=report)
+
+    def _holes(self, ftype, name, diameter, positions, depth, direction, counterbore, countersink, extra,
+               nut: tuple[float, float] | None = None, on_built=None) -> FeatureRef:
         _pos(diameter=diameter)
         if depth is not None:
             _pos(depth=depth)
@@ -1075,7 +1345,7 @@ class Part:
             starts = [self._hole_start(p, d, lo, hi, feat.id) for p in positions]
             margin = 1.0 + 1e-3 * diag
             t_tools = time.perf_counter()
-            tools, refs_wall, refs_floor, refs_cb, refs_cs = [], [], [], [], []
+            tools, refs_wall, refs_floor, refs_cb, refs_cs, refs_nut, exits = [], [], [], [], [], [], []
             for pos, start in zip(positions, starts):
                 ahead = _extent_along(lo, hi, start, d)
                 if ahead <= 1e-6:
@@ -1109,7 +1379,23 @@ class Part:
                     cap = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*back), gp_Dir(*d)), csd / 2, back_off).Shape()
                     cs_faces = [f for f in _occ.faces(cone) if _occ.surface_type(f) == "cone"]
                     pieces += [cone, cap]
+                # where the drill line leaves the material (for nut traps and screw lengths)
+                far = tuple(st + (ahead + margin) * c for st, c in zip(start, d))
+                t_back = _occ.first_hit(body, far, tuple(-c for c in d))
+                exit_pt = tuple(f - t_back * c for f, c in zip(far, d)) if t_back is not None else None
+                exits.append(exit_pt)
+                nut_faces = []
+                if nut is not None and exit_pt is not None:
+                    af, nh = nut
+                    up = (1.0, 0.0, 0.0) if abs(d[0]) < 0.9 else (0.0, 1.0, 0.0)
+                    u = _occ.vec([a - sum(x * y for x, y in zip(up, d)) * b for a, b in zip(up, d)])
+                    outside = tuple(e + back_off * c for e, c in zip(exit_pt, d))
+                    hexf = Profile.regular_polygon(6, across_flats=af).placed(Plane(outside, tuple(-c for c in d), u))
+                    hexp = BRepPrimAPI_MakePrism(hexf, gp_Vec(*[-c * (nh + back_off) for c in d])).Shape()
+                    nut_faces = _occ.faces(hexp)
+                    pieces.append(hexp)
                 tools.append(pieces)
+                refs_nut.append(nut_faces)
                 refs_wall.append(walls)
                 refs_floor.append(floors)
                 refs_cb.append(cb_faces)
@@ -1141,6 +1427,8 @@ class Part:
                 refs[f"{fid}.counterbore_floor"] = ("face", [f for w in refs_cb for f in w if _occ.surface_type(f) == "plane"])
             if countersink is not None:
                 refs[f"{fid}.countersink"] = ("face", [f for w in refs_cs for f in w])
+            if nut is not None:
+                refs[f"{fid}.nut"] = ("face", [f for w in refs_nut for f in w])
             before = _occ.volume_fast(body)
             before_solids = len(_occ.solids(body))
             self._commit(feat, alg.Shape(), alg, refs)
@@ -1165,6 +1453,8 @@ class Part:
                             {"missed_positions": _jsonable([positions[i] for i in missing])},
                         )
                     )
+            if on_built is not None:
+                on_built(feat, starts, exits)
 
         return self._run(ftype, name, params, build)
 
@@ -1195,6 +1485,52 @@ class Part:
     def chamfer(self, edges: EdgeSelection, distance: float, *, name: str | None = None) -> FeatureRef:
         """Bevel the selected edges by ``distance`` (symmetric).  Named faces: ``<id>.faces``."""
         return self._dressup("chamfer", name, edges, distance)
+
+    def bottom_chamfer(self, size: float = 0.5, *, holes: bool = True, name: str | None = None) -> FeatureRef:
+        """Chamfer the edges of the faces that sit on the print bed (lowest Z), against
+        "elephant's foot" (the squashed first layers bulge outward by ~0.2-0.5 mm).
+
+        Chamfers the outer outline; with ``holes=True`` also the edges of holes and cut-outs
+        in those faces (they shrink for the same reason).  0.4-0.6 mm is typical.
+        """
+        from OCP.BRepTools import BRepTools
+
+        _pos(distance=size)
+        lo = self.bbox.min[2]
+        bed = [f for f in self.faces().facing("-z").shapes
+               if _occ.surface_type(f) == "plane" and abs(_occ.bbox(f)[0][2] - lo) < 1e-6 and abs(_occ.bbox(f)[1][2] - lo) < 1e-6]
+        if not bed:
+            raise CadError(EMPTY_SELECTION, "the part has no flat face on the bed (at its lowest Z)",
+                           hint="orient the part for printing so a flat face is at the bottom")
+        efmap = _occ.edge_face_map(self.shape)
+        chosen, seen = [], _occ.ShapeSet([])
+        for f in bed:
+            wires = [BRepTools.OuterWire_s(f)] if not holes else _occ.wires(f)
+            for w in wires:
+                for e in _occ.edges(w):
+                    if e in seen:
+                        continue
+                    seen.add(e)
+                    adj = _occ.faces_of_edge(efmap, e)
+                    other = [g for g in adj if not g.IsSame(f)]
+                    if other and _occ.edge_convexity(e, f, other[0]) < -1e-6:  # convex
+                        chosen.append(e)
+        skipped = []
+        ok, _ = self._dressup_result_ok(self._make_dressup("chamfer", chosen, size)) if chosen else (False, "")
+        if chosen and not ok:  # leave out edges that cannot take the chamfer (e.g. next to a countersink)
+            good = []
+            for e in chosen:
+                (good if self._dressup_result_ok(self._make_dressup("chamfer", [e], size))[0] else skipped).append(e)
+            chosen = good
+        sel = EdgeSelection(self, chosen, f"bottom edges (z={lo:g})")
+        ref = self._dressup("bottom_chamfer", name, sel, size)
+        if skipped:
+            ref.feature.warnings.append(CadWarning(
+                "CHAMFER_SKIPPED", f"{len(skipped)} bottom edge(s) cannot take a {size} mm chamfer and were left sharp",
+                ref.feature.id, {"edges": [sel._info(e) for e in skipped][:6],
+                                 "hint": "usually a hole whose countersink or counterbore almost reaches the bed; "
+                                         "a smaller size may fit"}))
+        return ref
 
     def _dressup(self, ftype, name, edges, size) -> FeatureRef:
         if not isinstance(edges, EdgeSelection):
@@ -1543,6 +1879,7 @@ class Part:
             "name": self.name,
             "has_body": True,
             "reference": self.reference,
+            "print_down": list(self.print_down) if self.print_down else None,
             "material": mat.name if mat else None,
             "mass_g": round(self.mass(), 3) if mat and mat.density else None,
             "valid": self.is_valid(),
@@ -1586,6 +1923,7 @@ class Part:
         import copy as _copy
 
         p = Part(name or self.name, color=self.color, reference=self.reference, material=self.material)
+        p.print_down = self.print_down
         p._shape = self._shape
         p._refs = {k: list(v) for k, v in self._refs.items()}
         p._ref_kind = dict(self._ref_kind)
@@ -1593,6 +1931,52 @@ class Part:
         p._ref_lost = dict(self._ref_lost)
         p.features = _copy.deepcopy(self.features)
         p._counters = dict(self._counters)
+        return p
+
+    # ================================================================== print orientation
+    def print_on(self, face) -> "Part":
+        """Print this part lying on ``face`` (a flat face selection, or a direction like "+z").
+
+        The model keeps its assembled pose; `cad slice` and STL / 3MF exports rotate the part so
+        this face is on the bed.  E.g. a lid modelled closed: ``lid.print_on(lid.faces("plate.top"))``.
+        """
+        if isinstance(face, str) or (isinstance(face, (list, tuple)) and len(face) == 3 and isinstance(face[0], (int, float))):
+            self.print_down = tuple(_axis_dir(face))
+            return self
+        shapes = getattr(face, "shapes", None)
+        if not shapes or any(_occ.surface_type(f) != "plane" for f in shapes):
+            raise CadError(INVALID_ARGUMENT, "print_on() needs a flat face selection (or a direction such as '+z')")
+        f = max(shapes, key=_occ.area)
+        self.print_down = tuple(round(c, 12) for c in _occ.face_normal(f))
+        return self
+
+    def print_shape(self) -> TopoDS_Shape:
+        """The shape as it will be printed: rotated so ``print_down`` points to -Z, resting on Z = 0."""
+        shape = self.shape
+        if self.print_down is None:
+            return shape
+        n = _occ.vec(self.print_down)
+        target = (0.0, 0.0, -1.0)
+        dot = sum(a * b for a, b in zip(n, target))
+        t = gp_Trsf()
+        if dot < 1 - 1e-12:
+            if dot < -1 + 1e-12:
+                t.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), math.pi)
+            else:
+                axis = (n[1] * target[2] - n[2] * target[1], n[2] * target[0] - n[0] * target[2], n[0] * target[1] - n[1] * target[0])
+                t.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(*axis)), math.acos(max(-1.0, min(1.0, dot))))
+        rotated = BRepBuilderAPI_Transform(shape, t, True).Shape()
+        lo, _ = _occ.bbox(rotated)
+        t2 = gp_Trsf()
+        t2.SetTranslation(gp_Vec(0, 0, -lo[2]))
+        return BRepBuilderAPI_Transform(rotated, t2, True).Shape()
+
+    def as_printed(self) -> "Part":
+        """A copy positioned for printing (see :meth:`print_on`); itself if no orientation is set."""
+        if self.print_down is None:
+            return self
+        p = Part._rehydrate(self.name, self.print_shape(), self.color, None, None, self.reference,
+                            self.material.to_dict() if self.material else None)
         return p
 
     # ================================================================== persistence
@@ -1619,11 +2003,12 @@ class Part:
 
     @classmethod
     def _rehydrate(cls, name: str, shape: TopoDS_Shape, color=None, refs: dict | None = None, features: list[dict] | None = None,
-                   reference: bool = False, material: dict | None = None) -> "Part":
+                   reference: bool = False, material: dict | None = None, print_down=None) -> "Part":
         """Rebuild a queryable Part from stored geometry (no script re-execution)."""
         from .materials import Material
 
         p = cls(name, color=color, reference=reference, material=Material(**material) if material else None)
+        p.print_down = tuple(print_down) if print_down else None
         p._shape = shape
         refs = refs or {}
         index = {"face": _occ.faces(shape), "edge": _occ.edges(shape)}
@@ -1715,6 +2100,28 @@ def _direction_refs(fid: str, tool) -> dict:
         if nm:
             refs.setdefault(f"{fid}.{nm}", ("face", []))[1].append(f)
     return refs
+
+
+def _frame_trsf(origin, direction):
+    """Transform from a local frame (origin 0, axis +Z) to ``origin`` with +Z along ``direction``."""
+    t = gp_Trsf()
+    t.SetTransformation(gp_Ax3(gp_Pnt(*origin), gp_Dir(*direction)), gp_Ax3())
+    return t
+
+
+def _fuse_all(shapes: list):
+    if len(shapes) == 1:
+        return shapes[0]
+    alg = BRepAlgoAPI_Fuse()
+    args, tools = List_TopoDS_Shape(), List_TopoDS_Shape()
+    args.Append(shapes[0])
+    for s in shapes[1:]:
+        tools.Append(s)
+    alg.SetArguments(args)
+    alg.SetTools(tools)
+    alg.Build()
+    alg.SimplifyResult()
+    return alg.Shape()
 
 
 def _import_align(align):

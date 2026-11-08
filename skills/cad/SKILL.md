@@ -65,6 +65,9 @@ Profiles: `Profile.rect/rounded_rect/circle/slot/polygon/regular_polygon(across_
 Holes: `hole`, `holes(d, positions)`, `hole_pattern`, `bolt_circle`; `depth=None` is through;
 `counterbore=(d, depth)`, `countersink=(d, 90)`; `direction=` may be any vector.
 Dress-up: `fillet(edges, r)`, `chamfer(edges, d)`, `shell(t, open_faces=...)`. Transforms: `translate`, `rotate`, `mirror`.
+Printing: `screw_hole("M3", at=, kind="clearance|counterbore|countersunk|tap|insert|nut")` (`cad fasteners`),
+`bottom_chamfer(0.5)`, `snap_hook(on=, length=, thickness=, width=, catch=)` (checks strain), `thread("M8", length=)`,
+`threaded_hole("M8", at=)`. `cad docs printing` for details.
 Text: `engrave("SN 01", on=p.faces("body.top"), size=6, depth=0.6)` / `emboss(..., height=0.5)` on any flat
 face (`size` = capital height mm; `at=(u, v)` from the face centre; `font=`, `bold=True`; `cad fonts`).
 
@@ -98,7 +101,7 @@ or your own `p.tag("mount", p.faces().facing("-z"))`.
 | moving parts | a motion `Parameter`, then `cad sweep angle 0:90:15 --min 0.5 --render front` |
 | hidden internals | `cad render --views front --section y=0` |
 | a vendor part (STEP/STL) | `cad info vendor/x.step`, then `Part.from_file("vendor/x.step", reference=True)`; keep it where the file puts it; outline at a height: `cad measure x --section z=-5` |
-| will it print, how long, how many grams | `cad slice` (Bambu Studio; `NEEDS_SUPPORT` = re-orient or `--supports auto`) |
+| will it print, how long, how many grams | `cad slice` (Bambu Studio; `NEEDS_SUPPORT` = `part.print_on(face)` to lay it on another face, or `--supports auto`) |
 
 Renders show shape; numbers prove it. Do not report success until the checks pass.
 

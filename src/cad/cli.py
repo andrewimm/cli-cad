@@ -64,6 +64,7 @@ COMMANDS: dict[str, dict] = {
     "export": {"summary": "Export STEP / STL / 3MF (with materials) / BREP for a revision (reference parts are skipped)", "project": True},
     "materials": {"summary": "List built-in materials (density, colour) for Part(..., material=...)", "project": False},
     "slice": {"summary": "Slice with Bambu Studio: print time, filament grams per material, layers, supports, warnings; writes a .gcode.3mf", "project": True},
+    "fasteners": {"summary": "Metric screw, nut and heat-set insert dimensions used by screw_hole() (M2-M8)", "project": False},
     "info": {"summary": "What a STEP / IGES / STL / BREP file contains: bodies, names, sizes, units (before importing it)", "project": False},
     "fonts": {"summary": "List installed fonts usable for text (Profile.text, Part.emboss / engrave)", "project": False},
     "clearance": {"summary": "Clear / touching / overlap with minimum distance for every pair of parts (and per-face gaps for reference envelopes)", "project": True},
@@ -200,6 +201,7 @@ def _parser() -> _Parser:
     s.add_argument("--3mf-mode", dest="threemf_mode", choices=["objects", "multimaterial"])
     s.add_argument("--out", help="output directory (default out/r<N>)")
     s.add_argument("--list", choices=["printers", "processes", "filaments"], help="list Bambu presets and exit")
+    cmd("fasteners")
     s = cmd("info")
     s.add_argument("file", help="a .step/.stp/.iges/.igs/.stl/.brep file")
     s = cmd("fonts")
@@ -441,6 +443,16 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
 
         items = listing(args.list, args.printer, args.nozzle)
         return {args.list: items}, "\n".join(items)
+    if c == "fasteners":
+        from .fasteners import ALLOWANCE, TABLE
+
+        rows = [f.to_dict() for f in TABLE.values()]
+        head = "size  pitch clear  tap  head_d head_h csk_d  nut_af nut_h insert_d insert_len"
+        lines = [head] + [f"{f.size:<5} {f.pitch:<5} {f.clearance:<5} {f.tap:<4} {f.head_d:<6} {f.head_h:<6} {f.csk_head_d:<6} "
+                          f"{f.nut_af:<6} {f.nut_h:<5} {f.insert_d:<8} {f.insert_len}" for f in TABLE.values()]
+        lines.append("\nprint allowances added by screw_hole(): " + ", ".join(f"{k} {v}" for k, v in ALLOWANCE.items()))
+        lines.append('use: part.screw_hole("M3", at=(x, y), kind="clearance|counterbore|countersunk|tap|insert|nut")')
+        return {"fasteners": rows, "allowances": ALLOWANCE}, "\n".join(lines)
     if c == "info":
         from .importer import describe
 
@@ -555,6 +567,8 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         top = list(r["time_by_feature_s"].items())[:4]
         if top:
             lines.append("  time by feature: " + ", ".join(f"{k} {v // 60}m" if v >= 60 else f"{k} {v}s" for k, v in top))
+        for note in r.get("oriented_for_print") or []:
+            lines.append(f"  print orientation: {note}")
         for w in r["warnings"]:
             lines.append(f"  warning {w['code']}: {w['message']}")
         if r.get("skipped_reference_parts"):

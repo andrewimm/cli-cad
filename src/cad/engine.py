@@ -110,6 +110,7 @@ class ProjectSession:
                 geom[name] = {"brep": f"parts/{name}.brep", "geometry_hash": ghash, "summary": summary,
                               "color": part.color if not isinstance(part.color, tuple) else list(part.color),
                               "reference": part.reference,
+                              "print_down": list(part.print_down) if part.print_down else None,
                               "material": part.material.to_dict() if part.material else None}
             src = tmp / "source"
             for rel, digest in files.items():
@@ -192,7 +193,7 @@ class ProjectSession:
             color = info.get("color")
             parts[name] = Part._rehydrate(name, shape, tuple(color) if isinstance(color, list) else color,
                                           graph.get("persisted_refs"), graph.get("features"), info.get("reference", False),
-                                          info.get("material"))
+                                          info.get("material"), info.get("print_down"))
         self._remember(r, parts)
         return r, parts
 
@@ -497,16 +498,22 @@ class ProjectSession:
             for fmt in formats:
                 ghash = m["parts"][n]["geometry_hash"]
                 ext = {"step": "step", "stl": "stl", "brep": "brep"}[fmt]
-                cpath = self.store.cache_dir / "exports" / f"{ghash[:32]}-{tolerance if fmt == 'stl' else ''}-{n}.{ext}"
+                # STL is for printing: it is written in the print orientation (Part.print_on); STEP keeps the design pose
+                down = all_parts[n].print_down if fmt == "stl" else None
+                tag = "" if not down else "-p" + hashlib.sha256(repr(down).encode()).hexdigest()[:8]
+                cpath = self.store.cache_dir / "exports" / f"{ghash[:32]}-{tolerance if fmt == 'stl' else ''}{tag}-{n}.{ext}"
                 if not cpath.exists():
                     self.stats.bump("export_cache_misses")
-                    all_parts[n].export(str(cpath), tolerance=tolerance) if fmt == "stl" else all_parts[n].export(str(cpath))
+                    src_part = all_parts[n].as_printed() if down else all_parts[n]
+                    src_part.export(str(cpath), tolerance=tolerance) if fmt == "stl" else src_part.export(str(cpath))
                 else:
                     self.stats.bump("export_cache_hits")
                 dst = out / f"{n}.{ext}"
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(cpath, dst)
                 entry = {"part": n, "format": fmt, "path": str(dst), "bytes": dst.stat().st_size}
+                if down:
+                    entry["oriented_for_print"] = True
                 if fmt == "stl":
                     from .export import stl_check
 
@@ -545,6 +552,7 @@ class ProjectSession:
         }
         exe = slicer.find_bambu(cfg.get("slicer"))
         key = hash_json({"parts": {n: m["parts"][n]["geometry_hash"] for n in chosen},
+                         "print_down": {n: all_parts[n].print_down for n in chosen},
                          "materials": {n: (all_parts[n].material.to_dict() if all_parts[n].material else None) for n in chosen},
                          "settings": settings, "slicer": slicer.bambu_version(exe) if exe else None, "cad": __version__})
         cache = self.store.cache_dir / "slices" / key[:32]

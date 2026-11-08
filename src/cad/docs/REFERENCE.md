@@ -308,6 +308,7 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad materials` | built-in materials (density, colour) |
 | `cad fonts [filter]` | installed fonts for text |
 | `cad measure <part> --section z=V` | cross-section outline at a plane (regions, rectangles, circles, holes) |
+| `cad fasteners` | M2-M8 screw, nut and heat-set insert dimensions (screw_hole table) |
 | `cad info <file>` | bodies, names, sizes, units in a STEP / IGES / STL / BREP file |
 | `cad slice` | Bambu Studio slice: print time, grams per filament, supports, warnings, .gcode.3mf |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
@@ -388,6 +389,39 @@ object with one part per material. Set the matching filament types/colours in th
 Overlapping parts are reported (`MATERIAL_OVERLAP`) because two materials would claim the same volume.
 In Python: `part.export("x.3mf")`, or `from cad.threemf import export_3mf; export_3mf({"a": a, "b": b}, "x.3mf", mode="multimaterial")`.
 
+## Designing for 3D printing: screws, inserts, nuts, snap fits, threads
+
+```python
+p.screw_hole("M3", at=(20, 10), kind="counterbore")            # socket head sits below the surface
+p.screw_hole("M3", at=[(-20, 10), (20, 10)], kind="insert")    # heat-set insert pockets (4.0 x 6.2 mm, lead-in)
+p.screw_hole("M4", at=(0, 0), kind="nut")                      # clearance hole + hex nut pocket at the far side
+p.bottom_chamfer(0.5)                                          # against elephant's foot (outline + holes on the bed)
+lid.snap_hook(on=lid.faces("plate.front"), length=8, thickness=1.4, width=6, catch=0.8, hook="+z")
+bolt.thread("M8", length=16, at=(0, 0, 6))                     # external thread, axis along +Z
+nut.threaded_hole("M8", at=(0, 0))                             # internal thread, 0.3 mm radial clearance
+```
+
+- `screw_hole(size, at, kind=)`: sizes M2-M8 from the built-in table (`cad fasteners`); kinds `clearance`
+  (ISO 273 medium), `counterbore`, `countersunk` (90 degrees, flush), `tap` (pilot hole a screw cuts its thread
+  into), `insert` (heat-set insert pocket: blind, insert length + 0.5 mm), `nut` (hex pocket where the hole
+  leaves the material). Metrics (`cad inspect --features`) give every dimension used, the material thickness
+  and, for nuts, a standard screw length that fits. `INSERT_TOO_DEEP` when the material is too thin.
+- Inserts need >= 1.5 mm of wall around the pocket (check with `cad measure <part> --thickness`); bosses
+  for M3 inserts are typically 7-8 mm in diameter.
+- `bottom_chamfer(size=0.5, holes=True)`: chamfers the edges of the faces at the lowest Z (the bed face).
+- `snap_hook(on=, length=, thickness=, width=, catch=, hook=, at=)`: a cantilever growing out of a flat face
+  along its normal, hook pointing `hook` (a direction in the face). Metrics: peak strain (1.5 t y / L^2) against
+  the material's allowable strain (PLA 2 %, PETG 3.5 %, ABS 2.5 %, PC 4 %, PA12 6 %), deflection force, and
+  `catch_face_at` (where the mating ledge must be). `SNAP_STRAIN_HIGH` gives the minimum length that works;
+  `SNAP_LAYER_ORIENTATION` warns when the beam stands upright (printed that way it snaps along its layers).
+  Named faces: `<id>.catch` (the holding face), `<id>.lead_in`, `<id>.beam`. Make the mating window/ledge yourself
+  at the catch position, `catch` mm deep, a little wider than the hook.
+- `thread(size, length=, at=, direction=)` / `threaded_hole(size, at, depth=, clearance=0.3)`: helical ISO
+  metric threads ("M8", "M8x1", "M40x3"). Print with the axis vertical (`THREAD_ORIENTATION` otherwise); below
+  M6 printed threads are weak (`THREAD_TOO_FINE`): use `screw_hole(kind="insert")` or `kind="tap"`. Each thread
+  takes a few seconds to build. A modelled bolt and nut only mesh at the right rotation, so `cad clearance`
+  between them may report contact: that is expected.
+
 ## Importing STEP / STL files (vendor parts)
 
 ```bash
@@ -431,7 +465,11 @@ cad slice --list printers | processes | filaments
 - Warnings: `NEEDS_SUPPORT` (overhangs would print in mid-air: re-orient, or `--supports auto`), `OFF_PLATE`,
   `SLICER_WARNING`. A model too big for the printer fails before slicing with its size and the plate's.
 - `--plate textured | cool | engineering | high-temp`; Bambu refuses filaments a plate is not rated for (PETG on cool).
-- The part is printed as modelled: Z up, bottom face on the bed. Orient it for printing in the model.
+- The part is printed as modelled (Z up, lowest face on the bed) unless you say otherwise:
+  `lid.print_on(lid.faces("plate.top"))` (or `print_on("+z")`) keeps the assembled model but turns the part so
+  that face is on the bed for `cad slice` and STL / 3MF export (STEP keeps the design pose). Multi-material
+  parts print as one object and turn together. `NEEDS_SUPPORT` on a part modelled in assembly pose usually
+  means it needs `print_on`.
 - Defaults in cad.toml: `[print]` `printer = "A1 mini"`, `process`, `supports`, `plate`, `slicer = "/path/to/BambuStudio"`;
   `[print.filaments]` `PLA = "Bambu PLA Matte"`; `[print.settings]` `wall_loops = 3`.
 - Bambu Studio is found via cad.toml `slicer`, `$CAD_BAMBU_STUDIO`, `bambu-studio` on PATH, then the usual
