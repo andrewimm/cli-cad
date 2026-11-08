@@ -1,0 +1,95 @@
+{
+  "run": {
+    "label": "text-nameplate",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "engraved_nameplate"
+    ],
+    "git": "9d32319",
+    "started": 1794116280.0676649
+  },
+  "overall": {
+    "attempts": 3,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 8.333,
+    "mean_failed_builds": 0,
+    "mean_turns": 8.333,
+    "mean_cost_usd": 0.128,
+    "total_cost_usd": 0.384,
+    "implementation_peeks": 0,
+    "feedback_received": 3
+  },
+  "tasks": {
+    "engraved_nameplate": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 8.333,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 3.333,
+      "mean_turns": 8.333,
+      "mean_duration_s": 24.8,
+      "mean_cost_usd": 0.128,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    }
+  },
+  "cad_errors": {},
+  "issue_categories": {
+    "docs_unclear/low": 2,
+    "query_missing/low": 1
+  },
+  "issues": [
+    {
+      "task": "engraved_nameplate",
+      "category": "docs_unclear",
+      "description": "Docs do not say whether `at=` positions the text's cap-height box or the baseline by default; I passed align=('center','center') to be safe and did not verify the exact vertical centring numerically.",
+      "severity": "low"
+    },
+    {
+      "task": "engraved_nameplate",
+      "category": "query_missing",
+      "description": "No direct query for text bounding box / extents of engraved or embossed text, so centring (0,4) and (0,-8) was only checked visually.",
+      "severity": "low"
+    },
+    {
+      "task": "engraved_nameplate",
+      "category": "docs_unclear",
+      "description": "The docs example for engrave/emboss does not show that `at` is the text anchor, so centring on (x, y) requires align=('center','center'). I passed it explicitly. I did not verify whether the default is already centred.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "engraved_nameplate",
+      "suggestion": "Add a query for the bbox of faces created by a text feature (e.g. emboss1.end)."
+    },
+    {
+      "task": "engraved_nameplate",
+      "suggestion": "State the default vertical alignment of text in the docs."
+    },
+    {
+      "task": "engraved_nameplate",
+      "suggestion": "State the default `align` for text in `cad docs text`."
+    },
+    {
+      "task": "engraved_nameplate",
+      "suggestion": "Add a `cad measure --text` or query that reports the text bounding box and centre, so centring can be checked numerically."
+    },
+    {
+      "task": "engraved_nameplate",
+      "suggestion": "Add a query/measure to report text extents (bbox of engraved/emboss features) so centring and cap height can be verified numerically rather than only by render."
+    },
+    {
+      "task": "engraved_nameplate",
+      "suggestion": "Show the align=('center','center') default behaviour explicitly in the docs example, since centring on `at` depends on it."
+    }
+  ]
+}

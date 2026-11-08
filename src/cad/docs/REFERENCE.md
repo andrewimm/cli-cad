@@ -335,7 +335,11 @@ p.engrave("FRONT", on=p.faces("body.front"), size=2.6, depth=0.4)               
 - `on` = one flat face (a face split by earlier text is fine: coplanar faces are treated as one) or a `Plane`.
   Text reads normally when you look at that face from outside, upright on vertical faces
   (`up=(x, y, z)` changes "up"); `at=(u, v)` moves it from the face centre (u = reading direction), or
-  pass a 3D point; `angle=` rotates it; `align=("left"|"center"|"right", "baseline"|"bottom"|"center"|"top")`.
+  pass a 3D point; `angle=` rotates it. By default the text's bounding box is **centred on `at`**;
+  `align=("left"|"center"|"right", "baseline"|"bottom"|"center"|"top")` anchors it differently.
+- Check where text landed: `cad measure plate.engrave1.floor --bbox` (engraved letter bottoms) or
+  `plate.emboss1.end` (raised letter tops); `cad inspect --features` shows each text feature's width,
+  height, font and estimated stroke width.
 - `font=` an installed font name (`cad fonts`, `cad fonts helv`) or a .ttf/.otf path; default Helvetica,
   else Arial / DejaVu Sans; `bold=True`, `italic=True`. Unknown fonts are an error (never substituted).
 - Warnings: `TEXT_OFF_FACE` (text runs past the face edge), `TEXT_STROKES_THIN` (strokes under ~0.4 mm:
