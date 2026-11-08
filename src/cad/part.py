@@ -19,6 +19,7 @@ the name raises ``REFERENCE_LOST`` naming the responsible feature.
 
 from __future__ import annotations
 
+import contextlib
 import difflib
 import math
 import time
@@ -143,6 +144,7 @@ class Feature:
     error: dict | None = None
     metrics: dict = field(default_factory=dict)
     duration_ms: float = 0.0
+    phases_ms: dict = field(default_factory=dict)  # where the time went: tools, boolean, validate, references, measure
 
     def to_dict(self) -> dict:
         return {
@@ -157,6 +159,7 @@ class Feature:
             "error": self.error,
             "metrics": self.metrics,
             "duration_ms": round(self.duration_ms, 3),
+            "phases_ms": {k: round(v, 3) for k, v in self.phases_ms.items()},
         }
 
 
@@ -190,6 +193,16 @@ class FeatureRef:
 
     def __repr__(self) -> str:
         return f"<FeatureRef {self.id} ({self.feature.type})>"
+
+
+@contextlib.contextmanager
+def _phase(feat: Feature, name: str):
+    """Accumulate wall time spent in one phase of a feature (reported in the feature graph)."""
+    t = time.perf_counter()
+    try:
+        yield
+    finally:
+        feat.phases_ms[name] = feat.phases_ms.get(name, 0.0) + (time.perf_counter() - t) * 1000
 
 
 def _jsonable(v: Any) -> Any:
@@ -368,13 +381,14 @@ class Part:
             feat.status, feat.error = "failed", err.to_dict()
             self.features.append(feat)
             raise err from e
-        feat.duration_ms = (time.perf_counter() - t0) * 1000
         if self._shape is not None:
-            feat.metrics = {
-                "volume": round(_occ.volume(self._shape), 6),
-                "solids": len(_occ.solids(self._shape)),
-                "faces": len(_occ.faces(self._shape)),
-            }
+            with _phase(feat, "measure"):
+                feat.metrics = {
+                    "volume": round(_occ.volume_fast(self._shape), 6),
+                    "solids": len(_occ.solids(self._shape)),
+                    "faces": len(_occ.faces(self._shape)),
+                }
+        feat.duration_ms = (time.perf_counter() - t0) * 1000
         self.features.append(feat)
         return FeatureRef(self, feat)
 
@@ -421,7 +435,9 @@ class Part:
             code = {"fillet": FILLET_FAILED, "chamfer": CHAMFER_FAILED, "shell": SHELL_FAILED}.get(feat.type, OPERATION_FAILED)
             raise CadError(code, f"{feat.type} produced no solid body (the result is empty or only surfaces)",
                            feature=feat.id, hint="the size is probably too large: it consumes whole faces of the part")
-        if not _occ.is_valid(new_shape):
+        with _phase(feat, "validate"):
+            valid = _occ.is_valid(new_shape)
+        if not valid:
             fixed = _occ.fix_shape(new_shape)
             if not _occ.is_valid(fixed):
                 raise CadError(
@@ -431,6 +447,7 @@ class Part:
                     hint="check for zero-thickness walls, coincident faces or self-intersecting profiles",
                 )
             new_shape, history = fixed, None
+        t_refs = time.perf_counter()
         present = {"face": _occ.ShapeSet(_occ.faces(new_shape)), "edge": _occ.ShapeSet(_occ.edges(new_shape))}
 
         def remap(s, kind):
@@ -438,7 +455,7 @@ class Part:
                 try:
                     if history.IsDeleted(s):
                         return []
-                    mods = [present[kind].get(m) for m in history.Modified(s)]
+                    mods = [present[kind].get(m) for m in _occ.shape_list(history.Modified(s))]
                     mods = [m for m in mods if m is not None]
                     if mods:
                         return mods
@@ -486,27 +503,55 @@ class Part:
                 self._ref_lost[n] = feat.id
         self._refs = refs
         self._shape = new_shape
+        feat.phases_ms["references"] = feat.phases_ms.get("references", 0.0) + (time.perf_counter() - t_refs) * 1000
         feat.outputs = {n: len(v) for n, v in refs.items() if self._ref_origin.get(n) == feat.id}
 
-    def _body_op(self, feat: Feature, tool: TopoDS_Shape, tool_refs: dict, op: str) -> None:
+    @staticmethod
+    def _boolean(op: str, args: list, tools: list):
+        """One boolean with list arguments (many tools in a single kernel call)."""
+        alg = {"add": BRepAlgoAPI_Fuse, "cut": BRepAlgoAPI_Cut, "intersect": BRepAlgoAPI_Common}[op]()
+        la, lt = List_TopoDS_Shape(), List_TopoDS_Shape()
+        for a in args:
+            la.Append(a)
+        for t in tools:
+            lt.Append(t)
+        alg.SetArguments(la)
+        alg.SetTools(lt)
+        alg.Build()
+        return alg
+
+    def _body_op(self, feat: Feature, tool, tool_refs: dict, op: str) -> None:
+        """Combine one tool shape, or a list of tool shapes in a single boolean, with the body."""
         if op not in _OPS:
             raise CadError(INVALID_ARGUMENT, f"op must be one of {_OPS}, got {op!r}", feature=feat.id)
+        tools = list(tool) if isinstance(tool, (list, tuple)) else [tool]
+        if len(tools) > 1 and op == "intersect":
+            raise CadError(INVALID_ARGUMENT, "op='intersect' takes a single position", feature=feat.id)
         if self._shape is None:
             if op != "add":
                 raise CadError(NO_BODY, f"cannot '{op}' before the part has a body", feature=feat.id, hint="create the base body first with op='add'")
-            self._commit(feat, tool, None, tool_refs)
-            return
-        before_vol = _occ.volume(self._shape)
+            if len(tools) == 1:
+                self._commit(feat, tools[0], None, tool_refs)
+                return
+            first, tools = tools[0], tools[1:]
+            self._shape = first  # the first instance is the body the others fuse into
+        tool = tools[0] if len(tools) == 1 else _occ.compound(tools)
+        before_vol = _occ.volume_fast(self._shape)
         before_solids = len(_occ.solids(self._shape))
-        alg = {"add": BRepAlgoAPI_Fuse, "cut": BRepAlgoAPI_Cut, "intersect": BRepAlgoAPI_Common}[op](self._shape, tool)
+        with _phase(feat, "boolean"):
+            if len(tools) == 1:
+                alg = {"add": BRepAlgoAPI_Fuse, "cut": BRepAlgoAPI_Cut, "intersect": BRepAlgoAPI_Common}[op](self._shape, tools[0])
+            else:
+                alg = self._boolean(op, [self._shape], tools)
         if not alg.IsDone():
             raise CadError(BOOLEAN_FAILED, f"boolean {op} failed", feature=feat.id, hint="avoid tangent or coincident faces; offset the tool slightly")
         if op == "add":
             # merge coplanar/co-cylindrical faces for clean topology, but never at the cost of validity:
             # unifying edges+faces corrupts some curved results (e.g. box fused with a sphere, found by S01)
-            alg.SimplifyResult()
+            with _phase(feat, "simplify"):
+                alg.SimplifyResult()
             if not _occ.is_valid(alg.Shape()):
-                alg = BRepAlgoAPI_Fuse(self._shape, tool)
+                alg = BRepAlgoAPI_Fuse(self._shape, tools[0]) if len(tools) == 1 else self._boolean("add", [self._shape], tools)
                 if not alg.IsDone():
                     raise CadError(BOOLEAN_FAILED, "boolean add failed", feature=feat.id)
         result = alg.Shape()
@@ -518,7 +563,7 @@ class Part:
                 hint="the tool fully contains the body (cut) or does not overlap it (intersect)",
             )
         self._commit(feat, result, alg, tool_refs)
-        after_vol = _occ.volume(self._shape)
+        after_vol = _occ.volume_fast(self._shape)
         tol = 1e-6 * max(before_vol, 1.0)
         if op == "cut" and before_vol - after_vol <= tol:
             feat.warnings.append(
@@ -564,15 +609,20 @@ class Part:
         """
         _pos(width=width, depth=depth, height=height)
         al = _parse_align(align)
-        at3 = _occ.vec(at)
+        points = _positions(at)
         size = (width, depth, height)
-        lo = [at3[i] - {"min": 0, "center": size[i] / 2, "max": size[i]}[al[i]] for i in range(3)]
 
         def build(feat):
-            tool = BRepPrimAPI_MakeBox(gp_Pnt(*lo), width, depth, height).Shape()
-            self._body_op(feat, tool, _direction_refs(feat.id, tool), op)
+            tools, refs = [], {}
+            for p in points:
+                lo = [p[i] - {"min": 0, "center": size[i] / 2, "max": size[i]}[al[i]] for i in range(3)]
+                tool = BRepPrimAPI_MakeBox(gp_Pnt(*lo), width, depth, height).Shape()
+                tools.append(tool)
+                _merge_refs(refs, _direction_refs(feat.id, tool))
+            self._body_op(feat, tools if len(tools) > 1 else tools[0], refs, op)
 
-        return self._run("box", name, dict(width=width, depth=depth, height=height, at=at3, align=al, op=op), build)
+        return self._run("box", name, dict(width=width, depth=depth, height=height, at=points if len(points) > 1 else points[0],
+                                           align=al, op=op), build)
 
     def cylinder(
         self,
@@ -593,17 +643,22 @@ class Part:
         """
         _pos(diameter=diameter, height=height)
         d = _axis_dir(axis)
-        at3 = _occ.vec(at)
+        points = _positions(at)
         shift = {"min": 0.0, "center": height / 2, "max": height}.get(align)
         if shift is None:
             raise CadError(INVALID_ARGUMENT, f"align must be one of {_ALIGN}, got {align!r}")
-        base = tuple(a - shift * c for a, c in zip(at3, d))
 
         def build(feat):
-            tool = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*base), gp_Dir(*d)), diameter / 2, height).Shape()
-            self._body_op(feat, tool, _axial_refs(feat.id, tool, d), op)
+            tools, refs = [], {}
+            for p in points:
+                base = tuple(a - shift * c for a, c in zip(p, d))
+                tool = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*base), gp_Dir(*d)), diameter / 2, height).Shape()
+                tools.append(tool)
+                _merge_refs(refs, _axial_refs(feat.id, tool, d))
+            self._body_op(feat, tools if len(tools) > 1 else tools[0], refs, op)
 
-        return self._run("cylinder", name, dict(diameter=diameter, height=height, at=at3, axis=d, align=align, op=op), build)
+        return self._run("cylinder", name, dict(diameter=diameter, height=height, at=points if len(points) > 1 else points[0],
+                                                axis=d, align=align, op=op), build)
 
     def sphere(self, diameter: float, *, at: Sequence[float] = (0, 0, 0), op: str = "add", name: str | None = None) -> FeatureRef:
         """Sphere centred at ``at``.  Named faces: ``<id>.surface``."""
@@ -845,6 +900,7 @@ class Part:
             diag = math.dist(lo, hi)
             starts = [self._hole_start(p, d, lo, hi, feat.id) for p in positions]
             margin = 1.0 + 1e-3 * diag
+            t_tools = time.perf_counter()
             tools, refs_wall, refs_floor, refs_cb, refs_cs = [], [], [], [], []
             for pos, start in zip(positions, starts):
                 ahead = _extent_along(lo, hi, start, d)
@@ -885,6 +941,7 @@ class Part:
                 refs_cb.append(cb_faces)
                 refs_cs.append(cs_faces)
             flat_tools = [p for ps in tools for p in ps]
+            feat.phases_ms["tools"] = (time.perf_counter() - t_tools) * 1000
             alg = BRepAlgoAPI_Cut()
             args, tl = List_TopoDS_Shape(), List_TopoDS_Shape()
             args.Append(body)
@@ -892,7 +949,8 @@ class Part:
                 tl.Append(t)
             alg.SetArguments(args)
             alg.SetTools(tl)
-            alg.Build()
+            with _phase(feat, "boolean"):
+                alg.Build()
             if not alg.IsDone():
                 raise CadError(BOOLEAN_FAILED, "hole cut failed", feature=feat.id,
                                hint="a hole tangent to or ending exactly on another face can defeat the kernel: "
@@ -909,9 +967,9 @@ class Part:
                 refs[f"{fid}.counterbore_floor"] = ("face", [f for w in refs_cb for f in w if _occ.surface_type(f) == "plane"])
             if countersink is not None:
                 refs[f"{fid}.countersink"] = ("face", [f for w in refs_cs for f in w])
-            before = _occ.volume(body)
+            before = _occ.volume_fast(body)
             self._commit(feat, alg.Shape(), alg, refs)
-            removed = before - _occ.volume(self._shape)
+            removed = before - _occ.volume_fast(self._shape)
             if removed <= 1e-9 * max(before, 1):
                 feat.warnings.append(CadWarning("CUT_NO_EFFECT", "no hole intersects the part", fid, {"positions": _jsonable(positions)}))
             for kind, key in (("counterbore", f"{fid}.counterbore"), ("countersink", f"{fid}.countersink")):
@@ -974,7 +1032,8 @@ class Part:
             self._check_current(edges, feat.id)
             self._record_selection(feat, "edges", edges)
             mk = self._make_dressup(ftype, edges.shapes, size)
-            ok, why = self._dressup_result_ok(mk)
+            with _phase(feat, "kernel"):
+                ok, why = self._dressup_result_ok(mk)
             if not ok:
                 bad = []
                 for e in edges.shapes:
@@ -1000,7 +1059,7 @@ class Part:
             gen = []
             for e in edges.shapes:
                 try:
-                    gen.extend(list(mk.Generated(e)))
+                    gen.extend(_occ.shape_list(mk.Generated(e)))
                 except Standard_Failure:
                     pass
             if gen:
@@ -1399,6 +1458,21 @@ class Part:
 
 
 # --------------------------------------------------------------------------- helpers
+
+
+def _positions(at) -> list:
+    """``at`` is one point or a list of points (many instances in one feature, one boolean)."""
+    if isinstance(at, (list, tuple)) and at and isinstance(at[0], (list, tuple)):
+        pts = [_occ.vec(p) for p in at]
+        if not pts:
+            raise CadError(INVALID_ARGUMENT, "at= is an empty list of positions")
+        return pts
+    return [_occ.vec(at)]
+
+
+def _merge_refs(into: dict, refs: dict) -> None:
+    for n, (kind, shapes) in refs.items():
+        into.setdefault(n, (kind, []))[1].extend(shapes)
 
 
 def _dedupe(shapes: Iterable) -> list:

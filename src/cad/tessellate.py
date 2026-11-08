@@ -70,7 +70,7 @@ def default_deflection(shape) -> float:
 def tessellate(shape, linear_deflection: float | None = None, angular_deflection: float = 0.25) -> Mesh:
     """Triangulate ``shape``.  ``linear_deflection`` defaults to ~0.15% of the bbox diagonal."""
     lin = linear_deflection or default_deflection(shape)
-    BRepMesh_IncrementalMesh(shape, lin, False, angular_deflection, True)
+    _occ.mesh_shape(shape, lin, angular_deflection)
     verts, norms, tris, fids = [], [], [], []
     offset = 0
     faces = _occ.faces(shape)

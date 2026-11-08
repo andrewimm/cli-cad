@@ -185,6 +185,37 @@ def volume(shape: TopoDS_Shape) -> float:
     return p.Mass()
 
 
+def volume_fast(shape: TopoDS_Shape) -> float:
+    """Default (non-adaptive) integration: ~10x faster, ~1e-5 relative on curved faces.
+    For internal heuristics and informational metrics only; user-facing volumes use ``volume``."""
+    p = GProp_GProps()
+    BRepGProp.VolumeProperties_s(shape, p)
+    return p.Mass()
+
+
+def shape_list(lst) -> list:
+    """Python list from an OCP NCollection list.
+
+    Iterating these lists from Python costs ~2.8 ms per call in the bindings (found by
+    the S04 stress suite: it dominated reference tracking); Size/First/RemoveFirst on a
+    copy costs microseconds.
+    """
+    n = lst.Size()
+    if n == 0:
+        return []
+    if n == 1:
+        return [lst.First()]
+    from OCP.collections import List_TopoDS_Shape
+
+    c = List_TopoDS_Shape()
+    c.Assign(lst)
+    out = []
+    while not c.IsEmpty():
+        out.append(c.First())
+        c.RemoveFirst()
+    return out
+
+
 def area(shape: TopoDS_Shape) -> float:
     p = GProp_GProps()
     BRepGProp.SurfaceProperties_s(shape, p, GPROP_EPS)
@@ -403,6 +434,41 @@ def first_hit(shape: TopoDS_Shape, origin, direction) -> float | None:
     inter.Perform(gp_Lin(gp_Pnt(*origin), gp_Dir(*direction)), -1e-6, 1e12)
     ts = [inter.WParameter(i) for i in range(1, inter.NbPnt() + 1)]
     return min(ts) if ts else None
+
+
+def mesh_shape(shape: TopoDS_Shape, linear: float, angular: float) -> None:
+    """Triangulate ``shape`` in place.
+
+    Uses OCCT's Delabella face mesher: on faces with many inner loops (a plate with
+    1000 holes) it is ~20x faster than the default Delaunay mesher with the same
+    triangles and accuracy (found by the S04 stress suite).  Falls back to the
+    default algorithm if any face is left without a triangulation.
+    """
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.IMeshTools import IMeshTools_MeshAlgoType
+    from OCP.TopLoc import TopLoc_Location
+
+    def run(algo):
+        m = BRepMesh_IncrementalMesh()
+        m.SetShape(shape)
+        prm = m.ChangeParameters()
+        prm.Deflection = linear
+        prm.Angle = angular
+        prm.InParallel = True
+        prm.MeshAlgo = algo
+        m.Perform()
+
+    try:
+        run(IMeshTools_MeshAlgoType.IMeshTools_MeshAlgoType_Delabella)
+        if all(BRep_Tool.Triangulation_s(f, TopLoc_Location()) is not None for f in faces(shape)):
+            return
+    except Exception:
+        pass
+    from OCP.BRepTools import BRepTools
+
+    BRepTools.Clean_s(shape)
+    run(IMeshTools_MeshAlgoType.IMeshTools_MeshAlgoType_DEFAULT)
 
 
 def fix_shape(shape: TopoDS_Shape) -> TopoDS_Shape:

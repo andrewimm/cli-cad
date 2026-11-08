@@ -50,7 +50,9 @@ def export_shape(
             if w.Write(str(tmp)) != IFSelect_RetDone:
                 raise CadError(EXPORT_FAILED, f"could not write {p}")
         elif fmt == "stl":
-            BRepMesh_IncrementalMesh(shape, tolerance, False, angular_tolerance, True)
+            from . import _occ
+
+            _occ.mesh_shape(shape, tolerance, angular_tolerance)
             w = StlAPI_Writer()
             w.ASCIIMode = ascii
             if not w.Write(shape, str(tmp)):
