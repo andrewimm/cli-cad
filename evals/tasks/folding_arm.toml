@@ -1,0 +1,106 @@
+id = "folding_arm"
+title = "Folding arm assembly (held out)"
+category = "assembly"
+split = "heldout"
+source = "held-out companion to E12"
+grade_overrides = { fold_angle = 0 }
+selftest_commands = ["build", "render --views top --size 320x240", "set fold_angle 90", "render --views top --size 320x240"]
+prompt = """
+Design a folding arm made of three separately printable parts, modelled as an assembly.
+
+Frame: the arm lies in the XY plane and every joint axis is parallel to Z. Pins are not modelled: leave all pivot holes empty.
+
+Parts:
+- "base_block": a block that stands on Z = 0 and carries the shoulder pivot: a 4.2 mm hole whose axis is the Z axis through the origin. Include two 3.4 mm vertical mounting holes (layout up to you).
+- "arm": a 4.2 mm shoulder pivot hole coaxial with the base's (axis through (0, 0)) and a 4.2 mm elbow pivot hole 60 mm away along +X (axis through (60, 0)).
+- "forearm": a 4.2 mm elbow pivot hole coaxial with the arm's elbow hole, and a 4.2 mm tip pivot hole 50 mm from it.
+
+Motion:
+- Declare a parameter named fold_angle (degrees, default 0, range 0..120) that rotates the forearm about the elbow axis. At fold_angle = 0 the forearm continues straight along +X (tip pivot axis through (110, 0)); positive angles swing the tip toward +Y, so the tip axis passes through (60 + 50 cos a, 50 sin a).
+
+Constraints:
+- No two parts may touch or intersect at any fold angle from 0 to 120 degrees; keep at least 0.5 mm clearance between parts everywhere (e.g. stack the links at different heights).
+- Minimum wall thickness 3 mm in arm and forearm, including around the pivot holes.
+- Every part must fit a 220 x 220 x 250 mm printer build volume.
+- Before finishing, render the assembly at two or more different fold angles (keep the renders in this directory).
+"""
+
+[[checks]]
+type = "part_count"
+names = ["base_block", "arm", "forearm"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "no_voids"
+
+[[checks]]
+type = "holes"
+part = "base_block"
+diameter = 4.2
+axis = "z"
+positions = [[0, 0]]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+part = "arm"
+diameter = 4.2
+axis = "z"
+positions = [[0, 0], [60, 0]]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+part = "forearm"
+diameter = 4.2
+axis = "z"
+positions = [[60, 0], [110, 0]]
+tol = 0.05
+
+[[checks]]
+type = "param_rebuild"
+overrides = { fold_angle = 120 }
+
+  [[checks.checks]]
+  type = "holes"
+  part = "forearm"
+  diameter = 4.2
+  axis = "z"
+  positions = [[60, 0], [35, 43.301]]
+  tol = 0.05
+
+[[checks]]
+type = "param_sweep"
+parameter = "fold_angle"
+values = [0, 20, 40, 60, 80, 100, 120]
+
+  [[checks.checks]]
+  type = "clearance"
+  min_distance = 0.45
+
+[[checks]]
+type = "min_thickness"
+part = "arm"
+min = 2.9
+percentile = 2
+
+[[checks]]
+type = "min_thickness"
+part = "forearm"
+min = 2.9
+percentile = 2
+
+[[checks]]
+type = "fits_build_volume"
+size = [220, 220, 250]
+
+[[checks]]
+type = "export"
+formats = ["step", "stl"]
+
+[[checks]]
+type = "rendered_configurations"
+parameter = "fold_angle"
+min_distinct = 2

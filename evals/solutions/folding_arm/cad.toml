@@ -1,0 +1,3 @@
+[project]
+name = "folding_arm"
+entry = "model.py"

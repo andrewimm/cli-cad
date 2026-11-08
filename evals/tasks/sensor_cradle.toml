@@ -1,0 +1,71 @@
+id = "sensor_cradle"
+title = "Sensor cradle around an envelope (held out)"
+category = "open_design"
+split = "heldout"
+prompt = """
+Design a cradle that holds a cylindrical sensor on a flat surface. The sensor is NOT part of your model; design around its envelope.
+
+Sensor envelope, in assembly coordinates:
+- Body: a cylinder 30 mm in diameter and 50 mm long, axis along X from X = -25 to X = +25, axis at Y = 0, Z = 25 (so its lowest point is at Z = 10).
+- Cable: leaves the +X end along the axis; keep a 10 mm diameter cylinder from X = 25 to X = 100 (axis Y = 0, Z = 25) clear of all parts.
+- The sensor is held down by a strap (not modelled) and must be removable by lifting it straight up: nothing may occupy the region directly above the sensor's horizontal mid-plane over its footprint (X -25..25, Y -15..15, Z 25..100).
+
+Requirements:
+- The cradle sits on the mounting surface Z = 0 and must touch the sensor body (support it). It must not intrude into the sensor body.
+- Fix it to the surface with two M4 clearance holes (4.3-4.6 mm), drilled vertically; each screw head needs a clear 8 mm diameter vertical path above its hole.
+- Nominal minimum wall thickness 2.5 mm. One part, named "cradle".
+- Write PRINT.md with the recommended print orientation.
+"""
+
+[[checks]]
+type = "part_count"
+names = ["cradle"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "no_voids"
+
+[[checks]]
+type = "bbox"
+min_z = 0
+tol = 0.05
+
+[[checks]]
+type = "contact"
+note = "the cradle supports the sensor"
+solid = { cylinder = { center = [-25, 0, 25], axis = [1, 0, 0], diameter = 30, from = 0, to = 50 } }
+max_distance = 0.05
+
+[[checks]]
+type = "keepout"
+solids = [
+  { label = "sensor body", cylinder = { center = [-25, 0, 25], axis = [1, 0, 0], diameter = 30, from = 0, to = 50 } },
+  { label = "cable column", cylinder = { center = [25, 0, 25], axis = [1, 0, 0], diameter = 10, from = 0, to = 75 } },
+  { label = "lift-out path", box = { min = [-25, -15, 25], max = [25, 15, 100] } },
+]
+
+[[checks]]
+type = "holes"
+diameter_range = [4.3, 4.6]
+axis = "z"
+min_count = 2
+access = { direction = [0, 0, 1], diameter = 8, length = 150, obstacles = [
+  { cylinder = { center = [-25, 0, 25], axis = [1, 0, 0], diameter = 30, from = 0, to = 50 } },
+] }
+
+[[checks]]
+type = "min_thickness"
+min = 2.4
+percentile = 2
+
+[[checks]]
+type = "export"
+formats = ["step", "stl"]
+
+[[checks]]
+type = "file"
+path = "PRINT.md"
+min_chars = 30
+must_mention = ["cradle"]
