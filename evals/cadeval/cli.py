@@ -81,6 +81,10 @@ def main(argv=None) -> None:
     s.add_argument("--visual", action="store_true", help="vision-model review of renders")
     s.add_argument("--label", default="")
     s.add_argument("--out", help="run directory (default eval-runs/<timestamp>-<label>)")
+    s = sub.add_parser("view", help="self-contained HTML viewer of one or more runs")
+    s.add_argument("run_dirs", nargs="+")
+    s.add_argument("--out", default="eval-viewer.html")
+    s.add_argument("--title", default="Eval Run Viewer")
     s = sub.add_parser("regrade", help="re-run grading of every attempt in a run (after a grader/task fix)")
     s.add_argument("run_dir")
     s = sub.add_parser("report")
@@ -140,6 +144,11 @@ def main(argv=None) -> None:
         run_batch(tasks, out, attempts=a.attempts, model=a.model, max_turns=a.max_turns, timeout_s=a.timeout,
                   budget_usd=a.budget_usd, visual=a.visual, parallel=a.parallel, label=a.label)
         print((out / "summary.md").read_text())
+    elif a.cmd == "view":
+        from .view import build
+
+        out = build([Path(d) for d in a.run_dirs], Path(a.out), a.title)
+        print(f"wrote {out} ({out.stat().st_size // 1024} KB)")
     elif a.cmd == "regrade":
         from .grade import grade
         from .report import write_report
