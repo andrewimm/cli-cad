@@ -417,6 +417,10 @@ class Part:
         new_faces_role: str | None = None,
     ) -> None:
         """Publish ``new_shape`` and carry named references through ``history``."""
+        if self._shape is not None and _occ.solids(self._shape) and not _occ.solids(new_shape):
+            code = {"fillet": FILLET_FAILED, "chamfer": CHAMFER_FAILED, "shell": SHELL_FAILED}.get(feat.type, OPERATION_FAILED)
+            raise CadError(code, f"{feat.type} produced no solid body (the result is empty or only surfaces)",
+                           feature=feat.id, hint="the size is probably too large: it consumes whole faces of the part")
         if not _occ.is_valid(new_shape):
             fixed = _occ.fix_shape(new_shape)
             if not _occ.is_valid(fixed):
@@ -498,7 +502,13 @@ class Part:
         if not alg.IsDone():
             raise CadError(BOOLEAN_FAILED, f"boolean {op} failed", feature=feat.id, hint="avoid tangent or coincident faces; offset the tool slightly")
         if op == "add":
+            # merge coplanar/co-cylindrical faces for clean topology, but never at the cost of validity:
+            # unifying edges+faces corrupts some curved results (e.g. box fused with a sphere, found by S01)
             alg.SimplifyResult()
+            if not _occ.is_valid(alg.Shape()):
+                alg = BRepAlgoAPI_Fuse(self._shape, tool)
+                if not alg.IsDone():
+                    raise CadError(BOOLEAN_FAILED, "boolean add failed", feature=feat.id)
         result = alg.Shape()
         if not _occ.solids(result):
             raise CadError(
@@ -964,21 +974,11 @@ class Part:
             self._check_current(edges, feat.id)
             self._record_selection(feat, "edges", edges)
             mk = self._make_dressup(ftype, edges.shapes, size)
-            ok = False
-            try:
-                mk.Build()
-                ok = mk.IsDone()
-            except Standard_Failure:
-                ok = False
+            ok, why = self._dressup_result_ok(mk)
             if not ok:
                 bad = []
                 for e in edges.shapes:
-                    t = self._make_dressup(ftype, [e], size)
-                    try:
-                        t.Build()
-                        good = t.IsDone()
-                    except Standard_Failure:
-                        good = False
+                    good, _ = self._dressup_result_ok(self._make_dressup(ftype, [e], size))
                     if not good:
                         bad.append(edges._info(e))
                 max_hint = self._dressup_limit(edges.shapes)
@@ -990,7 +990,7 @@ class Part:
                             f"{ftype}() calls, change the order, or narrow the selection")
                 raise CadError(
                     FILLET_FAILED if ftype == "fillet" else CHAMFER_FAILED,
-                    f"{ftype} of {len(edges)} edge(s) with {key} {size} failed"
+                    f"{ftype} of {len(edges)} edge(s) with {key} {size} failed ({why})"
                     + (f"; {len(bad)} edge(s) fail even individually" if bad else "; each edge succeeds alone but not together"),
                     feature=feat.id,
                     hint=hint,
@@ -1008,6 +1008,23 @@ class Part:
             self._commit(feat, mk.Shape(), mk, refs, new_faces_role=None if gen else "faces")
 
         return self._run(ftype, name, {key: size, "edges": edges}, build)
+
+    def _dressup_result_ok(self, mk) -> tuple[bool, str]:
+        """Build a fillet/chamfer and check it yields a valid solid (not just IsDone)."""
+        try:
+            mk.Build()
+            if not mk.IsDone():
+                return False, "the kernel could not build it"
+            shape = mk.Shape()
+        except Standard_Failure:
+            return False, "the kernel raised an error"
+        if not _occ.solids(shape):
+            return False, "it would leave no solid"
+        if len(_occ.solids(shape)) != len(_occ.solids(self.shape)):
+            return False, "it would split or merge solids (the rounded surfaces overlap each other)"
+        if not _occ.is_valid(shape):
+            return False, "it would produce an invalid solid"
+        return True, ""
 
     def _make_dressup(self, ftype, edge_list, size):
         if ftype == "fillet":

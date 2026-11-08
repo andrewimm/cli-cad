@@ -173,15 +173,21 @@ def faces_of_edge(efmap: dict[int, list], edge) -> list:
 # --------------------------------------------------------------------------- properties
 
 
+# Adaptive (error-controlled) integration.  The default Gauss integration can be
+# off by ~1e-5 relative on trimmed curved faces (found by the S01 stress suite:
+# a box-cut sphere violated V(A u B) + V(A n B) = V(A) + V(B) by 0.35 mm^3).
+GPROP_EPS = 1e-9
+
+
 def volume(shape: TopoDS_Shape) -> float:
     p = GProp_GProps()
-    BRepGProp.VolumeProperties_s(shape, p)
+    BRepGProp.VolumeProperties_s(shape, p, GPROP_EPS)
     return p.Mass()
 
 
 def area(shape: TopoDS_Shape) -> float:
     p = GProp_GProps()
-    BRepGProp.SurfaceProperties_s(shape, p)
+    BRepGProp.SurfaceProperties_s(shape, p, GPROP_EPS)
     return p.Mass()
 
 
@@ -193,7 +199,7 @@ def length(shape: TopoDS_Shape) -> float:
 
 def center_of_mass(shape: TopoDS_Shape) -> Vec3:
     p = GProp_GProps()
-    BRepGProp.VolumeProperties_s(shape, p)
+    BRepGProp.VolumeProperties_s(shape, p, GPROP_EPS)
     c = p.CentreOfMass()
     return (c.X(), c.Y(), c.Z())
 
