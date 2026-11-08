@@ -1,0 +1,52 @@
+id = "servo_mount"
+title = "Micro-servo mounting plate"
+category = "intermediate"
+split = "dev"
+prompt = """
+Design a mounting plate for an SG90 micro servo.
+
+Servo facts: the servo body is 22.8 mm x 12.2 mm in plan; its two mounting screw holes are 27.8 mm apart along the body's long axis, on the body centreline; they take 2.0 mm screws.
+
+- Plate: 50 mm (X) x 30 mm (Y) x 3 mm thick, bottom on Z = 0, centred on the origin.
+- A rectangular through cut-out for the servo body, long axis along X, centred on the origin, with 0.3 mm clearance on every side.
+- Two 2.0 mm through holes for the servo screws, on the body centreline at the correct spacing.
+- Four 3.2 mm through mounting holes at (X, Y) = (+-20, +-10).
+- Name the part "servo_mount".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [50, 30, 3]
+min = [-25, -15, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 2.0
+axis = "z"
+positions = [[-13.9, 0], [13.9, 0]]
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 3.2
+axis = "z"
+positions = [[-20, -10], [20, -10], [-20, 10], [20, 10]]
+tol = 0.1
+
+[[checks]]
+type = "points_outside"
+points = [[0, 0, 1.5], [11.6, 6.3, 1.5], [-11.6, -6.3, 1.5]]
+note = "cut-out is at least 23.4 x 12.8"
+
+[[checks]]
+type = "points_inside"
+points = [[11.85, 0, 1.5], [0, 6.55, 1.5], [0, -6.55, 1.5]]
+note = "cut-out is no larger than 23.6 x 13.0"

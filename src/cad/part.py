@@ -1160,7 +1160,7 @@ class Part:
             raise CadError(BOOLEAN_FAILED, "interference check failed")
         return _occ.volume(common.Shape())
 
-    def holes(self) -> list[dict]:
+    def find_holes(self) -> list[dict]:
         """Round holes found in the body: diameter, axis, entry point, depth.
 
         Hole walls split across several faces are merged.  This inspects the
@@ -1230,7 +1230,7 @@ class Part:
             "area": round(self.area, 6),
             "center_of_mass": [round(c, 6) + 0.0 for c in self.center_of_mass],
             "bbox": self.bbox.to_dict(),
-            "holes": len(self.holes()),
+            "holes": len(self.find_holes()),
             "features": len(self.features),
             "warnings": [w.to_dict() for f in self.features for w in f.warnings],
         }

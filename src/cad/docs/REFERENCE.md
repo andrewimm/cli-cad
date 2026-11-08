@@ -155,7 +155,7 @@ p.bbox             # BBox: .min .max .size .width .depth .height .center
 p.volume           # mm³            p.area  # mm²
 p.center_of_mass   # (x, y, z)      p.solid_count
 p.mass(1.24)       # grams for density g/cm³ (PLA 1.24, PETG 1.27, ABS 1.04, Al 2.70)
-p.holes()          # [{diameter, axis, position, depth, names}] found in the actual geometry
+p.find_holes()     # [{diameter, axis, position, depth, names}] found in the actual geometry
 p.is_valid()       # BRep validity
 p.assert_valid(solids=1)          # raises VALIDATION_FAILED with problems listed
 p.distance_to(other)              # min distance (0 if touching/overlapping)
@@ -167,7 +167,7 @@ p.export("out/part.step")         # .step/.stp, .stl, .brep
 from cad import approx; approx(a, b, tol=1e-6)
 ```
 
-`hole["position"]` is the centre of the hole's end with the lowest coordinate along
+`find_holes()[i]["position"]` is the centre of the hole's end with the lowest coordinate along
 its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x, y, 0).
 
 ## CLI reference

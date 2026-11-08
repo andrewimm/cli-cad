@@ -1,0 +1,48 @@
+id = "l_bracket_ribs"
+title = "L-bracket with reinforcing ribs"
+category = "intermediate"
+split = "dev"
+prompt = """
+Design an L-shaped bracket with two reinforcing ribs (gussets).
+
+- Base plate: 50 mm (X) x 40 mm (Y) x 5 mm thick, bottom on Z = 0, centred on the origin in X and Y.
+- Vertical wall: 50 mm wide (X), 5 mm thick (Y), standing on the back edge of the base (its back face flush with the base's back face at Y = +20). The overall height of the bracket is 40 mm.
+- Two triangular ribs, each 4 mm thick (X), centred at X = -15 and X = +15. Each rib fills the inside corner between the base top face and the wall front face, with legs 25 mm long along the base (in -Y) and 25 mm up the wall (in +Z).
+- Two through holes of 5.5 mm diameter in the base at (X, Y) = (-8, -12) and (8, -12).
+- The result must be a single solid. Name the part "bracket".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [50, 40, 40]
+min = [-25, -20, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 5.5
+axis = "z"
+positions = [[-8, -12], [8, -12]]
+tol = 0.1
+
+[[checks]]
+type = "points_inside"
+points = [[15, 10, 9], [-15, 10, 9], [15, 12, 25], [0, 17.5, 35], [0, 0, 2.5]]
+note = "ribs, wall and base present"
+
+[[checks]]
+type = "points_outside"
+points = [[0, 10, 9], [8, 10, 20], [15, -5, 22], [8, -12, 2.5]]
+note = "no material between ribs, above rib hypotenuse, or in the holes"
+
+[[checks]]
+type = "volume"
+expected = 21012.4
+rel_tol = 0.02

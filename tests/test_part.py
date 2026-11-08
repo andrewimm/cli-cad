@@ -30,7 +30,7 @@ def test_hole_pattern_positions_and_reference_tracking():
     p = Part("plate")
     p.box(60, 40, 4, name="base")
     h = p.hole_pattern(3.2, spacing=(48, 28), count=(2, 2))
-    holes = p.holes()
+    holes = p.find_holes()
     assert len(holes) == 4
     assert sorted((x["position"][0], x["position"][1]) for x in holes) == [(-24, -14), (-24, 14), (24, -14), (24, 14)]
     assert all(approx(x["diameter"], 3.2) and approx(x["depth"], 4, 1e-6) for x in holes)
@@ -47,7 +47,7 @@ def test_blind_hole_counterbore_countersink():
     p.hole(3, at=(10, 10), countersink=(6, 90), name="cs")
     names = p.references()
     assert "cb.floor" in names and "cb.counterbore" in names and "cs.countersink" in names
-    hs = {round(h["diameter"], 3): h for h in p.holes()}
+    hs = {round(h["diameter"], 3): h for h in p.find_holes()}
     assert hs[4.0]["depth"] == pytest.approx(4)  # 6 mm drill depth minus the 2 mm counterbore
     assert hs[8.0]["depth"] == pytest.approx(2)
     p.assert_valid()
@@ -57,7 +57,7 @@ def test_side_hole_2d_position():
     p = Part("p")
     p.box(40, 10, 20)
     p.hole(5, at=(0, 10), direction="+y")
-    (h,) = p.holes()
+    (h,) = p.find_holes()
     assert h["axis"] == [0, 1, 0]
     assert h["position"][0] == pytest.approx(0) and h["position"][2] == pytest.approx(10)
     assert h["depth"] == pytest.approx(10)

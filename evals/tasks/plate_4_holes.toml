@@ -1,0 +1,43 @@
+id = "plate_4_holes"
+title = "Mounting plate with four holes"
+category = "basic"
+split = "dev"
+prompt = """
+Design a rectangular mounting plate.
+
+- Overall size 80 mm (X) x 50 mm (Y) x 5 mm thick (Z). Bottom face on Z = 0, centred on the origin in X and Y.
+- Four through holes, 4.5 mm diameter, with centres 6 mm in from each adjacent edge (a 68 x 38 mm rectangle of holes).
+- Round all four vertical corner edges with a 5 mm radius.
+- Name the part "plate".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [80, 50, 5]
+min = [-40, -25, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 4.5
+axis = "z"
+positions = [[-34, -19], [34, -19], [-34, 19], [34, 19]]
+exact_count = true
+tol = 0.1
+
+[[checks]]
+type = "volume"
+expected = 19468.4
+rel_tol = 0.01
+
+[[checks]]
+type = "points_outside"
+points = [[39.5, 24.5, 2.5], [-39.5, -24.5, 2.5]]
+note = "corners must be rounded"

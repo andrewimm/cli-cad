@@ -1,0 +1,50 @@
+id = "hinge_leaf"
+title = "Hinge leaf with countersunk holes (held out)"
+category = "intermediate"
+split = "heldout"
+prompt = """
+Design one leaf of a butt hinge.
+
+- Leaf plate: 40 mm (X) x 30 mm (Y) x 2 mm thick, bottom on Z = 0, centred on the origin in X and Y.
+- Knuckle: a 6 mm diameter cylinder along the X axis, 40 mm long (same extent in X as the plate), whose axis is at Y = 15, Z = 3, merged with the plate.
+- A 2.2 mm pin hole through the full length of the knuckle along its axis.
+- Three screw holes through the plate, 3.5 mm diameter, at X = -12, 0, 12 and Y = -3, each countersunk from the top face to 7 mm diameter with a 90 degree included angle.
+- Name the part "leaf".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [40, 33, 6]
+min = [-20, -15, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 2.2
+axis = "x"
+positions = [[15, 3]]
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 3.5
+axis = "z"
+positions = [[-12, -3], [0, -3], [12, -3]]
+tol = 0.1
+
+[[checks]]
+type = "points_outside"
+points = [[0, -3, 1.9], [13.6, -3, 1.95], [0, 15, 3]]
+note = "countersink opening at the top surface; pin hole"
+
+[[checks]]
+type = "points_inside"
+points = [[0, 17.5, 3], [4, -3, 1]]
+note = "knuckle wall; plate material beside a countersink"

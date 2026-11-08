@@ -33,5 +33,5 @@ def build():
     part.assert_valid()
     assert abs(part.bbox.width - width) < 1e-6
     assert abs(part.bbox.height - (thickness + wall_height)) < 1e-6
-    assert len(part.holes()) == 5
+    assert len(part.find_holes()) == 5
     return part

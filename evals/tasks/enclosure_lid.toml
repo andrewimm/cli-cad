@@ -1,0 +1,68 @@
+id = "enclosure_lid"
+title = "Electronics enclosure with lid"
+category = "assembly"
+split = "dev"
+prompt = """
+Design a two-part electronics enclosure, modelled in its assembled position.
+
+Part "box":
+- Outer size 100 mm (X) x 70 mm (Y) x 40 mm (Z), bottom on Z = 0, centred on the origin in X and Y.
+- Hollow with 2.5 mm thick walls and a 2.5 mm thick floor; the top is open.
+- The four vertical outer edges are rounded with a 6 mm radius.
+
+Part "lid":
+- A plate covering the box: 100 x 70 mm, 3 mm thick, with the same 6 mm outer corner radius. In the assembled position its bottom face sits at Z = 40 (resting on the box rim).
+- On the underside, a locating lip that goes down into the box opening: 3 mm deep, 2 mm wall thickness, with 0.25 mm clearance to the box's inner walls on every side.
+
+The lid and box must not intersect.
+"""
+
+[[checks]]
+type = "part_count"
+count = 2
+names = ["box", "lid"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+part = "box"
+size = [100, 70, 40]
+min = [-50, -35, 0]
+tol = 0.05
+
+[[checks]]
+type = "bbox"
+part = "lid"
+size = [100, 70, 6]
+min = [-50, -35, 37]
+tol = 0.05
+
+[[checks]]
+type = "points_inside"
+part = "box"
+points = [[0, 0, 1.25], [48.75, 0, 20], [0, -33.75, 20], [-48.75, 0, 39]]
+
+[[checks]]
+type = "points_outside"
+part = "box"
+points = [[0, 0, 20], [46, 0, 20], [49.5, 34.5, 20]]
+
+[[checks]]
+type = "points_inside"
+part = "lid"
+points = [[0, 0, 41.5], [46.25, 0, 38.5], [0, 31.25, 38.5]]
+note = "plate and lip walls"
+
+[[checks]]
+type = "points_outside"
+part = "lid"
+points = [[0, 0, 38.5], [47.375, 0, 38.5], [44, 0, 38.5]]
+note = "inside of lip is hollow; clearance gap is empty"
+
+[[checks]]
+type = "interference"
+a = "box"
+b = "lid"
+max_volume = 0.001

@@ -232,7 +232,7 @@ class ProjectSession:
         }
         for n, p in sel.items():
             d = p.summary()
-            d["hole_list"] = p.holes()
+            d["hole_list"] = p.find_holes()
             if refs:
                 d["references"] = p.references()
             if features:
@@ -271,7 +271,7 @@ class ProjectSession:
         if all_m or "com" in metrics:
             out["center_of_mass"] = _r(part.center_of_mass)
         if all_m or "holes" in metrics:
-            out["holes"] = part.holes()
+            out["holes"] = part.find_holes()
         if all_m or "validity" in metrics:
             out["valid"] = part.is_valid()
             out["solids"] = part.solid_count

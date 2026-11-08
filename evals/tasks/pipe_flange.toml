@@ -1,0 +1,50 @@
+id = "pipe_flange"
+title = "Pipe flange (held out)"
+category = "intermediate"
+split = "heldout"
+prompt = """
+Design a slip-on pipe flange.
+
+- Flange disc: 100 mm diameter, 12 mm thick, bottom face on Z = 0, axis along Z through the origin.
+- Hub: 50 mm diameter, on top of the disc, so the overall height is 30 mm.
+- Through bore: 30 mm diameter along the axis.
+- Six 11 mm bolt holes through the disc on a 75 mm diameter bolt circle, the first one on the +X axis.
+- Name the part "flange".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [100, 100, 30]
+min = [-50, -50, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 30
+axis = "z"
+positions = [[0, 0]]
+depth = 30
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 11
+axis = "z"
+positions = [[37.5, 0], [18.75, 32.476], [-18.75, 32.476], [-37.5, 0], [-18.75, -32.476], [18.75, -32.476]]
+exact_count = true
+tol = 0.1
+
+[[checks]]
+type = "points_inside"
+points = [[24, 0, 25], [45, 10, 6]]
+
+[[checks]]
+type = "points_outside"
+points = [[30, 0, 20], [0, 0, 15]]

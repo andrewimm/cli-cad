@@ -1,0 +1,65 @@
+id = "shaft_coupler"
+title = "Rigid shaft coupler"
+category = "intermediate"
+split = "dev"
+prompt = """
+Design a rigid shaft coupler connecting a 5 mm shaft to an 8 mm shaft.
+
+- Cylindrical body 25 mm diameter, 40 mm long, axis along Z, bottom face on Z = 0, centred on the Z axis.
+- An 8 mm diameter bore from the bottom face, 20 mm deep.
+- A 5 mm diameter bore from the top face, 20 mm deep (the two bores meet in the middle).
+- Two radial set-screw holes, 2.5 mm diameter, entering from the +X side along the X axis and reaching the bore: one at Z = 10, one at Z = 30.
+- A 1 mm x 45 degree chamfer on both outer circular edges.
+- Name the part "coupler".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [25, 25, 40]
+min = [-12.5, -12.5, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 8
+axis = "z"
+positions = [[0, 0]]
+depth = 20
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 5
+axis = "z"
+positions = [[0, 0]]
+depth = 20
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 2.5
+axis = "x"
+positions = [[0, 10], [0, 30]]
+tol = 0.15
+
+[[checks]]
+type = "points_outside"
+points = [[12.3, 0, 0.1], [12.3, 0, 39.9]]
+note = "chamfers present"
+
+[[checks]]
+type = "points_inside"
+points = [[-8, 0, 10], [-8, 0, 30], [0, 8, 10]]
+note = "set screws only enter from +X"
+
+[[checks]]
+type = "volume"
+expected = 17949.5
+rel_tol = 0.01

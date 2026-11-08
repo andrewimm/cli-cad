@@ -1,0 +1,42 @@
+id = "hex_standoff"
+title = "Hex standoff (held out)"
+category = "basic"
+split = "heldout"
+prompt = """
+Design a hexagonal standoff.
+
+- A hexagonal prism, 8 mm across the flats, 20 mm long along Z, bottom face on Z = 0, axis on the Z axis. Orient it so two of the flats are parallel to the XZ plane (i.e. the flats are at Y = +-4).
+- A 2.5 mm diameter through hole along the axis.
+- A 0.5 mm chamfer on the outer edges of both end faces.
+- Name the part "standoff".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [9.2376, 8, 20]
+min = [-4.6188, -4, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 2.5
+axis = "z"
+positions = [[0, 0]]
+depth = 20
+tol = 0.1
+
+[[checks]]
+type = "points_outside"
+points = [[0, 3.9, 0.05], [0, 3.9, 19.95]]
+note = "end chamfers"
+
+[[checks]]
+type = "points_inside"
+points = [[0, 3.5, 10], [4.2, 0, 10]]

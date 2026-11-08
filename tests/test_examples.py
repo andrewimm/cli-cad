@@ -29,7 +29,7 @@ def test_reference_recipes():
     p.hole(5, at=(0, 20), direction="+y")
     rib = Profile.polygon([(0, 0), (20, 0), (0, 20)])
     p.assert_valid()
-    assert len(p.holes()) == 1
+    assert len(p.find_holes()) == 1
 
     b = Part("box"); b.extrude(Profile.rounded_rect(90, 60, 5), 35, name="body")
     b.shell(2, open_faces=b.faces("body.top"))

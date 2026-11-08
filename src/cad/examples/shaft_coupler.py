@@ -22,6 +22,6 @@ def build():
         c.hole(2.5, at=(od / 2, 0, z), depth=od / 2, direction="-x", name=f"set_screw{i + 1}")
     c.chamfer(c.edges().circular(radius=od / 2), 0.8)
     c.assert_valid()
-    diams = sorted(h["diameter"] for h in c.holes())
+    diams = sorted(h["diameter"] for h in c.find_holes())
     assert diams[-2:] == [bore_a, bore_b] or sorted([bore_a, bore_b]) == diams[-2:], diams
     return c

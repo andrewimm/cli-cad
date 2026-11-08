@@ -1,0 +1,51 @@
+id = "modify_bracket"
+title = "Modify an existing bracket"
+category = "modification"
+split = "dev"
+setup_dir = "modify_bracket_files"
+prompt = """
+This directory already contains a working cad project (cad.toml, model.py) for an L-shaped mounting bracket. Modify it:
+
+1. Make the vertical wall 50 mm tall (measured above the top of the 4 mm base, so the overall height becomes 54 mm).
+2. Replace the single hole in the wall with two holes of the same diameter at X = -15 and X = +15, both at Z = 22 (the same height as the current wall hole), drilled through the wall along Y.
+3. Keep everything else unchanged: base size, the four base mounting holes, the inside-corner fillet and the rounded front corners.
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [60, 40, 54]
+min = [-30, -20, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 4.8
+axis = "y"
+positions = [[-15, 22], [15, 22]]
+exact_count = true
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 3.2
+axis = "z"
+positions = [[-24, -14], [24, -14], [-24, 10], [24, 10]]
+exact_count = true
+tol = 0.1
+
+[[checks]]
+type = "points_outside"
+points = [[29.5, -19.5, 2], [-29.5, -19.5, 2], [0, 0, 22]]
+note = "front corners still rounded; old centre wall hole removed"
+
+[[checks]]
+type = "points_inside"
+points = [[0, 15.5, 4.5], [0, 18, 53]]
+note = "inside-corner fillet present; wall reaches 54 mm"
