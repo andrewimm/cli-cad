@@ -460,7 +460,14 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
     if c == "export":
         fmts = [f.strip() for f in args.format.split(",")] if args.format else None
         r = s.export(fmts, rev=args.revision, parts=args.part, out_dir=args.out, tolerance=args.tolerance)
-        return r, "\n".join([f"revision {r['revision']}:"] + [f"  {f['path']}  ({f['bytes']} bytes)" for f in r["files"]])
+        lines = [f"revision {r['revision']}:"]
+        for f in r["files"]:
+            lines.append(f"  {f['path']}  ({f['bytes']} bytes)")
+            pr = f.get("printability")
+            if pr:
+                state = "watertight, manifold" if pr["watertight"] else f"NOT watertight ({pr.get('open_edges')} open / {pr.get('non_manifold_edges')} non-manifold edges)"
+                lines.append(f"      STL check: {state}; {pr['triangles']} triangles; size {pr.get('size_mm')} mm; volume {pr.get('volume_mm3')} mm3")
+        return r, "\n".join(lines)
     if c == "clearance":
         r = s.clearance(args.revision, parts=args.part, min_distance=args.min, allow_contact=args.allow_contact)
         lines = [f"revision {r['revision']} clearances" + (f" (required >= {args.min} mm)" if args.min is not None else "") + ":"]

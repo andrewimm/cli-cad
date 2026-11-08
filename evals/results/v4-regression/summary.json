@@ -1,0 +1,452 @@
+{
+  "run": {
+    "label": "v4-regression",
+    "model": "sonnet",
+    "attempts": 1,
+    "tasks": [
+      "angled_port",
+      "cable_clip",
+      "enclosure_lid",
+      "hex_standoff",
+      "hinge_leaf",
+      "l_bracket_ribs",
+      "modify_bracket",
+      "nema17_mount",
+      "phone_stand",
+      "pipe_flange",
+      "plate_4_holes",
+      "servo_mount",
+      "shaft_coupler",
+      "standoff_tray"
+    ],
+    "git": "6bf8f7e",
+    "started": 1794103185.72699
+  },
+  "overall": {
+    "attempts": 14,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 6.5,
+    "mean_failed_builds": 0.071,
+    "mean_turns": 9.071,
+    "mean_cost_usd": 0.124,
+    "total_cost_usd": 1.73,
+    "implementation_peeks": 0,
+    "feedback_received": 14
+  },
+  "tasks": {
+    "angled_port": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 10,
+      "mean_duration_s": 27.0,
+      "mean_cost_usd": 0.132,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "cable_clip": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 8,
+      "mean_duration_s": 24.8,
+      "mean_cost_usd": 0.123,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "enclosure_lid": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 7,
+      "mean_duration_s": 20.9,
+      "mean_cost_usd": 0.108,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "hex_standoff": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 7,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 9,
+      "mean_duration_s": 20.3,
+      "mean_cost_usd": 0.111,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "hinge_leaf": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 9,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 9,
+      "mean_duration_s": 25.7,
+      "mean_cost_usd": 0.131,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "l_bracket_ribs": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 7,
+      "mean_duration_s": 19.5,
+      "mean_cost_usd": 0.103,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "modify_bracket": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 12,
+      "mean_duration_s": 28.0,
+      "mean_cost_usd": 0.146,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "nema17_mount": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 7,
+      "mean_duration_s": 22.0,
+      "mean_cost_usd": 0.112,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "phone_stand": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 12,
+      "mean_builds": 3,
+      "mean_failed_builds": 1,
+      "mean_render_inspections": 2,
+      "mean_doc_lookups": 1,
+      "mean_turns": 17,
+      "mean_duration_s": 54.7,
+      "mean_cost_usd": 0.201,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "pipe_flange": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 0,
+      "mean_doc_lookups": 2,
+      "mean_turns": 8,
+      "mean_duration_s": 17.1,
+      "mean_cost_usd": 0.109,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "plate_4_holes": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 0,
+      "mean_doc_lookups": 2,
+      "mean_turns": 8,
+      "mean_duration_s": 17.0,
+      "mean_cost_usd": 0.104,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "servo_mount": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 19.8,
+      "mean_cost_usd": 0.109,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "shaft_coupler": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 7,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 9,
+      "mean_duration_s": 25.1,
+      "mean_cost_usd": 0.13,
+      "failed_checks": {},
+      "visual_overall_match": null
+    },
+    "standoff_tray": {
+      "attempts": 1,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 20.3,
+      "mean_cost_usd": 0.11,
+      "failed_checks": {},
+      "visual_overall_match": null
+    }
+  },
+  "cad_errors": {
+    "VALIDATION_FAILED": 1,
+    "INVALID_ARGUMENT": 1
+  },
+  "issue_categories": {
+    "docs_unclear/low": 6,
+    "other/low": 2,
+    "query_missing/low": 1,
+    "geometry_failure/medium": 1,
+    "error_unhelpful/medium": 1,
+    "api_missing/low": 1,
+    "api_confusing/low": 1
+  },
+  "issues": [
+    {
+      "task": "angled_port",
+      "category": "docs_unclear",
+      "description": "For angled holes the docs say 'at' is a 3D start point, so the user must compute where the axis meets the top face and the slanted depth (L = h/cos a) by hand. Works fine, but is manual.",
+      "severity": "low"
+    },
+    {
+      "task": "angled_port",
+      "category": "other",
+      "description": "A tilted flat-bottom hole has a bottom perpendicular to its axis, so one rim dips below the target point (to about Z=8.5 in section). Matches the spec (axis ends at the point) but no query reports the lowest extent of a single hole.",
+      "severity": "low"
+    },
+    {
+      "task": "cable_clip",
+      "category": "docs_unclear",
+      "description": "cad measure --holes reports a countersunk hole as depth 1.0 (the cylindrical part only) at z=0 with no mention of the countersink; unclear whether countersink dimensions are queryable.",
+      "severity": "low"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "docs_unclear",
+      "description": "`cad measure --holes` reports countersunk holes with position z=0 and depth 0.25 (only the cylindrical part), which is confusing; it does not report the countersink diameter/angle.",
+      "severity": "low"
+    },
+    {
+      "task": "modify_bracket",
+      "category": "docs_unclear",
+      "description": "For a +y hole the 2D 'at' is (x, z); this is only inferable from an example. Through-wall hole depth reports 4.0 and hole names like 'wall_holes.wall.0' are somewhat opaque.",
+      "severity": "low"
+    },
+    {
+      "task": "nema17_mount",
+      "category": "query_missing",
+      "description": "cad measure --holes does not list slots (non-circular cut-outs), so slot position/length had to be verified visually from the top render.",
+      "severity": "low"
+    },
+    {
+      "task": "nema17_mount",
+      "category": "docs_unclear",
+      "description": "Profile.slot angle convention (angle=90 -> along Y) is not stated explicitly; I assumed the default is along +u and confirmed via render.",
+      "severity": "low"
+    },
+    {
+      "task": "phone_stand",
+      "category": "geometry_failure",
+      "description": "Building the whole side profile as one 2D union (rect + rect + rotated polygon whose corner lies inside the base) and extruding it, then cutting the slot, gave a part with 2 solids, even though the render looked connected and volume was the same. Building base/lip/rest as separate boxes/extrudes unioned in the part gave 1 solid. I did not find the cause.",
+      "severity": "medium"
+    },
+    {
+      "task": "phone_stand",
+      "category": "error_unhelpful",
+      "description": "assert_valid said 'expected 1 solid(s), found 2' with a hint about features not touching, but gave no indication of which solids/where they are; query has no solids() selector to inspect them.",
+      "severity": "medium"
+    },
+    {
+      "task": "pipe_flange",
+      "category": "api_missing",
+      "description": "No polar/circular hole pattern helper; had to compute bolt-circle positions with math and pass them to holes().",
+      "severity": "low"
+    },
+    {
+      "task": "servo_mount",
+      "category": "other",
+      "description": "cad measure --holes lists only circular holes; the rectangular cut-out is not reported, so its size/position had to be verified via bbox/volume reasoning and the render.",
+      "severity": "low"
+    },
+    {
+      "task": "shaft_coupler",
+      "category": "docs_unclear",
+      "description": "Chamfering only the two outer circular edges required a filter chain (convex().perpendicular_to('z').longer_than(70)); the length threshold for 'outer vs bore edges' is a guess based on circumference (78.5 vs 25/15.7). A radius filter would be clearer.",
+      "severity": "low"
+    },
+    {
+      "task": "shaft_coupler",
+      "category": "api_confusing",
+      "description": "Radial hole depth semantics: unclear whether depth is measured from the surface point given in 'at'; I chose depths that overshoot the bore wall. find_holes reports depth of the wall only (8.5 / 10), which is correct but surprising.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "angled_port",
+      "suggestion": "Add an option to hole() such as end_at=(x,y,z) or 'to=' so an angled hole can be defined by its end point and direction, with the start computed up to the top face."
+    },
+    {
+      "task": "angled_port",
+      "suggestion": "Show a worked example for 'drill down to a given point at an angle' in the hole docs."
+    },
+    {
+      "task": "cable_clip",
+      "suggestion": "Report countersink diameter/angle in find_holes()/measure --holes output."
+    },
+    {
+      "task": "cable_clip",
+      "suggestion": "Add a cable-clip / tube-along-Y example."
+    },
+    {
+      "task": "enclosure_lid",
+      "suggestion": "An explicit interference check (cad clearance between two non-reference parts) mentioned in the docs for this kind of task would help; I verified non-intersection by geometry/section only."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "Document that edges().horizontal() selects the end-face edges of a prism (an example for chamfering both ends would help)."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Report countersink/counterbore diameter and angle in `cad measure --holes`."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Document that the pin hole (hole through knuckle axis) also nicks the plate when the plate overlaps the knuckle radius."
+    },
+    {
+      "task": "l_bracket_ribs",
+      "suggestion": "Document in the Sketch planes table that the YZ-plane profile coordinates are world (Y, Z), so a rib offset by X needs no translation (already clear from the ramp example)."
+    },
+    {
+      "task": "modify_bracket",
+      "suggestion": "State explicitly in the hole docs that for direction +y the 2D 'at' is (x, z)."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "List slots in measure --holes (or a --slots option) with length/width/orientation."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "Document Profile.slot default orientation and angle direction."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "A built-in counterbore/hole helper with a face/side argument would avoid manual two-step cuts."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Report the bbox/volume of each solid when assert_valid finds multiple solids."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Add a solids() selector or `cad measure --solids`."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Document that Profile '+' of overlapping shapes may leave disjoint/odd results, or fix it."
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "Add hole_pattern(..., circle=(diameter, count, start_angle)) for bolt circles."
+    },
+    {
+      "task": "plate_4_holes",
+      "suggestion": "A `Profile.rounded_rect` + extrude example next to the box+fillet one would show both routes to rounded plates."
+    },
+    {
+      "task": "servo_mount",
+      "suggestion": "Report non-circular through-cutouts (size, centre) in cad measure --holes or cad inspect."
+    },
+    {
+      "task": "servo_mount",
+      "suggestion": "Offer a Part.hole(diameter, at, through=True) shortcut for simple through holes."
+    },
+    {
+      "task": "shaft_coupler",
+      "suggestion": "Add an edge filter like .circular(radius=...) or .radius(r) to select circular edges by size."
+    },
+    {
+      "task": "shaft_coupler",
+      "suggestion": "Offer hole depth='to_axis' or up_to=<face/hole> for set-screw holes that must reach a bore."
+    },
+    {
+      "task": "standoff_tray",
+      "suggestion": "Offer a hole feature that takes a list of positions (pattern of blind holes from a face) to avoid manual loops of cylinder cuts."
+    }
+  ]
+}

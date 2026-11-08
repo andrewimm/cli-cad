@@ -477,7 +477,12 @@ class ProjectSession:
                 dst = out / f"{n}.{ext}"
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(cpath, dst)
-                files.append({"part": n, "format": fmt, "path": str(dst), "bytes": dst.stat().st_size})
+                entry = {"part": n, "format": fmt, "path": str(dst), "bytes": dst.stat().st_size}
+                if fmt == "stl":
+                    from .export import stl_check
+
+                    entry["printability"] = stl_check(dst)
+                files.append(entry)
         out = {"revision": r, "files": files}
         if skipped:
             out["skipped_reference_parts"] = skipped

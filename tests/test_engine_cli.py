@@ -182,3 +182,13 @@ def test_docs_sections_and_getting_started(tmp_path):
     assert "Quick start" in r["result"]["sections"]
     c, r = j(["docs", "nonexistent-topic-xyz"], tmp_path)
     assert c == 5 and r["error"]["code"] == "NOT_FOUND"
+
+
+def test_export_reports_stl_printability(project):
+    e = Engine()
+    j(["build"], project, e)
+    c, r = j(["export", "--format", "stl"], project, e)
+    pr = r["result"]["files"][0]["printability"]
+    assert pr["watertight"] and pr["open_edges"] == 0 and pr["size_mm"] == pytest.approx([60, 40, 34], abs=0.05)
+    c, out, _ = run(["export", "--format", "stl"], project, e)
+    assert "STL check: watertight, manifold" in out

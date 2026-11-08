@@ -1,0 +1,515 @@
+{
+  "run": {
+    "label": "hc-baseline",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "folding_arm",
+      "param_hole_pattern",
+      "robot_leg",
+      "sensor_cradle",
+      "servo_envelope_bracket",
+      "split_shaft_clamp"
+    ],
+    "git": "f08a2f5",
+    "started": 1794102279.348834
+  },
+  "overall": {
+    "attempts": 18,
+    "pass_rate": 0.833,
+    "mean_score": 0.983,
+    "self_reported_success": 1.0,
+    "overclaimed": 3,
+    "mean_cad_calls": 9.944,
+    "mean_failed_builds": 0.222,
+    "mean_turns": 10.889,
+    "mean_cost_usd": 0.166,
+    "total_cost_usd": 2.983,
+    "implementation_peeks": 0,
+    "feedback_received": 18
+  },
+  "tasks": {
+    "folding_arm": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 17,
+      "mean_builds": 4,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 4,
+      "mean_turns": 16,
+      "mean_duration_s": 47.7,
+      "mean_cost_usd": 0.208,
+      "failed_checks": {},
+      "visual_overall_match": 4.667
+    },
+    "param_hole_pattern": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 9.333,
+      "mean_builds": 4,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 0,
+      "mean_doc_lookups": 2,
+      "mean_turns": 8,
+      "mean_duration_s": 20.167,
+      "mean_cost_usd": 0.107,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "robot_leg": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 17.667,
+      "mean_builds": 4.667,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 0.667,
+      "mean_doc_lookups": 3.667,
+      "mean_turns": 12.333,
+      "mean_duration_s": 49.033,
+      "mean_cost_usd": 0.203,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    },
+    "sensor_cradle": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 4.333,
+      "mean_builds": 1.333,
+      "mean_failed_builds": 0.333,
+      "mean_render_inspections": 0.667,
+      "mean_doc_lookups": 1,
+      "mean_turns": 9.333,
+      "mean_duration_s": 37.367,
+      "mean_cost_usd": 0.148,
+      "failed_checks": {},
+      "visual_overall_match": 4.667
+    },
+    "servo_envelope_bracket": {
+      "attempts": 3,
+      "pass_rate": 0.0,
+      "mean_score": 0.9,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1.333,
+      "mean_failed_builds": 0.333,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 10,
+      "mean_duration_s": 52.333,
+      "mean_cost_usd": 0.183,
+      "failed_checks": {
+        "min_thickness": 3
+      },
+      "visual_overall_match": 4
+    },
+    "split_shaft_clamp": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6.333,
+      "mean_builds": 1.667,
+      "mean_failed_builds": 0.667,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 9.667,
+      "mean_duration_s": 28.267,
+      "mean_cost_usd": 0.145,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    }
+  },
+  "cad_errors": {
+    "NO_PROJECT": 9
+  },
+  "issue_categories": {
+    "docs_unclear/low": 10,
+    "query_missing/low": 8,
+    "other/low": 7,
+    "query_missing/medium": 6,
+    "api_confusing/low": 3,
+    "docs_unclear/medium": 1,
+    "workaround/low": 1
+  },
+  "issues": [
+    {
+      "task": "folding_arm",
+      "category": "docs_unclear",
+      "description": "The docs never describe multi-part assemblies explicitly (returning a dict of parts, part placement in world coordinates, how parameters like fold_angle interact with rotate). I inferred it from the 'return a Part, list or {name: Part}' line.",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "query_missing",
+      "description": "No way to check clearance across a parameter sweep in one command; I had to rebuild per angle with -p and measure --distance each time. Min distance of arm/forearm is the same at every angle by construction (stacked), so I verified 0 and 120 only.",
+      "severity": "medium"
+    },
+    {
+      "task": "folding_arm",
+      "category": "docs_unclear",
+      "description": "Docs do not describe assemblies explicitly (returning a list of Parts places them in a shared world frame), nor how to show a parameterised pose; I inferred it from the 'return a list of Parts' line.",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "query_missing",
+      "description": "No sweep tool: checking clearance across fold angles needed repeated `cad build -p` and `cad measure --distance` runs; renders per angle land in renders/rN with no label of the parameter value.",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "docs_unclear",
+      "description": "Docs do not say how to express a parameter-driven rotation of one part inside a multi-part assembly. I had to guess that translate/rotate on a Part mutate in place and that rotate(center=...) or build-at-origin then translate works.",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "query_missing",
+      "description": "No built-in sweep check over a parameter range. I rebuilt manually at 0/60/90/120 with -p and ran measure --distance each time. Only 4 angles were checked, so clearance at the other angles is argued from the stacking, not measured.",
+      "severity": "medium"
+    },
+    {
+      "task": "folding_arm",
+      "category": "other",
+      "description": "Renders are per revision directory (renders/rN), so the renders for different fold angles end up in separate revision folders. No option to name or label them with the parameter value.",
+      "severity": "low"
+    },
+    {
+      "task": "param_hole_pattern",
+      "category": "docs_unclear",
+      "description": "Docs say hole_pattern 'centres the grid' about center=(0,0) with the example using a plate centred at origin; it wasn't explicit whether center is absolute world XY (it is, as verified via inspect) so I had to verify for a corner-origin plate.",
+      "severity": "low"
+    },
+    {
+      "task": "param_hole_pattern",
+      "category": "docs_unclear",
+      "description": "hole_pattern's center is in plate coordinates only via a one-line note ('centres the grid ... (\u00b124, \u00b114)'); it was not obvious that center= is an absolute XY position, which matters for plates with a corner at the origin. Confirmed by inspect.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "docs_unclear",
+      "description": "Docs do not describe assemblies/multi-part output beyond 'return a list of Parts'; had to guess that a Parameter-driven rotate() on one part works as the articulation, and that rotate about Y needs a negative angle to swing -Z toward +X (right-hand rule, derived by reasoning, then verified through find_holes).",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "query_missing",
+      "description": "No built-in all-pairs clearance check across parts or sweep over a parameter; I verified clearance by reasoning (links sit in separate Y layers) plus one distance measure at 90 deg.",
+      "severity": "medium"
+    },
+    {
+      "task": "robot_leg",
+      "category": "docs_unclear",
+      "description": "The rotate() sign convention for Part.rotate about Y vs. the task's 'positive angle swings foot toward +X' needed a numeric check; I had to negate the angle (-knee_angle). Verified via find_holes at 90 deg (foot at x=110).",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "query_missing",
+      "description": "No built-in sweep/min-distance check across a parameter range; I had to rebuild with -p at several angles and call measure --distance manually. Clearance is guaranteed here by Y layering, not by a sweep.",
+      "severity": "medium"
+    },
+    {
+      "task": "robot_leg",
+      "category": "api_confusing",
+      "description": "XZ plane extrudes toward -Y and offset=d places the sketch at Y=-d, so placing a slab at a given Y range (e.g. Y 0..5.5) requires offset=-ymax and positive distance; counter-intuitive.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "other",
+      "description": "cad measure --holes output has no explicit angle-sorted/flat format; also measure --distance prints full part info each time (noisy).",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "api_confusing",
+      "description": "Rotation sign for rotate(angle, axis='y') is easy to get wrong: positive angle sends -Z toward -X, so knee_angle needed rotate(-knee_angle). Docs state the right-hand rule but a worked example for 'swing a hanging link toward +X' would help. I verified it via find_holes positions.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "docs_unclear",
+      "description": "Not stated whether Profile.slot length is overall or center-to-center (it is overall, found by checking bbox). Also the XZ plane extrusion direction (-Y) plus offset sign (offset=-ymid puts mid-plane at Y=ymid) takes care to get right.",
+      "severity": "medium"
+    },
+    {
+      "task": "robot_leg",
+      "category": "query_missing",
+      "description": "No built-in multi-part clearance or sweep check across parameter values. I ran cad set + cad measure --distance manually at 0, 45 and 90 degrees. Only the distance between parts is reported, not a pairwise matrix.",
+      "severity": "medium"
+    },
+    {
+      "task": "robot_leg",
+      "category": "workaround",
+      "description": "There is no hole-along-Y-through-everything helper that takes a 2D position on a part with several features. I cut cylinders with op='cut' on axis y instead. cad set leaves params.toml behind, so I ran cad unset to restore the default angle.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "other",
+      "description": "Multi-part assemblies have no placement or joint concept. The rotation of the lower link is baked into the part geometry, so its part coordinates change with the parameter.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "query_missing",
+      "description": "No way to declare the sensor envelope as a keep-out/reference solid and have inspect report interference/contact/clearance against it; I relied on cutting an envelope cylinder and did not run a numeric contact check or view a section render.",
+      "severity": "medium"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "other",
+      "description": "Hole positions given as 2D (x,y) worked fine; no problems with the build.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "query_missing",
+      "description": "No way to declare the sensor envelope as a reference body and check keep-out/contact/clearance from the CLI; I verified by reasoning about the geometry (cut cylinder R15 at Z=25 gives exact tangent contact). I did not open the renders in detail.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "query_missing",
+      "description": "No way to declare the sensor envelope / keep-out volumes and check clearance or touching in the CLI; I verified by reasoning and one render. I did not try building envelope Parts for distance_to/interference.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "other",
+      "description": "find_holes reports the sensor-seat cylindrical cut as a 'hole' d=30, which is noise when looking for screw holes.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "other",
+      "description": "Shell redirection/heredoc file creation was blocked by the harness approval; had to use the Write tool. Not a cad issue.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "query_missing",
+      "description": "No built-in way to check a requirement like 'clear vertical column above a point' or 'min clearance from an envelope box'; I verified by reasoning from dimensions rather than a query. Envelope boxes would need to be built as helper Parts to use distance_to.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "other",
+      "description": "Compound shell commands (heredocs followed by several cad calls) were blocked by the sandbox approval, so I had to write files with the Write tool. This is environment friction, not a cad bug.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "query_missing",
+      "description": "I did not run cad measure --distance between the parts and the servo envelope, and I did not run any clearance or keepout check. The envelope is not a model object, so I checked the numbers by hand.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "query_missing",
+      "description": "No way to import/declare the servo envelope as a reference body, so clearance (>=0.5 mm) and contact checks against it were done by hand arithmetic rather than with distance_to/interference.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "docs_unclear",
+      "description": "Hex pocket orientation (flats parallel to X) had to be inferred from the regular_polygon note (angle=0 -> flats at v=\u00b1AF/2); I did not verify it numerically, only in a section render.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "query_missing",
+      "description": "No obvious CLI to measure the interference/distance between two parts of the same project in one command; I relied on construction (touching at Z=0) instead.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "docs_unclear",
+      "description": "Hex orientation: had to infer that regular_polygon angle=0 (corner on +u) gives flats parallel to X; docs say flats at v=\u00b1af, which was enough but needed a moment of thought.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "api_confusing",
+      "description": "cylinder(axis='x', align=...) semantics for where 'at' sits along the axis were only briefly described; used align='min' starting beyond the part and a long length.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "query_missing",
+      "description": "find_holes/inspect does not report the half-bore (open half-cylinder) as a hole, so the 8.2 mm bore could only be verified visually via section render.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "docs_unclear",
+      "description": "Cylinder 'align' semantics for axis='x' with at= were inferred (align='min' starts at the 'at' point along the axis); worked but not shown in an example.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "folding_arm",
+      "suggestion": "Add 'cad sweep fold_angle=0:120:30 --measure-distance a,b' for assembly clearance checks."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Document assembly conventions and that renders are stored per revision (so different angles need different builds)."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Add an assembly/motion docs section with an example sweeping a parameter and checking min distance."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Include parameter values in render folder names or metadata."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Let `cad measure --distance` print only a summary rather than the full part report."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Add an assembly section to the docs showing a posed/articulated multi-part example."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Add `cad sweep fold_angle 0:120:10 --distance a b` or similar for pairwise clearance over a parameter range."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Include parameter values in render filenames or the directory name."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "State explicitly that hole_pattern center is in world coordinates, and show an example with a corner-origin box."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "Document that hole_pattern center is in absolute plate coordinates (not relative to the part) with an example for corner-origin plates."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "Add a docs example of hole_pattern on a corner-origin plate with center=(w/2, h/2)."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "Offer a center='part' option for hole_pattern."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Add a 'cad check clearance' for all part pairs, optionally sweeping a parameter range."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Document the Profile.slot angle semantics and that 'length' is overall end-to-end."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Allow render to take -p knee_angle=45 without rewriting params.toml."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Add a box-with-Y-range helper or an extrude option taking absolute start/end coordinates along the normal."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Add `cad measure A --distance B -p knee_angle=0:90:15` sweep support."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Document that rotate on a returned Part list member mutates in place and how assemblies use parameters for motion."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Add an assembly example, such as a hinge or linkage, that uses a rotating parameter and separate parts."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Add a cad check or measure --all-pairs command that prints the pairwise distance matrix and can sweep a parameter over a range."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "State in the docs whether Profile.slot length is overall, and add a pivot-aware rotate example."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Render all parts in one image at several parameter values with one command, for example render -p knee_angle=0,45,90."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Allow named keep-out solids in cad.toml checked by inspect (interference, contact distance, vertical-path clearance for screw heads)."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Allow non-part 'envelope' bodies for distance/interference checks and render overlays."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Allow a keepout/envelope declaration in the project that cad inspect checks automatically."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Let find_holes filter by through/vertical or diameter."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Add a way to declare keep-out/envelope volumes in the project and check clearance/interference against them via cad measure."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "A 'cad check' for min wall thickness would be useful."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Let a project declare reference or envelope solids that are excluded from export but available to measure --distance and interference."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Add a helper that reports the minimum wall thickness around holes."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Allow declaring non-exported 'envelope' parts for distance/interference checks and rendering."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Add a column-clearance query (is a vertical cylinder of D at (x,y) free of all parts)."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add a worked example for split/two-part assemblies with hex nut pockets."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "inspect could report hex pocket (non-circular recess) dimensions and flat orientation."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add a worked example for a split/two-part assembly with a bore and nut pockets."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Let hole() take a 'name' collision-free pattern; names with negative numbers like screw_t-10 are ugly."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Report partial/open cylindrical cuts (half bores) in find_holes or a separate 'cylindrical cuts' list."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add a hex-pocket / nut-trap helper or doc example showing regular_polygon across_flats orientation relative to a given axis."
+    }
+  ]
+}

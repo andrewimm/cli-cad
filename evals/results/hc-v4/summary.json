@@ -1,0 +1,501 @@
+{
+  "run": {
+    "label": "hc-v4",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "folding_arm",
+      "param_hole_pattern",
+      "robot_leg",
+      "sensor_cradle",
+      "servo_envelope_bracket",
+      "split_shaft_clamp"
+    ],
+    "git": "6bf8f7e",
+    "started": 1794102853.773501
+  },
+  "overall": {
+    "attempts": 18,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 10.5,
+    "mean_failed_builds": 0.056,
+    "mean_turns": 11.167,
+    "mean_cost_usd": 0.17,
+    "total_cost_usd": 3.051,
+    "implementation_peeks": 0,
+    "feedback_received": 18
+  },
+  "tasks": {
+    "folding_arm": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 13.333,
+      "mean_builds": 3.333,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 0.333,
+      "mean_doc_lookups": 3,
+      "mean_turns": 12,
+      "mean_duration_s": 43.6,
+      "mean_cost_usd": 0.178,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    },
+    "param_hole_pattern": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 8.667,
+      "mean_builds": 3,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 0,
+      "mean_doc_lookups": 2,
+      "mean_turns": 8,
+      "mean_duration_s": 19.467,
+      "mean_cost_usd": 0.111,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "robot_leg": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 14,
+      "mean_builds": 3.333,
+      "mean_failed_builds": 0.333,
+      "mean_render_inspections": 0.333,
+      "mean_doc_lookups": 2,
+      "mean_turns": 13,
+      "mean_duration_s": 51.633,
+      "mean_cost_usd": 0.196,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    },
+    "sensor_cradle": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 7.667,
+      "mean_builds": 1.333,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2.333,
+      "mean_turns": 10.667,
+      "mean_duration_s": 37.333,
+      "mean_cost_usd": 0.161,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "servo_envelope_bracket": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 12.667,
+      "mean_builds": 2,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 3,
+      "mean_turns": 14,
+      "mean_duration_s": 65.2,
+      "mean_cost_usd": 0.238,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    },
+    "split_shaft_clamp": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6.667,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 9.333,
+      "mean_duration_s": 29.533,
+      "mean_cost_usd": 0.133,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    }
+  },
+  "cad_errors": {
+    "INVALID_ARGUMENT": 9,
+    "VALIDATION_FAILED": 3,
+    "BOOLEAN_FAILED": 2
+  },
+  "issue_categories": {
+    "docs_unclear/low": 8,
+    "other/low": 8,
+    "api_confusing/low": 7,
+    "query_missing/low": 3,
+    "api_confusing/medium": 2,
+    "render_missing/low": 1,
+    "other/medium": 1,
+    "api_missing/low": 1,
+    "workaround/low": 1
+  },
+  "issues": [
+    {
+      "task": "folding_arm",
+      "category": "api_confusing",
+      "description": "cad measure --holes without a part name errors with 'revision has 3 parts; name one' for multi-part assemblies; a default of all parts would be friendlier.",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "docs_unclear",
+      "description": "Docs do not say that rotating a Part by a Parameter in build() is the intended way to model pose, nor whether sweep checks pairs only (it reports only the closest pair, not every pair's minimum).",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "other",
+      "description": "cad sweep prints only the single closest pair per pose, so the forearm-vs-arm gap (0.4 mm headroom) was not visible; I had to trust the min threshold.",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "docs_unclear",
+      "description": "cad measure --holes with several parts errors 'name one'; docs do not mention a part argument is required for multi-part projects.",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "other",
+      "description": "cad sweep reports only the single closest pair per step, not every pair (arm<->forearm gap not shown).",
+      "severity": "low"
+    },
+    {
+      "task": "folding_arm",
+      "category": "api_confusing",
+      "description": "cad measure --holes without a part name fails on multi-part assemblies ('name one'); inspect shows all parts but measure needs a part.",
+      "severity": "low"
+    },
+    {
+      "task": "param_hole_pattern",
+      "category": "other",
+      "description": "Shell heredoc file creation was blocked by the sandbox/permission layer; had to use the editor Write tool instead. Not a cad problem.",
+      "severity": "low"
+    },
+    {
+      "task": "param_hole_pattern",
+      "category": "docs_unclear",
+      "description": "Docs do not state explicitly that Parameter() returns a plain number usable in arithmetic (it is implied by 'returns a plain number'); worked fine for center=(plate_width/2, ...).",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "api_confusing",
+      "description": "cad measure with several parts requires a part name (error 'name one'); no all-parts option for --holes/--thickness.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "docs_unclear",
+      "description": "Y sign conventions for XZ-plane slabs (offset=-y0, negative distance) and picking a 3D hole start point outside the part need care.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "api_confusing",
+      "description": "hole() with a 3D 'at' on a Y-axis hole whose start point lies outside the material (Y=0 vs a slab at Y -5.5..-0.5) fails with a generic BOOLEAN_FAILED 'hole cut failed' and no hint; the 2D form at=(x,z) works.",
+      "severity": "medium"
+    },
+    {
+      "task": "robot_leg",
+      "category": "other",
+      "description": "In this session, sed -i on files in the working dir required approval; unrelated to cad but slowed edits.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "api_confusing",
+      "description": "cad measure --holes without a part name errors on multi-part assemblies (must name a part); inspect/clearance work without one.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "api_confusing",
+      "description": "Rotation sign: rotate about y turns +Z toward +X, so a link hanging along -Z needs a negative angle to swing the foot toward +X. Easy to get backwards; verified via measure --holes at 90 deg.",
+      "severity": "low"
+    },
+    {
+      "task": "robot_leg",
+      "category": "render_missing",
+      "description": "cad sweep --render only rendered the requested view for the whole assembly under a long filename; render dirs are per revision (r2..r8), not named by angle.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "docs_unclear",
+      "description": "Reference parts are returned from build() alongside the cradle; it was not obvious whether the task's 'one part named cradle' rule counts reference envelopes. Docs say they are skipped on export, which resolved it.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "query_missing",
+      "description": "No direct check for 'keep-out region empty' (e.g. the volume above mid-plane or the 8 mm screw-head path); I verified by reasoning from the bbox and by modelling references. Modelling the keep-outs as reference parts would let cad clearance check them.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "other",
+      "description": "Shell heredoc writes to project files needed approval in the sandbox; had to use the file Write tool. Not a cad issue.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "query_missing",
+      "description": "I did not model the sensor as a reference part, so cad clearance was not used; contact with the sensor (support) and the no-go regions were verified only by construction (cut with exact envelope cylinder, top at Z=25).",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "docs_unclear",
+      "description": "Unclear whether reference=True envelope parts count as extra parts for a 'one part named cradle' requirement; build output lists 4 parts.",
+      "severity": "low"
+    },
+    {
+      "task": "sensor_cradle",
+      "category": "docs_unclear",
+      "description": "Cylinder 'at' with axis='x' and align='min': it is not obvious that at gives the axis position (Y,Z) and the start X; I had to confirm from the clearance output.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "other",
+      "description": "cad clearance flags the intended bottom/top contacts as VIOLATIONs with --min, though per-face gaps show 'contact' for those faces only. Hard to tell allowed from forbidden contact at a glance.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "other",
+      "description": "cad clearance flags intended contacts (servo bottom/top, clamp on posts) as VIOLATION with --min 0.5; no way to whitelist allowed face contacts.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "other",
+      "description": "cad clearance flags intended bottom/top face contact (and bracket<->clamp seating contact) as VIOLATION with --min 0.5; no way to say 'contact allowed on these faces'.",
+      "severity": "medium"
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "category": "other",
+      "description": "Shell environment refused sed -i / braces in heredocs without approval; had to use Write for edits (environment, not cad).",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "api_confusing",
+      "description": "`cad measure --holes` without a part name errors out on multi-part revisions ('name one') instead of listing all parts.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "docs_unclear",
+      "description": "Not obvious from docs whether p.holes(..., direction='-z') with 2D `at` starts at the part's top face for a part located below Z=0; verified via measure --holes (it did).",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "api_missing",
+      "description": "No dedicated hex-nut pocket helper; had to extrude a regular_polygon cut at an offset plane (worked fine).",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "api_confusing",
+      "description": "`cad measure --holes` without a part name errors on multi-part revisions ('name one'), while `cad inspect` works for all parts. Render with --section on multi-part revisions merges all parts into one file named clamp_top_clamp_bottom_*.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "query_missing",
+      "description": "No direct check that two parts do not intersect (interference volume) or that the hex pocket flats are parallel to X; I relied on construction and a section render.",
+      "severity": "low"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "api_confusing",
+      "description": "`cad clearance` errors with 'revision has 2 parts; name one' when no --part is given, although the docs say it checks every pair of parts. I could not get the pairwise touch/overlap check for the two halves, so 'must not intersect' was not verified numerically.",
+      "severity": "medium"
+    },
+    {
+      "task": "split_shaft_clamp",
+      "category": "workaround",
+      "description": "p.holes() is for holes entering from a face. I used extrude(Profile.circle, op='cut') at a Z offset to get the exact Z ranges for the through holes and the nut pockets.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "folding_arm",
+      "suggestion": "cad sweep: print the min gap for every pair, not just the closest."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Let cad measure --holes/--thickness default to all parts."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Add an example for a multi-part moving assembly."
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "cad sweep should print min gap for every part pair"
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "measure --holes without a part could loop over all parts"
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Let measure/query default to all parts"
+    },
+    {
+      "task": "folding_arm",
+      "suggestion": "Report sweep per-pair min gap summary, not just the closest pair"
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "Add a parametric-plate-with-hole_pattern example to the docs, showing center derived from a Parameter."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "cad set leaves params.toml behind; a 'cad set --reset' / 'cad unset' command would be handy."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "Add a one-line note in the docs that box(align=('min','min','min')) is the way to put a corner at the origin, next to the hole_pattern example."
+    },
+    {
+      "task": "param_hole_pattern",
+      "suggestion": "Mention in the hole_pattern docs that center accepts expressions derived from Parameters, e.g. (w/2, h/2), as a typical use."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Let measure accept --all-parts."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Note in docs that positive rotation about Y swings a downward link toward -X (I had to negate knee_angle)."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "cad sweep could also produce one combined contact sheet."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Make BOOLEAN_FAILED for holes hint that a 3D start point not touching the material produces no cut; suggest the 2D at form."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Add an assembly example with a motion parameter on a rotated link layered along Y."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Let measure --holes/--thickness default to all parts."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "Name sweep renders by parameter value (e.g. knee_angle_45_front.png)."
+    },
+    {
+      "task": "robot_leg",
+      "suggestion": "A rotate_about helper with a 'point toward' hint or example for hanging links."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Add a keepout/envelope check helper that reports intersection with arbitrary boxes/cylinders."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Have cad clearance flag when a reference envelope touches a part, so it is clear whether contact is a support or an interference."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Provide a way to declare keep-out regions (e.g. cable cylinder, lift-out box) as reference parts with an example, and a check that a part touches a reference (distance 0) while not intersecting it."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Document that reference parts are excluded from deliverable part counts/exports."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Add a 'cad clearance' check that reports the contact area/points for 'must touch' requirements."
+    },
+    {
+      "task": "sensor_cradle",
+      "suggestion": "Offer a keep-out volume as a first-class reference check."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Let clearance mark specific faces of a reference part as allowed-contact, or print a per-face pass/fail against a min gap."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Allow 'cad measure --thickness' to report ligaments of holes in a named list."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Allow cad clearance to declare permitted contact faces or pairs."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "A check for a vertical clear column above a point (e.g. screw-head or shaft path) would help."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "Let cad clearance accept per-face allowed-contact rules (e.g. --allow-contact servo.bottom,servo.top) so the pass/fail exit code is meaningful for envelope tasks."
+    },
+    {
+      "task": "servo_envelope_bracket",
+      "suggestion": "A built-in check for 'vertical column above a point is empty of all parts' (screw head / shaft keep-out) would help."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Let measure/inspect default to all parts when a revision has several."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add a nut_pocket()/hex pocket feature with across-flats and orientation args."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add an assembly-level interference check (cad clearance for non-reference parts) in docs for 'parts must not intersect'."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Add `cad interference` (or include in `cad clearance`) reporting overlap volume between non-reference parts."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Make measure --holes iterate over all parts by default."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Report hex pocket across-flats/orientation in find_holes-like output for polygon pockets."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Make `cad clearance` default to all pairs when a project has multiple parts."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Document a hex-pocket recipe (regular_polygon across_flats, angle=0 gives flats parallel to the u axis)."
+    },
+    {
+      "task": "split_shaft_clamp",
+      "suggestion": "Let the 'cad measure --holes' output include hex pocket (non-circular) recesses."
+    }
+  ]
+}

@@ -99,3 +99,35 @@ Worker peak RSS was ~0.78 GB, dominated by 2× supersampled render buffers.
 - Next: add tasks that require missing capabilities (sweeps, snap fits, hinged assemblies,
   FEA-checked brackets) so completion rate becomes informative again, more attempts per
   task, a second agent family, and periodic fresh held-out tasks.
+
+## A01 — Unfamiliar agent onboarding
+
+An independent agent gets a clean workspace, `cad` installed from a wheel and the
+release binaries into an isolated prefix (`scripts/install.sh`; nothing from the
+repository on PATH), and a minimal prompt: *"A command-line CAD tool named `cad` is
+installed"* plus *"Design a 60 × 40 mm mounting plate with four holes and export a
+printable STL."* No starter script, no pointers to the docs. Grading accepts any
+thickness and hole size: the footprint must be 60 × 40 in some orientation with four
+through-holes along the thickness, and a watertight STL matching the final model must
+exist in the workspace. Times come from the `cad` call log relative to the agent's start.
+
+| 5 attempts each | baseline (`f0d2b6e`) | v2 (`cad --help` getting started, `cad docs <topic>`, quick start) |
+|---|---|---|
+| passed / exported a valid STL | 5/5 / 5/5 | 5/5 / 5/5 |
+| time to first valid model (median) | 16.0 s | **13.1 s** |
+| time to exported STL (median) | 17.1 s | 16.2 s |
+| `cad` commands (mean) | 10.4 | **7.0** |
+| shell commands (mean) | 5.6 | 4.0 |
+| documentation lookups (mean) | 5.0 | **2.0** |
+| API errors | 0 | 0 |
+| cost per attempt | $0.130 | **$0.098** |
+
+Baseline agents all took the same route: `cad --help`, the first 150 lines of
+`cad docs`, a grep for "hole", `cad examples`, usually `cad examples show
+plate_with_holes`. All five asked for a quick start in `--help`; four said the hole API
+was buried in a long reference. After v2 every agent went `--help` → `cad init` →
+`cad docs holes` → build → inspect → render → export. Two packaging/onboarding issues
+surfaced while building the eval: `cad init`'s template was itself a plate with four
+holes (now a neutral cube), and the wheel had to be confirmed to ship the reference and
+examples (it does). Remaining feedback (STL printability confirmation) led to a
+watertightness report on every STL export; that change is not yet re-measured.
