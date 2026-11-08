@@ -508,15 +508,19 @@ def build():
 
 - `revolute(name, parent, child, axis=, angle=)` (degrees), `slider(..., axis=, distance=)` (mm),
   `cylindrical(..., angle=, distance=)` (a pin that turns and slides), `fixed(name, parent, child)` (follows its parent).
-- `axis=`: a hole or boss wall (`part.faces("hinge.wall")`, its axis line), a circular or straight edge, a flat face
+- `axis=`: a hole or boss wall (`part.faces("hinge.wall")` for a `hole(..., name="hinge")`; a hole cut with
+  `cylinder(..., op="cut", name="hinge")` is `part.faces("hinge.side")`), a circular or straight edge, a flat face
   (its normal, for sliders), or `((x, y, z), (dx, dy, dz))`. Give it in the parent's rest pose: the knee axis is
   where the knee hole is when everything is at 0; moving the hip carries it along.
 - Direction: from geometry the axis points along the positive world axis it is closest to (+X, +Y or +Z);
   `direction="-y"` reverses it. Positive angles turn right-handed about the axis direction. `cad joints`
-  prints, for each joint, the world axis and in words what a positive value does ("its far end moves -X").
+  prints, for each joint, the world axis and in words what a positive value does ("its far end moves -X"):
+  read it after the first build and add `direction=` to any joint that moves the wrong way.
+  `cad render --views front --joints` draws the axes with their positive sense.
 - Values: a number, or the name of a declared Parameter (the joint takes its limits). Then
   `cad set knee 45` (joint name or parameter name) poses it and `cad sweep knee 0:90:15 --min 0.5` checks
-  clearances through the motion. `limits=(lo, hi)` for numbers; out-of-range values fail with `JOINT_LIMIT`.
+  clearances through the motion (negative ranges work: `cad sweep shoulder -45:45:15`). `cad set` saves the pose
+  in params.toml; `cad unset --all` returns every joint to the rest pose (sweeps restore it themselves). `limits=(lo, hi)` for numbers; out-of-range values fail with `JOINT_LIMIT`.
 - Each part has one parent joint (a tree from the fixed part); closed loops such as four-bar linkages are not
   supported: drive one link and check the closing joint with `cad clearance`. `JOINT_AXIS_OFF_GEOMETRY` warns
   when a revolute axis does not pass through a hole or boss of both parts.

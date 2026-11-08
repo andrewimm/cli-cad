@@ -219,8 +219,8 @@ def _parser() -> _Parser:
     s.add_argument("--revision", "-r")
 
     s = cmd("sweep")
-    s.add_argument("parameter")
-    s.add_argument("values", help="START:STOP:STEP (inclusive) or a comma list, e.g. 0:90:15 or 0,45,90")
+    s.add_argument("parameter", help="a parameter or joint name (or NAME=VALUES)")
+    s.add_argument("values", nargs="?", help="START:STOP:STEP (inclusive) or a comma list, e.g. 0:90:15, -45:45:15 or 0,45,90")
     s.add_argument("--min", type=float, help="required clearance between parts in mm; violations exit with code 4")
     s.add_argument("--allow-contact", action="store_true", help="touching without overlap is OK")
     s.add_argument("--render", metavar="VIEWS", help="also render each value, e.g. front or iso,top")
@@ -235,7 +235,8 @@ def _parser() -> _Parser:
     s.add_argument("--force", action="store_true", help="allow parameters the model does not declare")
 
     s = cmd("unset")
-    s.add_argument("names", nargs="+")
+    s.add_argument("names", nargs="*", help="parameters (or joint names) to return to their defaults")
+    s.add_argument("--all", action="store_true", help="clear every override (all joints back to the rest pose)")
     s.add_argument("--no-build", action="store_true")
 
     s = cmd("revisions")
@@ -360,7 +361,7 @@ def main(argv: list[str], cwd: str | os.PathLike | None = None, engine=None) -> 
         parser = _parser()
         try:
             with contextlib.redirect_stdout(out):
-                args = parser.parse_args(argv)
+                args = parser.parse_args(_protect_negatives(argv))
         except _HelpShown:
             return 0, out.getvalue(), ""
         if args.version:
@@ -618,21 +619,26 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
                     "hint": "for envelopes, per-face distances show which faces touch; contact on a supporting face is often intended"}
         return r, "\n".join(lines), fail
     if c == "sweep":
-        vals = _sweep_values(args.values)
-        r = s.sweep(args.parameter, vals, views=args.render, size=_size(args.size), min_distance=args.min, section=args.section,
+        param, values = args.parameter, args.values
+        if values is None and "=" in param:
+            param, values = param.split("=", 1)
+        if values is None:
+            raise UsageError("give the values to sweep, e.g. `cad sweep knee 0:90:15`")
+        vals = _sweep_values(values)
+        r = s.sweep(param.strip(), vals, views=args.render, size=_size(args.size), min_distance=args.min, section=args.section,
                     allow_contact=args.allow_contact)
-        lines = [f"sweep {args.parameter} over {vals} (active revision restored to r{r['head']}):"]
+        lines = [f"sweep {param.strip()} over {vals} (active revision restored to r{r['head']}):"]
         for row in r["results"]:
             cp = row.get("closest_pair")
             desc = f"closest {cp['a']}<->{cp['b']} {cp['state']} {cp['min_distance']} mm" if cp else "single part"
             bad = f"  VIOLATIONS: {[(v['a'], v['b'], v['min_distance']) for v in row['violations']]}" if row.get("violations") else ""
-            lines.append(f"  {args.parameter}={row['value']}: r{row['revision']} {desc}{bad}")
+            lines.append(f"  {param.strip()}={row['value']}: r{row['revision']} {desc}{bad}")
             for img in row.get("images", []):
                 lines.append(f"      {img}")
         fail = None
         if r.get("ok") is False:
             bad = [x["value"] for x in r["results"] if x.get("violations")]
-            fail = {"code": "VALIDATION_FAILED", "message": f"clearance below {args.min} mm at {args.parameter} = {bad}"}
+            fail = {"code": "VALIDATION_FAILED", "message": f"clearance below {args.min} mm at {param.strip()} = {bad}"}
         return r, "\n".join(lines), fail
     if c == "params":
         r = s.params()
@@ -674,7 +680,10 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
             text += "\n" + _fmt_build(b)
         return r, text
     if c == "unset":
-        r = s.unset_params(args.names)
+        if not args.names and not args.all:
+            raise UsageError("name the parameters to unset, or pass --all")
+        names = list(read_overlay_names(s)) if args.all else [s.joint_parameter(n) for n in args.names]
+        r = s.unset_params(names)
         text = f"params.toml: {r['overlay']}"
         if not args.no_build:
             b = s.build()
@@ -730,10 +739,10 @@ def _assignments(items: list[str]) -> dict[str, Any]:
         it = items[i]
         if "=" in it:
             k, v = it.split("=", 1)
-            vals[k] = parse_value(v)
+            vals[k.strip()] = parse_value(v.strip())
             i += 1
         elif i + 1 < len(items):
-            vals[it] = parse_value(items[i + 1])
+            vals[it.strip()] = parse_value(items[i + 1].strip())
             i += 2
         else:
             raise UsageError(f"missing value for parameter {it!r}")
@@ -1048,6 +1057,21 @@ def _examples(args, cwd: Path):
     dest = (cwd / (args.dest or args.name)).resolve()
     init_project(dest, args.name, src)
     return {"root": str(dest)}, f"copied example {args.name} to {dest}\nnext: cd {dest} && cad build && cad render"
+
+
+def read_overlay_names(session) -> list[str]:
+    from .project import read_overlay
+
+    return list(read_overlay(session.root))
+
+
+_NEGATIVE_VALUE = __import__("re").compile(r"^-\d*\.?\d+([:,]-?\d*\.?\d+)*$")
+
+
+def _protect_negatives(argv: list[str]) -> list[str]:
+    """argparse takes "-45:45:15" (a sweep range) or "-30" for an option; a leading space keeps such
+    values positional.  Numbers parse fine with the space (float(" -30")); range parsers strip it."""
+    return [" " + a if _NEGATIVE_VALUE.match(a) else a for a in argv]
 
 
 def _fmt3(v) -> str:

@@ -120,3 +120,15 @@ def test_render_joint_overlay(tmp_path):
     a, b = np.asarray(Image.open(plain)), np.asarray(Image.open(over))
     orange = (b[..., 0] > 200) & (b[..., 1] > 90) & (b[..., 1] < 150) & (b[..., 2] < 60)
     assert orange.sum() > 200 and (a != b).any()
+
+
+def test_cli_negative_ranges_and_unset_all(tmp_path):
+    main(["init"], tmp_path)
+    (tmp_path / "model.py").write_text(LEG)
+    main(["build"], tmp_path)
+    r = json.loads(main(["sweep", "hip", "-30:30:30", "--json"], tmp_path)[1])["result"]
+    assert [row["value"] for row in r["results"]] == [-30, 0, 30]
+    r = json.loads(main(["sweep", "hip=-30,0", "--json"], tmp_path)[1])["result"]
+    assert [row["value"] for row in r["results"]] == [-30, 0]
+    assert json.loads(main(["set", "hip", "-20", "--json"], tmp_path)[1])["result"]["overlay"] == {"hip_angle": -20}
+    assert json.loads(main(["unset", "--all", "--json"], tmp_path)[1])["result"]["overlay"] == {}
