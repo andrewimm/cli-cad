@@ -236,3 +236,13 @@ def test_printed_pipe_clamp_checks_reject_wrong_fasteners(tmp_path):
         ("no_chamfer", "    bot.bottom_chamfer(0.5)\n", ""),
     ):
         assert "python" in failed(grade(t, _clamp(tmp_path, name, old, new))), name
+
+
+def test_lamp_arm_checks_catch_wrong_joint_directions(tmp_path):
+    t = task("lamp_arm")
+    src = (SOLUTION_DIR / "lamp_arm.py").read_text()
+    assert grade(t, script(tmp_path, src, "ok.py"))["passed"]
+    wrong_elbow = src.replace(', angle="elbow", direction="-y")', ', angle="elbow")')
+    assert "param_rebuild" in failed(grade(t, script(tmp_path, wrong_elbow, "elbow.py")))
+    wrong_yaw = src.replace('axis=((0, 0, 0), (0, 0, 1)), angle="yaw"', 'axis=((0, 0, 0), (0, 0, -1)), angle="yaw"')
+    assert "param_rebuild" in failed(grade(t, script(tmp_path, wrong_yaw, "yaw.py")))

@@ -1,0 +1,142 @@
+id = "lamp_arm"
+title = "Desk lamp arm: three chained joints"
+category = "assembly"
+split = "dev"
+grade_overrides = { yaw = 0, shoulder = 0, elbow = 0 }
+prompt = """
+Design the arm of a desk lamp as an assembly of four separately printable parts. Pins are not modelled:
+leave every pivot hole empty. All pivot holes are 5.2 mm in diameter.
+
+Rest pose (all motion parameters 0):
+- "base": a round foot, 80 mm in diameter and 10 mm thick, from Z = 0 to 10, centred on the origin.
+- "turret": sits on the base (keep 0.5 mm clear of it) and turns about the vertical Z axis through the origin.
+  It carries the shoulder pivot: a hole whose axis is parallel to Y through (X, Z) = (0, 40).
+- "lower_arm": a link from the shoulder pivot straight up to the elbow pivot, 120 mm above it
+  (elbow axis parallel to Y through (X, Z) = (0, 160)).
+- "upper_arm": a link from the elbow pivot horizontally to the lamp-head pivot 100 mm away along +X
+  (axis parallel to Y through (X, Z) = (100, 160)).
+
+Motion: declare three parameters in degrees, default 0:
+- yaw, range -90..90: turns the turret, and everything on it, about the Z axis; positive turns
+  counter-clockwise seen from above (+X toward +Y).
+- shoulder, range -45..45: tilts the lower arm (and everything beyond) about the shoulder axis; positive tilts
+  the elbow toward +X (at yaw 0).
+- elbow, range -60..60: turns the upper arm about the elbow axis; positive raises the lamp-head pivot
+  (toward +Z when the lower arm is upright).
+
+Keep at least 0.5 mm between parts in every pose (offset the links along the pivot axes), walls at least 3 mm.
+"""
+
+[[checks]]
+type = "part_count"
+count = 4
+names = ["base", "turret", "lower_arm", "upper_arm"]
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "holes"
+part = "upper_arm"
+diameter = 5.2
+axis = "y"
+positions = [[0, 160], [100, 160]]
+tol = 0.1
+
+[[checks]]
+type = "holes"
+part = "lower_arm"
+diameter = 5.2
+axis = "y"
+positions = [[0, 40], [0, 160]]
+tol = 0.1
+
+[[checks]]
+type = "clearance"
+min_distance = 0.45
+
+[[checks]]
+type = "param_rebuild"
+note = "yaw 30, shoulder 20, elbow 35: elbow and lamp-head pivots where the chain puts them"
+overrides = { yaw = 30, shoulder = 20, elbow = 35 }
+
+  [[checks.checks]]
+  type = "python"
+  code = '''
+def check(parts):
+    import math
+    yaw, sh, el = 30, 20, 35
+    s, d = math.radians(sh), math.radians(sh - el)
+    E = (120 * math.sin(s), 0.0, 40 + 120 * math.cos(s))
+    T = (E[0] + 100 * math.cos(d), 0.0, E[2] - 100 * math.sin(d))
+    c, n = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+    rz = lambda p: (p[0] * c - p[1] * n, p[0] * n + p[1] * c, p[2])
+    E, T = rz(E), rz(T)
+    axis = (-n, c, 0.0)
+    def off(h, p):
+        a, q = h["axis"], h["position"]
+        v = [pi - qi for pi, qi in zip(p, q)]
+        t = sum(x * y for x, y in zip(v, a))
+        return math.sqrt(max(0.0, sum(x * x for x in v) - t * t)), abs(abs(sum(x * y for x, y in zip(a, axis))) - 1)
+    msgs = []
+    for part, pts in (("upper_arm", {"elbow": E, "lamp head": T}), ("lower_arm", {"elbow": E})):
+        holes = [h for h in parts[part].find_holes() if abs(h["diameter"] - 5.2) < 0.1]
+        for label, p in pts.items():
+            best = min((off(h, p) for h in holes), default=(1e9, 1))
+            if best[0] > 0.15 or best[1] > 1e-3:
+                msgs.append(f"{part} {label} pivot: nearest 5.2 hole axis is {best[0]:.2f} mm from {tuple(round(x, 2) for x in p)}")
+    return not msgs, "; ".join(msgs) or "pivots in place"
+'''
+
+[[checks]]
+type = "param_rebuild"
+note = "yaw -60, shoulder -30, elbow -45"
+overrides = { yaw = -60, shoulder = -30, elbow = -45 }
+
+  [[checks.checks]]
+  type = "python"
+  code = '''
+def check(parts):
+    import math
+    yaw, sh, el = -60, -30, -45
+    s, d = math.radians(sh), math.radians(sh - el)
+    E = (120 * math.sin(s), 0.0, 40 + 120 * math.cos(s))
+    T = (E[0] + 100 * math.cos(d), 0.0, E[2] - 100 * math.sin(d))
+    c, n = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+    rz = lambda p: (p[0] * c - p[1] * n, p[0] * n + p[1] * c, p[2])
+    E, T = rz(E), rz(T)
+    axis = (-n, c, 0.0)
+    def off(h, p):
+        a, q = h["axis"], h["position"]
+        v = [pi - qi for pi, qi in zip(p, q)]
+        t = sum(x * y for x, y in zip(v, a))
+        return math.sqrt(max(0.0, sum(x * x for x in v) - t * t)), abs(abs(sum(x * y for x, y in zip(a, axis))) - 1)
+    msgs = []
+    for part, pts in (("upper_arm", {"elbow": E, "lamp head": T}), ("lower_arm", {"elbow": E})):
+        holes = [h for h in parts[part].find_holes() if abs(h["diameter"] - 5.2) < 0.1]
+        for label, p in pts.items():
+            best = min((off(h, p) for h in holes), default=(1e9, 1))
+            if best[0] > 0.15 or best[1] > 1e-3:
+                msgs.append(f"{part} {label} pivot: nearest 5.2 hole axis is {best[0]:.2f} mm from {tuple(round(x, 2) for x in p)}")
+    return not msgs, "; ".join(msgs) or "pivots in place"
+'''
+
+[[checks]]
+type = "param_sweep"
+note = "elbow through its range at shoulder 0: no collisions"
+parameter = "elbow"
+values = [-60, -30, 0, 30, 60]
+
+  [[checks.checks]]
+  type = "clearance"
+  min_distance = 0.45
+
+[[checks]]
+type = "param_sweep"
+note = "shoulder through its range: no collisions"
+parameter = "shoulder"
+values = [-45, 0, 45]
+
+  [[checks.checks]]
+  type = "clearance"
+  min_distance = 0.45
