@@ -122,6 +122,18 @@ def write_report(run_dir: Path) -> dict:
     for t, d in s["tasks"].items():
         lines.append(f"| {t} | {d['pass_rate']} | {d['mean_score']} | {d['mean_cad_calls']} | {d['mean_builds']} ({d['mean_failed_builds']}) | "
                      f"{d['mean_render_inspections']} | {d['mean_doc_lookups']} | {d['mean_turns']} | {d['failed_checks'] or ''} |")
+    rows = collect(run_dir)
+    onb = [r for r in rows if "time_to_first_valid_model_s" in r["metrics"] or r["meta"].get("installed")]
+    if onb:
+        lines += ["", "## Onboarding timeline (seconds from agent start)", "",
+                  "| attempt | pass | first cad call | first valid model | first export | agent total | cad cmds | shell cmds | doc lookups | API errors | export ok |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for r in onb:
+            m = r["metrics"]
+            lines.append(f"| {r['task']}/{r['attempt']} | {r['grade']['passed']} | {m.get('time_to_first_cad_s')} | "
+                         f"{m.get('time_to_first_valid_model_s')} | {m.get('time_to_first_export_s')} | {m.get('duration_s')} | "
+                         f"{m.get('cad_calls')} | {m.get('bash_commands')} | {m.get('doc_lookups')} | {m.get('api_errors')} "
+                         f"{m.get('errors') or ''} | {m.get('export_succeeded')} |")
     lines += ["", "## cad error codes seen", ""] + [f"- {k}: {v}" for k, v in s["cad_errors"].items()]
     lines += ["", "## Feedback issues", ""] + [f"- [{i['task']}] {i.get('category')}/{i.get('severity')}: {i.get('description')}" for i in s["issues"]]
     lines += ["", "## Suggestions", ""] + [f"- [{x['task']}] {x['suggestion']}" for x in s["suggestions"]]

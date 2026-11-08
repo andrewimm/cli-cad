@@ -118,3 +118,33 @@ def test_stl_report_detects_holes_in_mesh(tmp_path):
     path.write_bytes(bytes(data))
     bad = stl_report(path)
     assert bad["boundary_edges"] == 3
+
+
+def test_onboarding_checks_reject_wrong_answers(tmp_path):
+    from cad.cli import main
+    from cad.engine import Engine
+
+    t = task("onboarding_plate")
+
+    def project(d, body, export=True):
+        d.mkdir()
+        (d / "cad.toml").write_text('[project]\nname = "p"\nentry = "model.py"\n')
+        (d / "model.py").write_text("from cad import Part\np = Part('plate')\n" + body)
+        if export:
+            e = Engine()
+            assert main(["build"], d, e)[0] == 0
+            assert main(["export", "--format", "stl"], d, e)[0] == 0
+        return d
+
+    good = project(tmp_path / "good", "p.box(60, 40, 4)\np.hole_pattern(4, spacing=(48, 28))\n")
+    assert grade(t, good)["passed"]
+    three = project(tmp_path / "three", "p.box(40, 60, 3)\np.holes(4, [(-14, -24), (14, -24), (0, 24)])\n")
+    assert failed(grade(t, three)) == {"plate"}
+    wrong = project(tmp_path / "wrong", "p.box(60, 50, 4)\np.hole_pattern(4, spacing=(48, 28))\n")
+    assert "plate" in failed(grade(t, wrong))
+    no_stl = project(tmp_path / "nostl", "p.box(60, 40, 4)\np.hole_pattern(4, spacing=(48, 28))\n", export=False)
+    assert failed(grade(t, no_stl)) == {"stl_artifact"}
+    # an STL exported from an earlier model state does not count
+    stale = project(tmp_path / "stale", "p.box(60, 40, 4)\np.hole_pattern(4, spacing=(48, 28))\n")
+    (stale / "model.py").write_text("from cad import Part\np = Part('plate')\np.box(60, 40, 6)\np.hole_pattern(4, spacing=(48, 28))\n")
+    assert failed(grade(t, stale)) == {"stl_artifact"}

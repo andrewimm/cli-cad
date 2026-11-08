@@ -62,6 +62,12 @@ Rules:
 {feedback}
 """
 
+MINIMAL_PROMPT = """A command-line CAD tool named `cad` is installed on this machine.
+Use it to complete the request in TASK.md, working in the current directory (keep your model files and outputs here).
+Do not read the tool's installed source code.
+{feedback}
+"""
+
 SHIM = r'''#!/usr/bin/env python3
 import json, os, re, subprocess, sys, time
 t = time.time()
@@ -69,8 +75,11 @@ p = subprocess.run([{real!r}] + sys.argv[1:], capture_output=True)
 err = None
 m = re.search(rb'error \[([A-Z_]+)\]', p.stderr) or (re.search(rb'"code": "([A-Z_]+)"', p.stdout) if p.returncode else None)
 if m: err = m.group(1).decode()
+valid = None
+if p.returncode == 0 and any(a in ("build", "run", "set", "unset") for a in sys.argv[1:2] + sys.argv[1:3]):
+    valid = bool(re.search(rb'valid=True|"valid": true', p.stdout)) and not re.search(rb'valid=False|"valid": false', p.stdout)
 with open({log!r}, "a") as f:
-    f.write(json.dumps({{"t": t, "argv": sys.argv[1:], "exit": p.returncode, "error": err,
+    f.write(json.dumps({{"t": t, "argv": sys.argv[1:], "exit": p.returncode, "error": err, "valid_model": valid,
                         "ms": round((time.time() - t) * 1000, 1), "cwd": os.getcwd()}}) + "\n")
 try:
     sys.stdout.buffer.write(p.stdout); sys.stdout.flush()
@@ -85,7 +94,7 @@ _SESSION_VARS = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_MESSAGING_
                  "AI_AGENT", "CLAUDE_EFFORT", "CLAUDE_CODE_EXECPATH"]
 
 
-def prepare(task: Task, attempt_dir: Path, with_feedback: bool = True) -> tuple[Path, str]:
+def prepare(task: Task, attempt_dir: Path, with_feedback: bool = True, cad_bin: Path | None = None) -> tuple[Path, str]:
     """Create the controlled workspace; returns (workspace, prompt)."""
     ws = attempt_dir / "workspace"
     if ws.exists():
@@ -98,40 +107,56 @@ def prepare(task: Task, attempt_dir: Path, with_feedback: bool = True) -> tuple[
     bindir = attempt_dir / "bin"
     bindir.mkdir(parents=True, exist_ok=True)
     shim = bindir / "cad"
-    shim.write_text(SHIM.format(real=str(CAD_BIN), log=str(attempt_dir / "cad_calls.jsonl")))
+    shim.write_text(SHIM.format(real=str(cad_bin or CAD_BIN), log=str(attempt_dir / "cad_calls.jsonl")))
     shim.chmod(0o755)
     fb = FEEDBACK_INSTRUCTIONS.replace("<task id>", task.id) if with_feedback else ""
-    return ws, AGENT_PROMPT.format(feedback=fb)
+    if fb and task.feedback_questions:
+        extra = "".join(f',\n    "{k}": "{q}"' for k, q in task.feedback_questions.items())
+        fb = fb.replace('"would_help": "What would have made the task easier or more reliable?"',
+                        '"would_help": "What would have made the task easier or more reliable?"' + extra)
+    template = MINIMAL_PROMPT if task.prompt_style == "minimal" else AGENT_PROMPT
+    return ws, template.format(feedback=fb)
 
 
-def agent_env(attempt_dir: Path) -> dict:
-    env = {k: v for k, v in os.environ.items() if k not in _SESSION_VARS}
+def agent_env(attempt_dir: Path, installed: bool = False) -> dict:
+    env = {k: v for k, v in os.environ.items() if k not in _SESSION_VARS and k != "CAD_PYTHON"}
     env["PATH"] = f"{attempt_dir / 'bin'}:{env.get('PATH', '')}"
     # isolate daemon + state per attempt so attempts cannot see each other
     env["CAD_STATE_DIR"] = str(attempt_dir / "cadstate")
     env["CAD_RUNTIME_DIR"] = str(attempt_dir / "rt")
-    env["CAD_PYTHON"] = str(REPO / ".venv" / "bin" / "python")
+    if not installed:  # development tree: point the binary at the repo's environment
+        env["CAD_PYTHON"] = str(REPO / ".venv" / "bin" / "python")
     env["CAD_DAEMON_IDLE_SECS"] = "120"
     return env
 
 
+def install_prefix(run_dir: Path) -> Path:
+    """Install cad from this checkout into an isolated prefix (wheel + binaries), once per run."""
+    prefix = run_dir / "_install"
+    if not (prefix / "bin" / "cad").exists():
+        subprocess.run([str(REPO / "scripts" / "install.sh"), str(prefix)], check=True, capture_output=True)
+    return prefix
+
+
 def run_attempt(task: Task, attempt_dir: Path, *, model: str, max_turns: int, timeout_s: int,
-                budget_usd: float | None, visual: bool, agent_cmd: str = "claude") -> dict:
+                budget_usd: float | None, visual: bool, agent_cmd: str = "claude", prefix: Path | None = None) -> dict:
     attempt_dir = attempt_dir.resolve()
     attempt_dir.mkdir(parents=True, exist_ok=True)
-    ws, prompt = prepare(task, attempt_dir)
-    env = agent_env(attempt_dir)
+    cad_bin = (prefix / "bin" / "cad") if prefix else CAD_BIN
+    ws, prompt = prepare(task, attempt_dir, cad_bin=cad_bin)
+    env = agent_env(attempt_dir, installed=prefix is not None)
     cmd = [agent_cmd, "-p", prompt, "--output-format", "stream-json", "--verbose",
            "--max-turns", str(task.limits.get("max_turns", max_turns)), "--model", model,
            "--no-session-persistence",
            "--allowedTools", "Bash(cad:*)", "Bash(ls:*)", "Bash(cat:*)", "Read", "Write", "Edit", "Glob", "Grep"]
     # the agent's shell re-initialises PATH from the user profile; settings.env is applied on top of it
     keep = ("PATH", "CAD_STATE_DIR", "CAD_RUNTIME_DIR", "CAD_PYTHON", "CAD_DAEMON_IDLE_SECS")
-    cmd += ["--settings", json.dumps({"env": {k: env[k] for k in keep}})]
+    cmd += ["--settings", json.dumps({"env": {k: env[k] for k in keep if k in env}})]
     if budget_usd:
         cmd += ["--max-budget-usd", str(budget_usd)]
     meta = {"task": task.id, "model": model, "agent": agent_cmd, "max_turns": max_turns, "started": time.time(),
-            "cad_bin": str(CAD_BIN)}
+            "cad_bin": str(cad_bin), "installed": prefix is not None, "prompt_style": task.prompt_style}
+    (attempt_dir / "meta.json").write_text(json.dumps(meta, indent=2))
     t0 = time.time()
     with open(attempt_dir / "transcript.jsonl", "w") as tr, open(attempt_dir / "agent_stderr.log", "w") as er:
         try:
@@ -140,7 +165,7 @@ def run_attempt(task: Task, attempt_dir: Path, *, model: str, max_turns: int, ti
         except subprocess.TimeoutExpired:
             meta["agent_exit"] = "timeout"
     meta["wall_s"] = round(time.time() - t0, 1)
-    subprocess.run([str(CAD_BIN), "daemon", "stop"], env=env, capture_output=True)
+    subprocess.run([str(cad_bin), "daemon", "stop"], env=env, capture_output=True)
     fb_path = ws / "feedback.json"
     if fb_path.exists():
         try:
@@ -177,11 +202,13 @@ def run_batch(tasks: list[Task], run_dir: Path, *, attempts: int, model: str, ma
         "label": label, "model": model, "attempts": attempts, "tasks": [t.id for t in tasks],
         "git": _git_rev(), "started": time.time()}, indent=2))
     jobs = [(t, run_dir / t.id / f"a{i + 1}") for t in tasks for i in range(attempts)]
+    prefix = install_prefix(run_dir) if any(t.install == "isolated" for t in tasks) else None
 
     def go(job):
         t, d = job
         print(f"[cadeval] start {t.id} {d.name}", flush=True)
-        r = run_attempt(t, d, model=model, max_turns=max_turns, timeout_s=timeout_s, budget_usd=budget_usd, visual=visual)
+        r = run_attempt(t, d, model=model, max_turns=max_turns, timeout_s=timeout_s, budget_usd=budget_usd, visual=visual,
+                        prefix=prefix if t.install == "isolated" else None)
         print(f"[cadeval] done  {t.id} {d.name}: passed={r['passed']} score={r['score']} "
               f"cad_calls={r['metrics'].get('cad_calls')} turns={r['metrics'].get('turns')}", flush=True)
         return r

@@ -1,0 +1,37 @@
+id = "onboarding_plate"
+title = "Mounting plate (unfamiliar agent onboarding)"
+category = "onboarding"
+split = "dev"
+source = "A01"
+install = "isolated"
+prompt_style = "minimal"
+selftest_commands = ["build", "export --format stl"]
+prompt = """
+Design a 60 x 40 mm mounting plate with four holes and export a printable STL.
+"""
+
+[feedback_questions]
+discoverability = "How did you find out how to use cad? List what you looked at, in order."
+first_impression = "What was the first thing that confused you, and how long did it take to resolve?"
+missing_onboarding = "What should the tool show a first-time user that it did not?"
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "plate"
+footprint = [60, 40]
+holes = 4
+exact = true
+thickness_min = 0.5
+thickness_max = 20
+tol = 0.1
+note = "60 x 40 footprint in any orientation, 4 through-holes along the thickness"
+
+[[checks]]
+type = "stl_artifact"
+bbox_tol = 0.1

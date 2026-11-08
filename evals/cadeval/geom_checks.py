@@ -111,7 +111,10 @@ def stl_report(path: Path, weld: float = 1e-4) -> dict:
     _, dcount = np.unique(directed, axis=0, return_counts=True)
     v = tris
     signed = float(np.sum(np.einsum("ij,ij->i", v[:, 0], np.cross(v[:, 1], v[:, 2]))) / 6.0)
+    pts_all = tris.reshape(-1, 3)
     return {
+        "bbox_min": [round(float(c), 4) for c in pts_all.min(axis=0)] if len(pts_all) else None,
+        "bbox_max": [round(float(c), 4) for c in pts_all.max(axis=0)] if len(pts_all) else None,
         "triangles": int(len(tris)),
         "degenerate_triangles": degenerate,
         "boundary_edges": int(np.sum(ucount == 1)),

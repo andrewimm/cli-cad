@@ -317,6 +317,42 @@ def run_check(check: dict, parts_or_ctx) -> dict:
                 if pv is not None:
                     seen.setdefault(pv, []).append(str(meta.relative_to(ctx.workspace)))
             res.update(ok=len(seen) >= check["min_distinct"], actual=sorted(seen), expected={"min_distinct": check["min_distinct"]})
+        elif t == "stl_artifact":
+            # the agent must have exported a printable STL of its final model into the workspace
+            from .geom_checks import stl_report
+
+            found = []
+            for f in sorted(ctx.workspace.rglob("*.stl")):
+                if ".cad" in f.parts:
+                    continue
+                rep = stl_report(f)
+                watertight = rep["triangles"] > 0 and rep["boundary_edges"] == 0 and rep["non_manifold_edges"] == 0 \
+                    and rep["inconsistent_orientation_edges"] == 0 and rep["signed_volume"] > 0
+                matches = []
+                for n, p in parts.items():
+                    bb = p.bbox
+                    if rep["bbox_min"] and max(abs(a - b) for a, b in zip(rep["bbox_min"] + rep["bbox_max"], list(bb.min) + list(bb.max))) <= check.get("bbox_tol", 0.1):
+                        matches.append(n)
+                found.append({"file": str(f.relative_to(ctx.workspace)), "watertight": watertight, "matches_parts": matches,
+                              "triangles": rep["triangles"], "signed_volume": rep["signed_volume"]})
+            ok = any(x["watertight"] and x["matches_parts"] for x in found)
+            res.update(ok=ok, files=found, note=check.get("note", "a watertight STL matching the final model exists in the workspace"))
+        elif t == "plate":
+            # orientation-agnostic plate: two bbox dimensions match `footprint`, the third is the thickness,
+            # with `holes` through-holes along the thickness axis
+            p = _pick(parts, check.get("part"))
+            size = list(p.bbox.size)
+            ax = min(range(3), key=lambda i: size[i])
+            others = sorted(size[i] for i in range(3) if i != ax)
+            fp = sorted(check["footprint"])
+            fp_ok = all(abs(a - b) <= tol for a, b in zip(others, fp))
+            th = size[ax]
+            th_ok = check.get("thickness_min", 0) <= th <= check.get("thickness_max", 1e9)
+            holes = [h for h in p.find_holes() if abs(abs(h["axis"][ax]) - 1) < 1e-6 and abs(h["depth"] - th) <= max(tol, 0.01)]
+            n_ok = len(holes) == check["holes"] if check.get("exact") else len(holes) >= check["holes"]
+            res.update(ok=fp_ok and th_ok and n_ok, actual={"footprint": [round(v, 4) for v in others], "thickness": round(th, 4),
+                                                         "through_holes": len(holes), "hole_diameters": sorted({round(h["diameter"], 3) for h in holes})},
+                       expected={k: check[k] for k in ("footprint", "holes", "thickness_min", "thickness_max") if k in check})
         elif t == "python":
             env: dict[str, Any] = {"parts": parts, "math": math}
             exec(check["code"], env)

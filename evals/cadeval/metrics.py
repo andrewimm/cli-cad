@@ -68,6 +68,23 @@ def attempt_metrics(d: Path) -> dict:
                 m["agent_result_error"] = ev.get("is_error")
                 m["stop_reason"] = ev.get("subtype") or ev.get("stop_reason")
     m["tool_calls"] = dict(tools)
+    m["bash_commands"] = tools.get("Bash", 0)
+    # onboarding timeline, relative to the agent's start
+    started = None
+    mp = d / "meta.json"
+    if mp.exists():
+        started = json.loads(mp.read_text()).get("started")
+    if started and calls:
+        def first(pred):
+            hit = next((c for c in calls if pred(c)), None)
+            return round(hit["t"] - started, 1) if hit else None
+        m["time_to_first_cad_s"] = first(lambda c: True)
+        m["time_to_first_valid_model_s"] = first(lambda c: c.get("valid_model"))
+        m["time_to_first_export_s"] = first(lambda c: c["exit"] == 0 and (
+            _cmd(c["argv"]) == "export" or (_cmd(c["argv"]) == "run" and "--export" in c["argv"])))
+    m["export_succeeded"] = any(c["exit"] == 0 and (_cmd(c["argv"]) == "export" or (_cmd(c["argv"]) == "run" and "--export" in c["argv"]))
+                                for c in calls)
+    m["api_errors"] = m["cad_failures"]
     m["render_inspections"] = png_reads
     m["implementation_peeks"] = len(peeks)
     m["peek_examples"] = peeks[:5]

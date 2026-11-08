@@ -24,6 +24,9 @@ class Task:
     path: Path | None = None
     selftest_commands: list[list[str]] = field(default_factory=list)
     grade_overrides: dict = field(default_factory=dict)
+    install: str = "dev"                     # "isolated": run against a fresh install (wheel + binaries), not the repo
+    prompt_style: str = "standard"           # "minimal": only say that a `cad` CLI is installed
+    feedback_questions: dict = field(default_factory=dict)
 
     @property
     def solution(self) -> Path | None:
@@ -49,6 +52,9 @@ def load_task(path: Path) -> Task:
         path=path,
         selftest_commands=[c.split() for c in raw.get("selftest_commands", [])],
         grade_overrides=raw.get("grade_overrides", {}),
+        install=raw.get("install", "dev"),
+        prompt_style=raw.get("prompt_style", "standard"),
+        feedback_questions=raw.get("feedback_questions", {}),
     )
 
 
