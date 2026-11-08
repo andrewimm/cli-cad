@@ -844,6 +844,212 @@ class Part:
         params = {"path": str(path), "solid": solid, "scale": scale, "align": align, "at": at, "op": op}
         return self._run("import", name, params, build)
 
+    # ================================================================== loft / sweep / draft
+    def loft(self, sections: Sequence, *, ruled: bool = False, op: str = "add", name: str | None = None) -> FeatureRef:
+        """A solid blended through 2D ``sections``, in order.
+
+        Each section is ``(profile, z)`` (the profile on the XY plane at height z), or
+        ``(profile, plane)`` with any :class:`Plane` / plane name.  ``ruled=True`` joins
+        neighbouring sections with straight (ruled) faces instead of a smooth blend.
+        Sections must not cross each other; holes in the profiles are lofted too when every
+        section has the same number of them.  Named faces: ``<id>.start``, ``<id>.end``, ``<id>.side``.
+        """
+        from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
+        from OCP.BRepTools import BRepTools
+
+        if len(sections) < 2:
+            raise CadError(INVALID_ARGUMENT, "a loft needs at least 2 sections")
+        placed = []
+        for i, sec in enumerate(sections):
+            if not (isinstance(sec, (list, tuple)) and len(sec) == 2 and isinstance(sec[0], Profile)):
+                raise CadError(INVALID_ARGUMENT, f"loft section {i} must be (Profile, z) or (Profile, plane)")
+            prof, where = sec
+            pl = as_plane("XY").offset(float(where)) if isinstance(where, (int, float)) else as_plane(where)
+            faces = _occ.faces(prof.placed(pl))
+            if len(faces) != 1:
+                raise CadError(INVALID_ARGUMENT, f"loft section {i} has {len(faces)} separate regions; each section must be one outline")
+            placed.append(faces[0])
+        outers = [BRepTools.OuterWire_s(f) for f in placed]
+        inners = [[w for w in _occ.wires(f) if not w.IsSame(BRepTools.OuterWire_s(f))] for f in placed]
+
+        def thru(wires):
+            ts = BRepOffsetAPI_ThruSections(True, ruled)
+            ts.CheckCompatibility(True)
+            for w in wires:
+                ts.AddWire(w)
+            ts.Build()
+            if not ts.IsDone():
+                return None
+            return ts.Shape()
+
+        def build(feat):
+            solid = thru(outers)
+            if solid is None or not _occ.is_valid(solid) or not _occ.solids(solid):
+                raise CadError("LOFT_FAILED", "the loft could not be built into a valid solid", feature=feat.id,
+                               hint="sections must not cross or touch each other and should be ordered along the loft; "
+                                    "very different shapes (e.g. a star to a circle) may twist: try ruled=True or more sections")
+            holes = []
+            if any(inners):
+                if len({len(x) for x in inners}) != 1:
+                    raise CadError("LOFT_FAILED", "every section must have the same number of holes to loft them",
+                                   feature=feat.id, details={"holes_per_section": [len(x) for x in inners]})
+                for k in range(len(inners[0])):
+                    h = thru([x[k] for x in inners])
+                    if h is None:
+                        raise CadError("LOFT_FAILED", f"could not loft hole {k + 1}", feature=feat.id)
+                    holes.append(h)
+            if holes:
+                from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+
+                for h in holes:
+                    solid = BRepAlgoAPI_Cut(solid, h).Shape()
+            if _occ.volume_fast(solid) < 0:
+                solid.Reverse()
+            refs = _sweep_refs(feat.id, solid, placed[0], placed[-1])
+            self._body_op(feat, solid, refs, op)
+            feat.metrics["loft"] = {"sections": len(placed), "ruled": ruled, "volume": round(_occ.volume(solid), 4)}
+
+        return self._run("loft", name, {"sections": [{"profile": p.description, "at": w if isinstance(w, (int, float)) else str(w)}
+                                                      for p, w in sections], "ruled": ruled, "op": op}, build)
+
+    def sweep(self, profile: Profile, path, *, op: str = "add", twist: float = 0.0, name: str | None = None) -> FeatureRef:
+        """Drag ``profile`` along ``path`` (a :class:`cad.paths.Path`: polyline with bend radius,
+        spline, arc, helix).
+
+        The profile is drawn in the plane perpendicular to the path at its start, centred on
+        the start point: u is world X and v world Y for a path starting along +Z; for a path
+        starting horizontally v is world +Z (as on the YZ / XZ planes).  A profile with holes
+        (``Profile.circle(10) - Profile.circle(7)``) sweeps a hollow tube.  The bend radius must
+        exceed the profile's radius or the solid would cut through itself (SWEEP_FAILED).
+        Named faces: ``<id>.start``, ``<id>.end``, ``<id>.side``.
+        """
+        from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+        from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipeShell
+        from OCP.BRepTools import BRepTools
+
+        from .paths import Path as SweepPath
+
+        if not isinstance(path, SweepPath):
+            raise CadError(INVALID_ARGUMENT, "sweep path must be a cad.paths.Path", hint="from cad import Path; Path.polyline([...], radius=10)")
+        start, tangent = path.start()
+        up = (0.0, 0.0, 1.0) if abs(tangent[2]) < 0.9 else (0.0, 1.0, 0.0)
+        dot = sum(a * b for a, b in zip(up, tangent))
+        v = _occ.vec([a - dot * b for a, b in zip(up, tangent)])
+        vn = math.sqrt(sum(c * c for c in v))
+        v = tuple(c / vn for c in v)
+        u = (v[1] * tangent[2] - v[2] * tangent[1], v[2] * tangent[0] - v[0] * tangent[2], v[0] * tangent[1] - v[1] * tangent[0])
+        pl = Plane(start, tangent, u)
+        face = _occ.faces(profile.placed(pl))
+        if len(face) != 1:
+            raise CadError(INVALID_ARGUMENT, "the sweep profile must be one outline (optionally with holes)")
+        face = face[0]
+        prof_r = _max_dist_on_wire(BRepTools.OuterWire_s(face), start)
+
+        def pipe(wire):
+            mk = BRepOffsetAPI_MakePipeShell(path.wire)
+            mk.SetMode(False)  # corrected Frenet: no flipping on straight segments
+            mk.Add(wire, False, False)
+            mk.Build()
+            if not mk.IsDone():
+                return None
+            mk.MakeSolid()
+            return mk.Shape()
+
+        def build(feat):
+            bend = path.min_bend_radius()
+            if bend < prof_r * 0.98:  # the kernel may still call this "valid", but it cuts through itself
+                raise CadError("SWEEP_FAILED", f"the path bends with radius {bend:.3g} mm, tighter than the profile's "
+                               f"{prof_r:.3g} mm reach from the path: the solid would cut through itself", feature=feat.id,
+                               hint=f"use a bend radius above {prof_r:.3g} mm (polyline radius=, a wider arc / spline) "
+                                    "or a smaller profile", details={"min_bend_radius": round(bend, 4), "profile_radius": round(prof_r, 4)})
+            outer = BRepTools.OuterWire_s(face)
+            solid = pipe(outer)
+            if solid is None or not _occ.is_valid(solid) or not _occ.solids(solid):
+                hint = ("the path bends tighter than the profile is wide: increase the bend radius (polyline radius=) "
+                        f"above ~{prof_r:.3g} mm or use a smaller profile" if bend < prof_r * 1.02
+                        else "check that the profile is perpendicular to the path at its start and the path does not cross itself")
+                raise CadError("SWEEP_FAILED", "the sweep could not be built into a valid solid", feature=feat.id, hint=hint,
+                               details={"min_bend_radius": round(bend, 4) if bend != math.inf else None, "profile_radius": round(prof_r, 4)})
+            if _occ.volume_fast(solid) < 0:
+                solid.Reverse()
+            for w in _occ.wires(face):
+                if w.IsSame(outer):
+                    continue
+                hole = pipe(w)
+                if hole is not None:
+                    if _occ.volume_fast(hole) < 0:
+                        hole.Reverse()
+                    solid = BRepAlgoAPI_Cut(solid, hole).Shape()
+            if bend < prof_r * 1.02:
+                feat.warnings.append(CadWarning("SWEEP_TIGHT_BEND", f"the path bends with radius {bend:.3g} mm, about the profile's "
+                                                f"radius {prof_r:.3g} mm: the inside of the bend is pinched", feat.id))
+            refs = _sweep_refs(feat.id, solid, face, None)
+            self._body_op(feat, solid, refs, op)
+            feat.metrics["sweep"] = {"path": path.description.get("type"), "path_length": round(path.length, 4),
+                                     "min_bend_radius": round(bend, 4) if bend != math.inf else None,
+                                     "profile_radius": round(prof_r, 4), "volume": round(_occ.volume(solid), 4)}
+
+        return self._run("sweep", name, {"profile": profile.description, "path": path.description, "op": op}, build)
+
+    def draft(self, angle: float, *, faces=None, pull: str | Sequence[float] = "+z", neutral: float | None = None,
+              name: str | None = None) -> FeatureRef:
+        """Taper walls by ``angle`` degrees so the part releases from a mould (or slides out of a
+        print bed / sleeve) when pulled along ``pull``.
+
+        ``faces`` defaults to every flat or curved wall parallel to ``pull``; ``neutral`` is the
+        height along ``pull`` where the walls keep their size (default: the bottom of the part),
+        so walls lean inward going toward ``pull``.  Typical: 1-3 degrees.  Named faces: ``<id>.faces``.
+        """
+        from OCP.BRepOffsetAPI import BRepOffsetAPI_DraftAngle
+        from OCP.gp import gp_Pln
+
+        if not 0 < abs(angle) < 45:
+            raise CadError(INVALID_ARGUMENT, "draft angle must be between 0 and 45 degrees")
+        d = _axis_dir(pull)
+
+        def build(feat):
+            if faces is None:
+                cand = [f for f in _occ.faces(self.shape) if _is_wall(f, d)]
+            else:
+                if not isinstance(faces, FaceSelection):
+                    raise CadError(INVALID_ARGUMENT, "draft(faces=) needs a face selection")
+                self._check_current(faces, feat.id)
+                self._record_selection(feat, "faces", faces)
+                cand = faces.shapes
+            if not cand:
+                raise CadError(EMPTY_SELECTION, f"no walls parallel to {pull} to draft", feature=feat.id)
+            lo, hi = _occ.bbox(self.shape)
+            corners = [(x, y, z) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]
+            h0 = min(sum(a * b for a, b in zip(c, d)) for c in corners) if neutral is None else neutral
+            origin = tuple(c * h0 for c in d)
+            mk = BRepOffsetAPI_DraftAngle(self.shape)
+            bad = []
+            for f in cand:
+                mk.Add(f, gp_Dir(*d), math.radians(angle), gp_Pln(gp_Pnt(*origin), gp_Dir(*d)))
+                if not mk.AddDone():
+                    bad.append(f)
+                    mk.Remove(f)
+            mk.Build()
+            if not mk.IsDone() or not _occ.is_valid(mk.Shape()):
+                raise CadError("DRAFT_FAILED", "the draft could not be applied", feature=feat.id,
+                               hint="draft walls before filleting their edges, and draft fewer faces at a time")
+            gen = []
+            for f in cand:
+                if f in bad:
+                    continue
+                try:
+                    gen.extend(_occ.shape_list(mk.Modified(f)))
+                except Standard_Failure:
+                    pass
+            refs = {f"{feat.id}.faces": ("face", gen)} if gen else {}
+            self._commit(feat, mk.Shape(), mk, refs)
+            feat.metrics["draft"] = {"angle": angle, "faces": len(cand) - len(bad), "pull": _jsonable(d), "neutral": round(h0, 6)}
+            if bad:
+                feat.warnings.append(CadWarning("DRAFT_SKIPPED", f"{len(bad)} face(s) could not be drafted and were left as they are",
+                                                feat.id, {"hint": "usually faces next to fillets; draft first, then fillet"}))
+
+        return self._run("draft", name, {"angle": angle, "pull": pull, "neutral": neutral, "faces": faces}, build)
+
     # ================================================================== threads
     def thread(self, size: str, *, length: float, at: Sequence[float] = (0, 0, 0), direction: str | Sequence[float] = "+z",
                pitch: float | None = None, name: str | None = None) -> FeatureRef:
@@ -1648,13 +1854,28 @@ class Part:
                 self._record_selection(feat, "open_faces", open_faces)
                 for f in open_faces.shapes:
                     removed.Append(f)
-            mk = BRepOffsetAPI_MakeThickSolid()
-            try:
-                mk.MakeThickSolidByJoin(self.shape, removed, -thickness, 1e-4)
-                mk.Build()
-                ok = mk.IsDone()
-            except Standard_Failure:
-                ok = False
+            from OCP.BRepOffset import BRepOffset_Mode
+            from OCP.GeomAbs import GeomAbs_JoinType
+
+            # the offset algorithm is sensitive to tolerance and join type on freeform (lofted, swept)
+            # surfaces: try the precise default first, then settings that rescue those shapes
+            attempts = [(1e-4, GeomAbs_JoinType.GeomAbs_Arc), (1e-4, GeomAbs_JoinType.GeomAbs_Intersection),
+                        (1e-3, GeomAbs_JoinType.GeomAbs_Arc), (1e-2, GeomAbs_JoinType.GeomAbs_Arc),
+                        (1e-3, GeomAbs_JoinType.GeomAbs_Intersection), (1e-2, GeomAbs_JoinType.GeomAbs_Intersection)]
+            before = _occ.volume_fast(self.shape)
+            ok, mk, used = False, None, None
+            for tol, join in attempts:
+                mk = BRepOffsetAPI_MakeThickSolid()
+                try:
+                    mk.MakeThickSolidByJoin(self.shape, removed, -thickness, tol, BRepOffset_Mode.BRepOffset_Skin, False, False, join)
+                    mk.Build()
+                    ok = mk.IsDone() and _occ.is_valid(mk.Shape()) and bool(_occ.solids(mk.Shape())) \
+                        and 0 < _occ.volume_fast(mk.Shape()) < before
+                except Standard_Failure:
+                    ok = False
+                if ok:
+                    used = {"tolerance": tol, "join": "arc" if join == GeomAbs_JoinType.GeomAbs_Arc else "intersection"}
+                    break
             if not ok:
                 bb = self.bbox
                 raise CadError(
@@ -1665,6 +1886,7 @@ class Part:
                          "smaller than any fillet radius; shell before adding fillets or small features",
                 )
             self._commit(feat, mk.Shape(), mk, {}, new_faces_role="inner")
+            feat.metrics["shell"] = used
 
         return self._run("shell", name, {"thickness": thickness, "open_faces": open_faces}, build)
 
@@ -2109,6 +2331,57 @@ def _direction_refs(fid: str, tool) -> dict:
         nm = _dir_name(_occ.face_normal(f))
         if nm:
             refs.setdefault(f"{fid}.{nm}", ("face", []))[1].append(f)
+    return refs
+
+
+def _max_dist_on_wire(wire, point, samples: int = 48) -> float:
+    """Largest distance from ``point`` to the wire (sampled along each edge)."""
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
+
+    best = 0.0
+    for e in _occ.edges(wire):
+        c = BRepAdaptor_Curve(e)
+        a, b = c.FirstParameter(), c.LastParameter()
+        for i in range(samples + 1):
+            q = c.Value(a + (b - a) * i / samples)
+            best = max(best, math.dist(point, (q.X(), q.Y(), q.Z())))
+    return best
+
+
+def _is_wall(face, d) -> bool:
+    """A face whose surface runs parallel to direction ``d`` (a vertical wall when d is Z)."""
+    st = _occ.surface_type(face)
+    if st == "plane":
+        return abs(sum(a * b for a, b in zip(_occ.face_normal(face), d))) < 1e-6
+    if st == "cylinder":
+        inf = _occ.cylinder_info(face)
+        return abs(abs(sum(a * b for a, b in zip(inf["axis"], d))) - 1) < 1e-6
+    return False
+
+
+def _sweep_refs(fid: str, solid, start_face, end_face) -> dict:
+    """start / end caps (planar faces matching the first / last section) and side faces."""
+    caps_s, caps_e, side = [], [], []
+    c0 = _occ.face_centroid(start_face)
+    c1 = _occ.face_centroid(end_face) if end_face is not None else None
+    a0 = _occ.area(start_face)
+    for f in _occ.faces(solid):
+        if _occ.surface_type(f) == "plane":
+            c = _occ.face_centroid(f)
+            if math.dist(c, c0) < 1e-4 and abs(_occ.area(f) - a0) < 1e-4 * max(a0, 1):
+                caps_s.append(f)
+                continue
+            if c1 is not None and math.dist(c, c1) < 1e-4:
+                caps_e.append(f)
+                continue
+            if end_face is None and abs(_occ.area(f) - a0) < 1e-3 * max(a0, 1):
+                caps_e.append(f)
+                continue
+        side.append(f)
+    refs = {}
+    for role, fs in (("start", caps_s), ("end", caps_e), ("side", side)):
+        if fs:
+            refs[f"{fid}.{role}"] = ("face", fs)
     return refs
 
 

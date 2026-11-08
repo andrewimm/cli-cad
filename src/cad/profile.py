@@ -205,6 +205,47 @@ class Profile:
         return Profile(face, {"type": "circle", "diameter": diameter, "center": list(center)})
 
     @staticmethod
+    def ellipse(width: float, height: float, center: Vec2 = (0, 0), angle: float = 0.0) -> "Profile":
+        """Ellipse ``width`` (along u) by ``height`` (along v), rotated by ``angle`` degrees."""
+        from OCP.gp import gp_Elips
+
+        _positive(width=width, height=height)
+        major, minor = max(width, height) / 2, min(width, height) / 2
+        xdir = (1, 0, 0) if width >= height else (0, 1, 0)
+        el = gp_Elips(gp_Ax2(gp_Pnt(center[0], center[1], 0), gp_Dir(0, 0, 1), gp_Dir(*xdir)), major, minor)
+        face = BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(el).Edge()).Wire(), True).Face()
+        p = Profile(face, {"type": "ellipse", "width": width, "height": height, "center": list(center)})
+        if angle:
+            d = p.description
+            p = p.rotated(angle, center)
+            p.description = dict(d, angle=angle)
+        return p
+
+    @staticmethod
+    def spline(points: Sequence[Vec2]) -> "Profile":
+        """Closed smooth outline through ``points`` (periodic spline; do not repeat the first point)."""
+        from OCP.GeomAPI import GeomAPI_Interpolate
+        from OCP.collections import HArray1_gp_Pnt
+
+        pts = [tuple(map(float, q)) for q in points]
+        if len(pts) >= 2 and math.dist(pts[0], pts[-1]) < 1e-9:
+            pts = pts[:-1]
+        if len(pts) < 3:
+            raise CadError(INVALID_ARGUMENT, "a closed spline needs at least 3 points")
+        arr = HArray1_gp_Pnt(1, len(pts))
+        for i, (u, v) in enumerate(pts):
+            arr.SetValue(i + 1, gp_Pnt(u, v, 0))
+        it = GeomAPI_Interpolate(arr, True, 1e-7)
+        it.Perform()
+        if not it.IsDone():
+            raise CadError(INVALID_ARGUMENT, "could not fit a closed spline through these points")
+        wire = BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(it.Curve()).Edge()).Wire()
+        mk = BRepBuilderAPI_MakeFace(wire, True)
+        if not mk.IsDone():
+            raise CadError(INVALID_ARGUMENT, "the spline outline crosses itself")
+        return Profile(mk.Face(), {"type": "spline", "points": [list(q) for q in pts]})
+
+    @staticmethod
     def polygon(points: Sequence[Vec2]) -> "Profile":
         """Closed polygon through ``points`` (do not repeat the first point)."""
         pts = [tuple(map(float, p)) for p in points]

@@ -18,6 +18,7 @@ from .assembly import Assembly
 from .errors import CadError, CadWarning
 from .materials import Material
 from .params import Parameter
+from .paths import Path
 from .part import BBox, Feature, FeatureRef, Part
 from .profile import Plane, Profile
 from .selection import EdgeSelection, FaceSelection
@@ -26,6 +27,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Assembly",
+    "Path",
     "BBox",
     "CadError",
     "CadWarning",

@@ -178,6 +178,38 @@ rib = Profile.polygon([(0, 0), (20, 0), (0, 20)])
 p.extrude(rib, 3, plane="XZ", symmetric=True)
 ```
 
+## Lofts, sweeps and drafts
+
+```python
+from cad import Part, Path, Profile
+
+duct = Part("duct")
+duct.loft([(Profile.rect(40, 20), 0), (Profile.circle(15), 30)])            # rectangle at Z 0 -> circle at Z 30
+tube = Part("tube")                                                          # hollow bent tube
+tube.sweep(Profile.circle(10) - Profile.circle(7), Path.polyline([(0, 0, 0), (0, 0, 50), (40, 0, 50)], radius=15))
+spring = Part("spring")
+spring.sweep(Profile.circle(2), Path.helix(radius=10, pitch=5, height=20))
+box = Part("box"); box.box(40, 30, 20); box.draft(2)                         # walls lean in 2 degrees going up
+```
+
+- `loft(sections, ruled=False)`: sections in order, each `(profile, z)` (XY plane at height z) or
+  `(profile, plane)` (`"YZ"`, `as_plane("YZ").offset(40)`, `Plane.from_face(...)`). Smooth blend by default,
+  straight faces between sections with `ruled=True`. Profiles with holes loft as hollow shapes when every
+  section has the same number of holes. `LOFT_FAILED` when sections cross or twist (try `ruled=True` or an
+  intermediate section). A smooth loft through three or more sections can bulge outside them between
+  sections (check `cad measure --bbox`): use two-section lofts for each transition, or `ruled=True`.
+  To hollow a lofted shape, shell it while it is a single loft: shelling a loft fused onto an extrusion often fails.
+  Named faces `<id>.start`, `<id>.end`, `<id>.side`.
+- `sweep(profile, path)`: paths are `Path.polyline(points, radius=)` (corners rounded with that bend radius),
+  `Path.spline(points)`, `Path.arc(start, through, end)`, `Path.helix(radius=, pitch=, height=, center=)`.
+  The profile is drawn perpendicular to the path at its start, centred on the start point (path starting
+  along +Z: u = X, v = Y; starting horizontally: v = +Z). The bend radius must exceed the profile's reach
+  from the path: `SWEEP_FAILED` says the minimum. Metrics give path length and minimum bend radius.
+- `draft(angle, faces=None, pull="+z", neutral=None)`: tapers walls parallel to `pull` (all of them by default,
+  holes included) about the neutral height (default the bottom), so they lean inward going toward `pull`.
+  Draft before filleting the drafted edges.
+- Extra profiles: `Profile.ellipse(w, h)`, `Profile.spline(points)` (closed smooth outline).
+
 ## Holes
 
 ```python
@@ -309,6 +341,7 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad fonts [filter]` | installed fonts for text |
 | `cad measure <part> --section z=V` | cross-section outline at a plane (regions, rectangles, circles, holes) |
 | `cad fasteners` | M2-M8 screw, nut and heat-set insert dimensions (screw_hole table) |
+| `cad examples show bottle` | loft + shell + printed thread + matching cap |
 | `cad joints` | an Assembly's joints: world axes, values, limits, what positive motion does |
 | `cad info <file>` | bodies, names, sizes, units in a STEP / IGES / STL / BREP file |
 | `cad slice` | Bambu Studio slice: print time, grams per filament, supports, warnings, .gcode.3mf |

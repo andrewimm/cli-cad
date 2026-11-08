@@ -64,6 +64,8 @@ Bodies (each takes `op="add" | "cut" | "intersect"`, `name=`, returns a feature)
 Profiles: `Profile.rect/rounded_rect/circle/slot/polygon/regular_polygon(across_flats=)`, combine with `+` / `-`, `.offset(d)`.
 Holes: `hole`, `holes(d, positions)`, `hole_pattern`, `bolt_circle`; `depth=None` is through;
 `counterbore=(d, depth)`, `countersink=(d, 90)`; `direction=` may be any vector.
+Shapes: `loft([(Profile.rect(40, 20), 0), (Profile.circle(15), 30)])`, `sweep(profile, Path.polyline(pts, radius=10))`
+(also `Path.spline/arc/helix`), `draft(2)` (`cad docs loft`).
 Dress-up: `fillet(edges, r)`, `chamfer(edges, d)`, `shell(t, open_faces=...)`. Transforms: `translate`, `rotate`, `mirror`.
 Printing: `screw_hole("M3", at=, kind="clearance|counterbore|countersunk|tap|insert|nut")` (`cad fasteners`),
 `bottom_chamfer(0.5)`, `snap_hook(on=, length=, thickness=, width=, catch=)` (checks strain), `thread("M8", length=)`,

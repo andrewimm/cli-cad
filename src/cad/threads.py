@@ -1,9 +1,7 @@
 """Helical ISO metric threads (60-degree flanks) for printed bolts and threaded holes.
 
-The thread tooth is lofted (ruled) between two helical bands drawn on coaxial
-cylinders, the construction of OCCT's bottle tutorial.  It is built one turn at a
-time: booleans that trim a multi-turn helical surface with a plane produce invalid
-solids (found while building this), while one-turn pieces trim and fuse cleanly.
+The thread tooth is a trapezoid swept along a helix, its plane kept radial, as one
+continuous solid (see tooth_pieces for why not lofted one-turn pieces).
 
 Profile (simplified ISO 68-1): tooth depth 0.6134 P from the bolt's minor radius to
 its major radius, crest flat P/8, flanks at 30 degrees from the radial direction.
@@ -41,60 +39,58 @@ def parse(size: str, pitch: float | None = None) -> tuple[float, float]:
     return d, p
 
 
-def _band(r: float, w: float, pitch: float, u0: float, u1: float):
-    """Closed wire on the cylinder of radius r: a helical band of axial width w between angles u0, u1."""
+def _helix(r: float, pitch: float, height: float, z0: float):
+    """Wire: a right-hand helix of radius r from (r, 0, z0), rising ``height``."""
     from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
     from OCP.BRepLib import BRepLib
     from OCP.GC import GC_MakeSegment2d
     from OCP.Geom import Geom_CylindricalSurface
     from OCP.gp import gp_Ax3, gp_Dir, gp_Pnt, gp_Pnt2d
 
-    surf = Geom_CylindricalSurface(gp_Ax3(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r)
-    k = pitch / (2 * math.pi)
-    pts = [gp_Pnt2d(u0, u0 * k - w / 2), gp_Pnt2d(u1, u1 * k - w / 2), gp_Pnt2d(u1, u1 * k + w / 2), gp_Pnt2d(u0, u0 * k + w / 2)]
-    mw = BRepBuilderAPI_MakeWire()
-    for a, b in zip(pts, pts[1:] + pts[:1]):
-        mw.Add(BRepBuilderAPI_MakeEdge(GC_MakeSegment2d(a, b).Value(), surf).Edge())
-    wire = mw.Wire()
-    BRepLib.BuildCurves3d_s(wire)
-    return wire
+    surf = Geom_CylindricalSurface(gp_Ax3(gp_Pnt(0, 0, z0), gp_Dir(0, 0, 1)), r)
+    seg = GC_MakeSegment2d(gp_Pnt2d(0, 0), gp_Pnt2d(2 * math.pi * height / pitch, height)).Value()
+    edge = BRepBuilderAPI_MakeEdge(seg, surf).Edge()
+    BRepLib.BuildCurves3d_s(edge, 1e-6)
+    return BRepBuilderAPI_MakeWire(edge).Wire()
 
 
 def tooth_pieces(r_in: float, r_out: float, w_in: float, w_out: float, pitch: float, z0: float, z1: float) -> list:
-    """One-turn tooth solids along +Z (local frame) covering z0..z1, trimmed flat at both ends."""
+    """The tooth along +Z (local frame) covering z0..z1, trimmed flat at both ends: a trapezoid
+    swept along a helix with its plane kept radial (binormal mode).
+
+    A continuous sweep matters: lofting one-turn pieces and fusing them leaves microscopic
+    seams, and later booleans on such threads go wrong (a cut through the thread returned
+    more volume than the whole part; found by sectioning a printed bottle).
+    """
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
-    from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
-    from OCP.BRepOffsetAPI import BRepOffsetAPI_ThruSections
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_MakePolygon
+    from OCP.BRepOffsetAPI import BRepOffsetAPI_MakePipeShell
     from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
-    from OCP.gp import gp_Pnt, gp_Trsf, gp_Vec
+    from OCP.gp import gp_Dir, gp_Pnt
 
     from . import _occ
 
-    start = z0 - pitch  # begin a turn early so the trimmed start is full depth
-    turns = math.ceil((z1 - start) / pitch) + 1
+    start = z0 - pitch  # begin early so the trimmed start is full depth
+    spine = _helix(r_in, pitch, (z1 - start) + pitch, start)
+    poly = BRepBuilderAPI_MakePolygon()
+    for x, z in ((r_in, start - w_in / 2), (r_out, start - w_out / 2), (r_out, start + w_out / 2), (r_in, start + w_in / 2)):
+        poly.Add(gp_Pnt(x, 0, z))
+    poly.Close()
+    mk = BRepOffsetAPI_MakePipeShell(spine)
+    mk.SetMode(gp_Dir(0, 0, 1))
+    mk.Add(poly.Wire(), False, False)
+    mk.Build()
+    if not mk.IsDone():
+        return []
+    mk.MakeSolid()
+    tooth = mk.Shape()
+    if _occ.volume_fast(tooth) < 0:
+        tooth.Reverse()
     big = 4 * r_out + 10
-    below = BRepPrimAPI_MakeBox(gp_Pnt(-big / 2, -big / 2, z0 - 3 * pitch), big, big, 3 * pitch).Shape()
-    above = BRepPrimAPI_MakeBox(gp_Pnt(-big / 2, -big / 2, z1), big, big, 3 * pitch).Shape()
-    shift = gp_Trsf()
-    shift.SetTranslation(gp_Vec(0, 0, start))
-    out = []
-    for i in range(turns):
-        u0, u1 = 2 * math.pi * i, 2 * math.pi * (i + 1)
-        ts = BRepOffsetAPI_ThruSections(True, True)
-        ts.AddWire(_band(r_in, w_in, pitch, u0, u1))
-        ts.AddWire(_band(r_out, w_out, pitch, u0, u1))
-        ts.Build()
-        piece = BRepBuilderAPI_Transform(ts.Shape(), shift, True).Shape()
-        lo, hi = _occ.bbox(piece)
-        if hi[2] <= z0 + 1e-9 or lo[2] >= z1 - 1e-9:
-            continue
-        if lo[2] < z0:
-            piece = BRepAlgoAPI_Cut(piece, below).Shape()
-        if hi[2] > z1:
-            piece = BRepAlgoAPI_Cut(piece, above).Shape()
-        if _occ.solids(piece):
-            out.append(piece)
-    return out
+    below = BRepPrimAPI_MakeBox(gp_Pnt(-big / 2, -big / 2, z0 - 4 * pitch), big, big, 4 * pitch).Shape()
+    above = BRepPrimAPI_MakeBox(gp_Pnt(-big / 2, -big / 2, z1), big, big, 4 * pitch).Shape()
+    tooth = BRepAlgoAPI_Cut(BRepAlgoAPI_Cut(tooth, below).Shape(), above).Shape()
+    return [tooth] if _occ.solids(tooth) else []
 
 
 def external_profile(d: float, pitch: float) -> dict:
