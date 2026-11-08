@@ -73,7 +73,9 @@ Agent-facing documentation: `cad docs` (source: [src/cad/docs/REFERENCE.md](src/
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for design decisions and
 known limitations, [docs/SECURITY.md](docs/SECURITY.md) before running untrusted
 scripts, [evals/README.md](evals/README.md) for the evaluation harness and
-[docs/EVAL_RESULTS.md](docs/EVAL_RESULTS.md) for measured results.
+[docs/EVAL_RESULTS.md](docs/EVAL_RESULTS.md) for measured results, and
+[stress/README.md](stress/README.md) / [docs/STRESS_RESULTS.md](docs/STRESS_RESULTS.md) for the
+geometry stress suites (Booleans, fillets, scale, repeated features, parameter mutation).
 
 ## Tests
 

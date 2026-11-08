@@ -1,0 +1,164 @@
+[S02] 72 cases, 6 workers -> /Users/andrew/dev/github/clicd/stress-runs/S02-seed1-20261107-195749
+[S02] 1/72
+[S02] 31/72
+[S02] 56/72
+[S02] 72/72
+# S02 stress run
+
+seed 1, 72 cases, 6 workers, 14.8 s; cad 0.1.0, OCP 8.0.1.1.0, macOS-26.5.1-arm64-arm-64bit
+
+**Outcome classes:** controlled 68, pass 4
+
+| category | controlled | pass |
+|---|---|---|
+| box/all | 2 | 0 |
+| box/convex | 2 | 0 |
+| box/random_k | 3 | 0 |
+| box/single | 0 | 1 |
+| box/top | 2 | 0 |
+| box/vertical | 2 | 0 |
+| bracket/all | 2 | 0 |
+| bracket/concave | 2 | 0 |
+| bracket/convex | 2 | 0 |
+| bracket/random_k | 1 | 0 |
+| bracket/single | 0 | 1 |
+| bracket/top | 2 | 0 |
+| bracket/vertical | 2 | 0 |
+| convex_profile/all | 2 | 0 |
+| convex_profile/convex | 2 | 0 |
+| convex_profile/random_k | 3 | 0 |
+| convex_profile/single | 1 | 0 |
+| convex_profile/top | 2 | 0 |
+| convex_profile/vertical | 2 | 0 |
+| plate_holes/all | 2 | 0 |
+| plate_holes/convex | 2 | 0 |
+| plate_holes/random_k | 2 | 1 |
+| plate_holes/single | 1 | 0 |
+| plate_holes/top | 2 | 0 |
+| plate_holes/vertical | 2 | 0 |
+| pocket_block/all | 2 | 0 |
+| pocket_block/concave | 2 | 0 |
+| pocket_block/convex | 2 | 0 |
+| pocket_block/random_k | 1 | 0 |
+| pocket_block/single | 1 | 0 |
+| pocket_block/top | 2 | 0 |
+| pocket_block/vertical | 2 | 0 |
+| star_profile/all | 2 | 0 |
+| star_profile/concave | 1 | 1 |
+| star_profile/convex | 2 | 0 |
+| star_profile/random_k | 1 | 0 |
+| star_profile/single | 1 | 0 |
+| star_profile/top | 2 | 0 |
+| star_profile/vertical | 2 | 0 |
+
+**Findings by kind:**
+
+- pass:succeeded_above_rmax: 2
+
+| category | cases | median ms | p95 ms | max ms |
+|---|---|---|---|---|
+| box/all | 2 | 1194.4 | 1350.2 | 1350.2 |
+| box/convex | 2 | 1067.9 | 1179.1 | 1179.1 |
+| box/random_k | 3 | 743.1 | 918.1 | 918.1 |
+| box/single | 1 | 590.6 | 590.6 | 590.6 |
+| box/top | 2 | 799.3 | 803.3 | 803.3 |
+| box/vertical | 2 | 730.1 | 733.4 | 733.4 |
+| bracket/all | 2 | 944.9 | 1312.2 | 1312.2 |
+| bracket/concave | 2 | 832.7 | 893.4 | 893.4 |
+| bracket/convex | 2 | 800.3 | 1120.1 | 1120.1 |
+| bracket/random_k | 1 | 455.4 | 455.4 | 455.4 |
+| bracket/single | 1 | 101.6 | 101.6 | 101.6 |
+| bracket/top | 2 | 402.1 | 579.8 | 579.8 |
+| bracket/vertical | 2 | 668.5 | 702.0 | 702.0 |
+| convex_profile/all | 2 | 1263.1 | 1430.6 | 1430.6 |
+| convex_profile/convex | 2 | 1269.1 | 1538.0 | 1538.0 |
+| convex_profile/random_k | 3 | 491.8 | 773.6 | 773.6 |
+| convex_profile/single | 1 | 245.6 | 245.6 | 245.6 |
+| convex_profile/top | 2 | 476.1 | 702.9 | 702.9 |
+| convex_profile/vertical | 2 | 712.7 | 870.7 | 870.7 |
+| plate_holes/all | 2 | 998.4 | 1385.2 | 1385.2 |
+| plate_holes/convex | 2 | 769.4 | 885.8 | 885.8 |
+| plate_holes/random_k | 3 | 485.7 | 549.9 | 549.9 |
+| plate_holes/single | 1 | 565.5 | 565.5 | 565.5 |
+| plate_holes/top | 2 | 510.8 | 651.2 | 651.2 |
+| plate_holes/vertical | 2 | 404.4 | 512.2 | 512.2 |
+| pocket_block/all | 2 | 755.6 | 892.3 | 892.3 |
+| pocket_block/concave | 2 | 292.8 | 314.0 | 314.0 |
+| pocket_block/convex | 2 | 522.8 | 599.5 | 599.5 |
+| pocket_block/random_k | 1 | 302.6 | 302.6 | 302.6 |
+| pocket_block/single | 1 | 177.1 | 177.1 | 177.1 |
+| pocket_block/top | 2 | 386.4 | 397.7 | 397.7 |
+| pocket_block/vertical | 2 | 336.2 | 363.9 | 363.9 |
+| star_profile/all | 2 | 5456.5 | 6219.1 | 6219.1 |
+| star_profile/concave | 2 | 1240.8 | 1530.4 | 1530.4 |
+| star_profile/convex | 2 | 3519.9 | 3625.3 | 3625.3 |
+| star_profile/random_k | 1 | 1281.9 | 1281.9 | 1281.9 |
+| star_profile/single | 1 | 921.6 | 921.6 | 921.6 |
+| star_profile/top | 2 | 2708.0 | 2945.3 | 2945.3 |
+| star_profile/vertical | 2 | 2608.4 | 2722.2 | 2722.2 |
+
+## Analysis
+
+```json
+{
+  "fillet_attempts": 504,
+  "selections_with_no_feasible_radius": 0,
+  "by_radius": {
+    "0.1 mm": {
+      "attempts": 72,
+      "succeeded": 72,
+      "valid": 72,
+      "pass": 72
+    },
+    "0.5 mm": {
+      "attempts": 72,
+      "succeeded": 72,
+      "valid": 72,
+      "pass": 72
+    },
+    "0.9 rmax": {
+      "attempts": 72,
+      "succeeded": 72,
+      "valid": 72,
+      "pass": 72
+    },
+    "1 mm": {
+      "attempts": 72,
+      "succeeded": 71,
+      "valid": 71,
+      "pass": 71,
+      "controlled": 1
+    },
+    "1.1 rmax": {
+      "attempts": 72,
+      "succeeded": 4,
+      "valid": 4,
+      "controlled": 68,
+      "pass": 4
+    },
+    "2 mm": {
+      "attempts": 72,
+      "succeeded": 59,
+      "valid": 59,
+      "pass": 59,
+      "controlled": 13
+    },
+    "5 mm": {
+      "attempts": 72,
+      "succeeded": 36,
+      "valid": 36,
+      "controlled": 36,
+      "pass": 36
+    }
+  },
+  "error_quality_score_distribution(0-4)": {
+    "4": 118
+  },
+  "attempt_ms": {
+    "median": 18.39,
+    "p95": 109.03,
+    "max": 402.7
+  }
+}
+```
+

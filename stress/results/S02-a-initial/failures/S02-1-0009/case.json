@@ -1,0 +1,226 @@
+{
+  "id": "S02-1-0009",
+  "category": "star_profile/vertical",
+  "expect": "mixed",
+  "params": {
+    "shape": {
+      "kind": "star_profile",
+      "points": [
+        [
+          25.787,
+          0.0
+        ],
+        [
+          9.561,
+          3.96
+        ],
+        [
+          18.234,
+          18.234
+        ],
+        [
+          3.96,
+          9.561
+        ],
+        [
+          0.0,
+          25.787
+        ],
+        [
+          -3.96,
+          9.561
+        ],
+        [
+          -18.234,
+          18.234
+        ],
+        [
+          -9.561,
+          3.96
+        ],
+        [
+          -25.787,
+          0.0
+        ],
+        [
+          -9.561,
+          -3.96
+        ],
+        [
+          -18.234,
+          -18.234
+        ],
+        [
+          -3.96,
+          -9.561
+        ],
+        [
+          -0.0,
+          -25.787
+        ],
+        [
+          3.96,
+          -9.561
+        ],
+        [
+          18.234,
+          -18.234
+        ],
+        [
+          9.561,
+          -3.96
+        ]
+      ],
+      "h": 10.9
+    },
+    "selection": "vertical"
+  },
+  "outcome": {
+    "status": "ran",
+    "result": {
+      "edges": 16,
+      "faces_before": 18,
+      "volume_before": 8905.088714399999,
+      "attempts": [
+        {
+          "radius": 0.1,
+          "ok": true,
+          "valid": true,
+          "solids": 1,
+          "volume": 8903.049121835724,
+          "lost_refs": [],
+          "stale_selection_detected": true,
+          "ms": 262.05
+        },
+        {
+          "radius": 0.5,
+          "ok": true,
+          "valid": true,
+          "solids": 1,
+          "volume": 8854.098900297335,
+          "lost_refs": [],
+          "stale_selection_detected": true,
+          "ms": 260.48
+        },
+        {
+          "radius": 1.0,
+          "ok": true,
+          "valid": true,
+          "solids": 1,
+          "volume": 8701.129457991497,
+          "lost_refs": [],
+          "stale_selection_detected": true,
+          "ms": 253.83
+        },
+        {
+          "radius": 2.0,
+          "ok": true,
+          "valid": true,
+          "solids": 1,
+          "volume": 8089.251688770346,
+          "lost_refs": [],
+          "stale_selection_detected": true,
+          "ms": 290.26
+        },
+        {
+          "radius": 3.6679,
+          "ok": true,
+          "valid": true,
+          "solids": 2,
+          "volume": 15066.213528698809,
+          "lost_refs": [],
+          "stale_selection_detected": false,
+          "ms": 769.02
+        },
+        {
+          "radius": 4.483,
+          "ok": false,
+          "code": "FILLET_FAILED",
+          "has_hint": true,
+          "message": "fillet of 16 edge(s) with radius 4.483 failed (the kernel could not build it); 8 edge(s) fail even individually",
+          "failing_edges": true,
+          "mentions_radius": true,
+          "unchanged": true,
+          "ms": 131.52
+        },
+        {
+          "radius": 5.0,
+          "ok": false,
+          "code": "FILLET_FAILED",
+          "has_hint": true,
+          "message": "fillet of 16 edge(s) with radius 5.0 failed (the kernel could not build it); 8 edge(s) fail even individually",
+          "failing_edges": true,
+          "mentions_radius": true,
+          "unchanged": true,
+          "ms": 153.84
+        }
+      ],
+      "protected_refs": [
+        "body.bottom",
+        "body.end",
+        "body.start",
+        "body.top"
+      ],
+      "rmax": 4.07541552734375,
+      "probes": [
+        [
+          12.8985,
+          false
+        ],
+        [
+          6.4543,
+          false
+        ],
+        [
+          3.2321,
+          true
+        ],
+        [
+          4.8432,
+          false
+        ],
+        [
+          4.0377,
+          true
+        ],
+        [
+          4.4404,
+          false
+        ],
+        [
+          4.239,
+          false
+        ],
+        [
+          4.1383,
+          false
+        ],
+        [
+          4.088,
+          false
+        ],
+        [
+          4.0628,
+          true
+        ],
+        [
+          4.0754,
+          true
+        ],
+        [
+          4.0817,
+          false
+        ]
+      ]
+    },
+    "wall_ms": 5848.05,
+    "max_rss_mb": 269.5
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "solid_count_changed",
+      "stale_selection_accepted"
+    ]
+  }
+}

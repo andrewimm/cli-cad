@@ -1,0 +1,53 @@
+{
+  "id": "S05-1-008",
+  "category": "merging_features",
+  "expect": "ambiguous",
+  "params": {
+    "width": 80.31,
+    "depth": 59.96,
+    "thickness": 8.81,
+    "wall_height": 21.53,
+    "wall_thickness": 3.32,
+    "hole_d": 23.065,
+    "hole_inset": 3.4,
+    "holes_x": 5,
+    "holes_y": 2,
+    "corner_r": 0.86,
+    "root_r": 2.2,
+    "rib_count": 0,
+    "rib_thickness": 3.74
+  },
+  "outcome": {
+    "status": "ran",
+    "set": {
+      "exit": 0,
+      "ms": 179.9
+    },
+    "revision": 10,
+    "cached": false,
+    "warnings": [],
+    "valid": true,
+    "solids": 3,
+    "mounting_surface": {
+      "exit": 0,
+      "count": 1,
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "wall_face_exit": 0,
+    "daemon_ok": true,
+    "head": 10,
+    "head_is_last_good": true,
+    "worker_pid": 2787,
+    "worker_restarted": false
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "disconnected_solids"
+    ]
+  }
+}

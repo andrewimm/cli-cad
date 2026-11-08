@@ -1,0 +1,86 @@
+{
+  "id": "S01-1-0872",
+  "category": "nearly_coincident",
+  "expect": "valid",
+  "params": {
+    "A": {
+      "kind": "box",
+      "size": [
+        8.224,
+        6.476,
+        20.047
+      ],
+      "at": [
+        0,
+        0,
+        0
+      ]
+    },
+    "B": {
+      "kind": "box",
+      "size": [
+        3.979,
+        2.251,
+        13.397
+      ],
+      "at": [
+        0.228,
+        -2.112518936318593,
+        1.81
+      ]
+    },
+    "eps": 1.8936318593143037e-05,
+    "note": "B's face nearly coincides with A's face (offset eps)",
+    "analytic": {
+      "union": 1067.676644759954,
+      "cut": 947.683346346954,
+      "intersect": 119.9922889810463
+    }
+  },
+  "outcome": {
+    "status": "ran",
+    "result": {
+      "VA": 1067.675635328,
+      "VB": 119.993298413,
+      "ops": {
+        "union": {
+          "ok": true,
+          "volume": 1067.6766447599537,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [
+            "ADD_NO_EFFECT"
+          ],
+          "ms": 58.802
+        },
+        "cut": {
+          "ok": true,
+          "volume": 947.6833463469536,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 60.687
+        },
+        "intersect": {
+          "ok": true,
+          "volume": 119.9922889810463,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 48.342
+        }
+      }
+    },
+    "wall_ms": 169.25,
+    "max_rss_mb": 284.8
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "intersect:nonempty_for_touching"
+    ]
+  }
+}

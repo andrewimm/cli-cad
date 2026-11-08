@@ -1,0 +1,78 @@
+[S05] 20/200
+[S05] 40/200
+[S05] 60/200
+[S05] 80/200
+[S05] 100/200
+[S05] 120/200
+[S05] 140/200
+[S05] 160/200
+[S05] 180/200
+[S05] 200/200
+# S05 stress run
+
+seed 1, 200 cases, 1 workers, 34.1 s; cad 0.1.0, OCP 8.0.1.1.0, macOS-26.5.1-arm64-arm-64bit
+
+**Outcome classes:** controlled 24, defect 21, pass 155
+
+| category | controlled | defect | pass |
+|---|---|---|---|
+| disappearing_features | 3 | 0 | 17 |
+| holes_near_edges | 0 | 1 | 19 |
+| merging_features | 1 | 19 | 0 |
+| oversized_fillets | 18 | 0 | 2 |
+| tangent_features | 2 | 1 | 17 |
+| thin_walls | 0 | 0 | 20 |
+| valid | 0 | 0 | 80 |
+
+**Findings by kind:**
+
+- defect:disconnected_solids: 21
+- defect:mounting_surface_reference_unstable: 20
+
+## Analysis
+
+```json
+{
+  "outcomes_by_category": {
+    "valid": {
+      "ok": 80
+    },
+    "tangent_features": {
+      "ok": 18,
+      "failed": 2
+    },
+    "holes_near_edges": {
+      "ok": 20
+    },
+    "disappearing_features": {
+      "ok": 17,
+      "failed": 3
+    },
+    "merging_features": {
+      "ok": 19,
+      "failed": 1
+    },
+    "thin_walls": {
+      "ok": 20
+    },
+    "oversized_fillets": {
+      "failed": 18,
+      "ok": 2
+    }
+  },
+  "error_codes": {
+    "oversized_fillets:FILLET_FAILED": 18,
+    "disappearing_features:FILLET_FAILED": 3,
+    "tangent_features:FILLET_FAILED": 2,
+    "merging_features:REFERENCE_LOST": 1
+  },
+  "set_and_build_ms": {
+    "median": 98.3,
+    "p95": 245.6,
+    "max": 451.8
+  }
+}
+```
+
+Defect reproductions: `failures/<id>/repro.py` (and `minimal_repro.py` where reduced) for 21 case(s), e.g. S05-1-008, S05-1-013, S05-1-015, S05-1-016, S05-1-027, S05-1-028, S05-1-043, S05-1-046
+

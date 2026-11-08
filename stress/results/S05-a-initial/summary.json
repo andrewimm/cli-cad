@@ -1,0 +1,123 @@
+{
+  "suite": "S05",
+  "cases": 200,
+  "classes": {
+    "pass": 155,
+    "defect": 21,
+    "controlled": 24
+  },
+  "by_category": {
+    "disappearing_features": {
+      "pass": 17,
+      "controlled": 3
+    },
+    "holes_near_edges": {
+      "pass": 19,
+      "defect": 1
+    },
+    "merging_features": {
+      "defect": 19,
+      "controlled": 1
+    },
+    "oversized_fillets": {
+      "controlled": 18,
+      "pass": 2
+    },
+    "tangent_features": {
+      "pass": 17,
+      "controlled": 2,
+      "defect": 1
+    },
+    "thin_walls": {
+      "pass": 20
+    },
+    "valid": {
+      "pass": 80
+    }
+  },
+  "kinds": {
+    "defect:disconnected_solids": 21,
+    "defect:mounting_surface_reference_unstable": 20
+  },
+  "defect_ids": [
+    "S05-1-008",
+    "S05-1-013",
+    "S05-1-015",
+    "S05-1-016",
+    "S05-1-027",
+    "S05-1-028",
+    "S05-1-043",
+    "S05-1-046",
+    "S05-1-070",
+    "S05-1-075",
+    "S05-1-077",
+    "S05-1-088",
+    "S05-1-116",
+    "S05-1-131",
+    "S05-1-143",
+    "S05-1-152",
+    "S05-1-155",
+    "S05-1-164",
+    "S05-1-176",
+    "S05-1-180",
+    "S05-1-190"
+  ],
+  "env": {
+    "python": "3.12.16",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "cad": "0.1.0",
+    "ocp": "8.0.1.1.0"
+  },
+  "seed": 1,
+  "workers": 1,
+  "wall_s": 34.1,
+  "recovery": {
+    "checkout_first": true,
+    "inspect_after_checkout": true,
+    "defaults_rebuild_cached": true,
+    "daemon_alive_at_end": true,
+    "revisions": 50
+  },
+  "analysis": {
+    "outcomes_by_category": {
+      "valid": {
+        "ok": 80
+      },
+      "tangent_features": {
+        "ok": 18,
+        "failed": 2
+      },
+      "holes_near_edges": {
+        "ok": 20
+      },
+      "disappearing_features": {
+        "ok": 17,
+        "failed": 3
+      },
+      "merging_features": {
+        "ok": 19,
+        "failed": 1
+      },
+      "thin_walls": {
+        "ok": 20
+      },
+      "oversized_fillets": {
+        "failed": 18,
+        "ok": 2
+      }
+    },
+    "error_codes": {
+      "oversized_fillets:FILLET_FAILED": 18,
+      "disappearing_features:FILLET_FAILED": 3,
+      "tangent_features:FILLET_FAILED": 2,
+      "merging_features:REFERENCE_LOST": 1
+    },
+    "set_and_build_ms": {
+      "median": 98.3,
+      "p95": 245.6,
+      "max": 451.8
+    }
+  }
+}

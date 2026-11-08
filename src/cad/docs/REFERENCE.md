@@ -93,6 +93,9 @@ also works (parameters take their defaults).
 
 Every body operation takes `op="add" | "cut" | "intersect"` (default `"add"`)
 and `name=`. The first body must use `"add"`. All return a `FeatureRef`.
+`box` and `cylinder` accept a **list of points** for `at` to place many identical
+instances in one feature and one Boolean — use it for repeated bosses, pins and ribs
+(1000 bosses: ~1 s, versus minutes one call at a time).
 
 | call | notes / named faces |
 |---|---|
@@ -347,7 +350,7 @@ codes: `INVALID_ARGUMENT`, `NO_BODY`, `EMPTY_SELECTION`, `AMBIGUOUS_SELECTION`,
 `UNKNOWN_REFERENCE`, `REFERENCE_LOST`, `BOOLEAN_FAILED`, `FILLET_FAILED`,
 `CHAMFER_FAILED`, `SHELL_FAILED`, `INVALID_SHAPE`, `VALIDATION_FAILED`,
 `SCRIPT_ERROR`, `NO_MODEL`, `UNKNOWN_PARAMETER`, `PARAMETER_OUT_OF_RANGE`.
-Warnings: `CUT_NO_EFFECT`, `ADD_NO_EFFECT`, `DISCONNECTED_BODIES`, `HOLE_MISSED`, `RECESS_NO_EFFECT` (counterbore/countersink cut nothing).
+Warnings: `CUT_NO_EFFECT`, `ADD_NO_EFFECT`, `DISCONNECTED_BODIES`, `BODY_SPLIT` (a cut severed the part), `HOLE_MISSED`, `RECESS_NO_EFFECT` (counterbore/countersink cut nothing).
 A failed build never replaces the last good revision.
 
 ## Recipes

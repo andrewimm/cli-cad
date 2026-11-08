@@ -1,0 +1,83 @@
+{
+  "id": "S01-1-0282",
+  "category": "partial_overlap",
+  "expect": "valid",
+  "params": {
+    "A": {
+      "kind": "box",
+      "size": [
+        20.983,
+        43.813,
+        28.47
+      ],
+      "at": [
+        0,
+        0,
+        0
+      ]
+    },
+    "B": {
+      "kind": "cyl",
+      "d": 4.607,
+      "h": 59.432,
+      "axis": "x",
+      "at": [
+        -3.842,
+        26.059,
+        12.21
+      ],
+      "rot": [
+        54.45,
+        "y"
+      ]
+    },
+    "analytic": null
+  },
+  "outcome": {
+    "status": "ran",
+    "result": {
+      "VA": 26173.273256129996,
+      "VB": 990.7102384495739,
+      "ops": {
+        "union": {
+          "ok": true,
+          "volume": 27163.98349457957,
+          "valid": true,
+          "solids": 2,
+          "shells": 2,
+          "warnings": [
+            "DISCONNECTED_BODIES"
+          ],
+          "ms": 44.013
+        },
+        "cut": {
+          "ok": true,
+          "volume": 26173.273256129996,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [
+            "CUT_NO_EFFECT"
+          ],
+          "ms": 30.926
+        },
+        "intersect": {
+          "ok": false,
+          "code": "NO_BODY",
+          "message": "intersect left no solid material",
+          "hint": "the tool fully contains the body (cut) or does not overlap it (intersect)",
+          "ms": 0.968
+        }
+      }
+    },
+    "wall_ms": 91.64,
+    "max_rss_mb": 284.2
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "intersect:failed_on_valid_input:NO_BODY",
+      "union:unexpected_solid_count"
+    ]
+  }
+}

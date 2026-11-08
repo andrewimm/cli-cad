@@ -577,6 +577,8 @@ class Part:
         if op == "add" and after_vol - before_vol <= tol:
             feat.warnings.append(CadWarning("ADD_NO_EFFECT", "the added solid lies entirely inside the existing body", feat.id))
         solids_now = len(_occ.solids(self._shape))
+        if op != "add" and solids_now > before_solids:
+            feat.warnings.append(_split_warning(feat.id, op, before_solids, solids_now))
         if op == "add" and solids_now > before_solids:
             feat.warnings.append(
                 CadWarning(
@@ -968,7 +970,10 @@ class Part:
             if countersink is not None:
                 refs[f"{fid}.countersink"] = ("face", [f for w in refs_cs for f in w])
             before = _occ.volume_fast(body)
+            before_solids = len(_occ.solids(body))
             self._commit(feat, alg.Shape(), alg, refs)
+            if len(_occ.solids(self._shape)) > before_solids:
+                feat.warnings.append(_split_warning(fid, "hole", before_solids, len(_occ.solids(self._shape))))
             removed = before - _occ.volume_fast(self._shape)
             if removed <= 1e-9 * max(before, 1):
                 feat.warnings.append(CadWarning("CUT_NO_EFFECT", "no hole intersects the part", fid, {"positions": _jsonable(positions)}))
@@ -1458,6 +1463,16 @@ class Part:
 
 
 # --------------------------------------------------------------------------- helpers
+
+
+def _split_warning(fid: str, op: str, before: int, after: int) -> CadWarning:
+    return CadWarning(
+        "BODY_SPLIT",
+        f"the {op} split the part into {after} separate solids (was {before}); merged or overlapping cuts "
+        "can sever thin bridges of material",
+        fid,
+        {"solids_before": before, "solids_after": after},
+    )
 
 
 def _positions(at) -> list:

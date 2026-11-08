@@ -1,0 +1,73 @@
+{
+  "id": "S01-1-0127",
+  "category": "partial_overlap",
+  "expect": "valid",
+  "params": {
+    "A": {
+      "kind": "box",
+      "size": [
+        15.764,
+        10.736,
+        41.433
+      ],
+      "at": [
+        0,
+        0,
+        0
+      ]
+    },
+    "B": {
+      "kind": "sphere",
+      "d": 8.513,
+      "at": [
+        4.401,
+        -0.144,
+        0.697
+      ]
+    },
+    "note": "B centred inside A, protruding through one face",
+    "analytic": null
+  },
+  "outcome": {
+    "status": "ran",
+    "result": {
+      "VA": 7012.216381632001,
+      "VB": 323.03272611351736,
+      "ops": {
+        "union": {
+          "ok": false,
+          "code": "INVALID_SHAPE",
+          "message": "the operation produced an invalid solid",
+          "hint": "check for zero-thickness walls, coincident faces or self-intersecting profiles",
+          "ms": 11.628
+        },
+        "cut": {
+          "ok": true,
+          "volume": 6696.737295239177,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 51.978
+        },
+        "intersect": {
+          "ok": true,
+          "volume": 315.4790863932957,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 29.119
+        }
+      }
+    },
+    "wall_ms": 94.97,
+    "max_rss_mb": 274.5
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "union:failed_on_valid_input:INVALID_SHAPE"
+    ]
+  }
+}

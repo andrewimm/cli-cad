@@ -1,0 +1,52 @@
+{
+  "suite": "S01",
+  "cases": 1000,
+  "classes": {
+    "pass": 996,
+    "defect": 4
+  },
+  "by_category": {
+    "edge_touch": {
+      "pass": 110
+    },
+    "face_touch": {
+      "pass": 130
+    },
+    "full_overlap": {
+      "pass": 120
+    },
+    "nearly_coincident": {
+      "pass": 140
+    },
+    "nearly_tangent": {
+      "pass": 140
+    },
+    "partial_overlap": {
+      "pass": 216,
+      "defect": 4
+    },
+    "small_intersection": {
+      "pass": 140
+    }
+  },
+  "kinds": {
+    "defect:union:failed_on_valid_input:INVALID_SHAPE": 4
+  },
+  "defect_ids": [
+    "S01-1-0127",
+    "S01-1-0173",
+    "S01-1-0241",
+    "S01-1-0279"
+  ],
+  "env": {
+    "python": "3.12.16",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "cad": "0.1.0",
+    "ocp": "8.0.1.1.0"
+  },
+  "seed": 1,
+  "workers": 5,
+  "wall_s": 36.5
+}

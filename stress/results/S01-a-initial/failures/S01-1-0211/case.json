@@ -1,0 +1,75 @@
+{
+  "id": "S01-1-0211",
+  "category": "partial_overlap",
+  "expect": "valid",
+  "params": {
+    "A": {
+      "kind": "box",
+      "size": [
+        47.74,
+        42.923,
+        41.372
+      ],
+      "at": [
+        0,
+        0,
+        0
+      ]
+    },
+    "B": {
+      "kind": "sphere",
+      "d": 25.533,
+      "at": [
+        -10.467,
+        20.887,
+        12.757
+      ]
+    },
+    "analytic": null
+  },
+  "outcome": {
+    "status": "ran",
+    "result": {
+      "VA": 84777.18639544002,
+      "VB": 8715.737827060859,
+      "ops": {
+        "union": {
+          "ok": true,
+          "volume": 89289.56688179247,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 49.826
+        },
+        "cut": {
+          "ok": true,
+          "volume": 80573.87954190766,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 43.415
+        },
+        "intersect": {
+          "ok": true,
+          "volume": 4203.708406225625,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 24.688
+        }
+      }
+    },
+    "wall_ms": 119.07,
+    "max_rss_mb": 274.9
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "identity:union+intersect",
+      "identity:cut"
+    ]
+  }
+}

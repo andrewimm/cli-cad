@@ -1,0 +1,97 @@
+{
+  "suite": "S05",
+  "cases": 200,
+  "classes": {
+    "pass": 155,
+    "controlled": 45
+  },
+  "by_category": {
+    "disappearing_features": {
+      "pass": 17,
+      "controlled": 3
+    },
+    "holes_near_edges": {
+      "pass": 19,
+      "controlled": 1
+    },
+    "merging_features": {
+      "controlled": 20
+    },
+    "oversized_fillets": {
+      "controlled": 18,
+      "pass": 2
+    },
+    "tangent_features": {
+      "pass": 17,
+      "controlled": 3
+    },
+    "thin_walls": {
+      "pass": 20
+    },
+    "valid": {
+      "pass": 80
+    }
+  },
+  "kinds": {
+    "controlled:split_reported": 21
+  },
+  "defect_ids": [],
+  "env": {
+    "python": "3.12.16",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "cad": "0.1.0",
+    "ocp": "8.0.1.1.0"
+  },
+  "seed": 1,
+  "workers": 1,
+  "wall_s": 29.5,
+  "recovery": {
+    "checkout_first": true,
+    "inspect_after_checkout": true,
+    "defaults_rebuild_cached": true,
+    "daemon_alive_at_end": true,
+    "revisions": 50
+  },
+  "analysis": {
+    "outcomes_by_category": {
+      "valid": {
+        "ok": 80
+      },
+      "tangent_features": {
+        "ok": 18,
+        "failed": 2
+      },
+      "holes_near_edges": {
+        "ok": 20
+      },
+      "disappearing_features": {
+        "ok": 17,
+        "failed": 3
+      },
+      "merging_features": {
+        "ok": 19,
+        "failed": 1
+      },
+      "thin_walls": {
+        "ok": 20
+      },
+      "oversized_fillets": {
+        "failed": 18,
+        "ok": 2
+      }
+    },
+    "error_codes": {
+      "oversized_fillets:FILLET_FAILED": 18,
+      "disappearing_features:FILLET_FAILED": 3,
+      "tangent_features:FILLET_FAILED": 2,
+      "merging_features:REFERENCE_LOST": 1
+    },
+    "set_and_build_ms": {
+      "median": 94.3,
+      "p95": 219.1,
+      "max": 376.7
+    }
+  }
+}

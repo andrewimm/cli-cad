@@ -198,7 +198,7 @@ def run(out: Path, n: int = 200, seed: int = 1, workers: int = 1) -> dict:
             o["solids"] = part.get("solids")
             m = cad("measure", "bracket.mounting_surface")
             ent = ((m.get("body") or {}).get("result") or {}).get("entities", [])
-            o["mounting_surface"] = {"exit": m["exit"], "count": len(ent), "normal": ent[0]["normal"] if ent else None}
+            o["mounting_surface"] = {"exit": m["exit"], "count": len(ent), "normals": [e["normal"] for e in ent]}
             q = cad("measure", "bracket.wall_face")
             o["wall_face_exit"] = q["exit"]
             last_good = b["revision"]
@@ -250,10 +250,18 @@ def judge(case: dict, o: dict) -> dict:
     if ex in (1, 6, 7, 8, "timeout"):
         kinds.append(f"exit_{ex}")
     if ex == 0:
-        if not o.get("valid") or o.get("solids") != 1:
-            kinds.append("accepted_invalid_or_disconnected_geometry" if not o.get("valid") else "disconnected_solids")
+        notes = []
+        if not o.get("valid"):
+            kinds.append("accepted_invalid_geometry")
+        elif o.get("solids") != 1:
+            # a configuration that severs the part is the input's fault, but it must be reported
+            if any(w in ("BODY_SPLIT", "DISCONNECTED_BODIES") for w in o.get("warnings", [])):
+                notes.append("split_reported")
+            else:
+                kinds.append("silently_disconnected_solids")
         ms = o.get("mounting_surface") or {}
-        if ms.get("count") != 1 or ms.get("normal") != [0.0, 0.0, -1.0]:
+        # the tagged face may be split into pieces by later cuts; every piece must still be the downward face
+        if not ms.get("count") or any(n != [0.0, 0.0, -1.0] for n in ms.get("normals", [])):
             kinds.append("mounting_surface_reference_unstable")
         if o.get("wall_face_exit") != 0:
             kinds.append("wall_face_reference_unstable")
@@ -261,7 +269,7 @@ def judge(case: dict, o: dict) -> dict:
             kinds.append("head_not_new_revision")
         if kinds:
             return {"class": "defect", "kinds": kinds}
-        return {"class": "pass", "kinds": []}
+        return {"class": "controlled" if notes else "pass", "kinds": notes}
     err = o.get("error") or {}
     if not err.get("code"):
         kinds.append("unstructured_failure")

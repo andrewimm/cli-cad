@@ -1,0 +1,88 @@
+{
+  "suite": "S01",
+  "cases": 1000,
+  "classes": {
+    "pass": 966,
+    "defect": 34
+  },
+  "by_category": {
+    "edge_touch": {
+      "pass": 110
+    },
+    "face_touch": {
+      "pass": 130
+    },
+    "full_overlap": {
+      "pass": 120
+    },
+    "nearly_coincident": {
+      "pass": 113,
+      "defect": 27
+    },
+    "nearly_tangent": {
+      "pass": 140
+    },
+    "partial_overlap": {
+      "pass": 213,
+      "defect": 7
+    },
+    "small_intersection": {
+      "pass": 140
+    }
+  },
+  "kinds": {
+    "defect:intersect:nonempty_for_touching": 27,
+    "defect:intersect:failed_on_valid_input:NO_BODY": 4,
+    "defect:union:unexpected_solid_count": 4,
+    "defect:identity:union+intersect": 2,
+    "defect:identity:cut": 2,
+    "defect:cut:failed_on_valid_input:NO_BODY": 1
+  },
+  "defect_ids": [
+    "S01-1-0211",
+    "S01-1-0222",
+    "S01-1-0231",
+    "S01-1-0251",
+    "S01-1-0272",
+    "S01-1-0282",
+    "S01-1-0337",
+    "S01-1-0866",
+    "S01-1-0869",
+    "S01-1-0872",
+    "S01-1-0881",
+    "S01-1-0883",
+    "S01-1-0887",
+    "S01-1-0889",
+    "S01-1-0899",
+    "S01-1-0923",
+    "S01-1-0925",
+    "S01-1-0930",
+    "S01-1-0933",
+    "S01-1-0945",
+    "S01-1-0946",
+    "S01-1-0948",
+    "S01-1-0949",
+    "S01-1-0957",
+    "S01-1-0960",
+    "S01-1-0961",
+    "S01-1-0975",
+    "S01-1-0977",
+    "S01-1-0979",
+    "S01-1-0980",
+    "S01-1-0984",
+    "S01-1-0986",
+    "S01-1-0987",
+    "S01-1-0999"
+  ],
+  "env": {
+    "python": "3.12.16",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "cad": "0.1.0",
+    "ocp": "8.0.1.1.0"
+  },
+  "seed": 1,
+  "workers": 8,
+  "wall_s": 21.7
+}

@@ -1,0 +1,211 @@
+{
+  "suite": "S02",
+  "cases": 72,
+  "classes": {
+    "controlled": 66,
+    "defect": 2,
+    "pass": 4
+  },
+  "by_category": {
+    "box/all": {
+      "controlled": 2
+    },
+    "box/convex": {
+      "controlled": 2
+    },
+    "box/random_k": {
+      "controlled": 3
+    },
+    "box/single": {
+      "pass": 1
+    },
+    "box/top": {
+      "controlled": 2
+    },
+    "box/vertical": {
+      "controlled": 2
+    },
+    "bracket/all": {
+      "controlled": 2
+    },
+    "bracket/concave": {
+      "controlled": 2
+    },
+    "bracket/convex": {
+      "controlled": 2
+    },
+    "bracket/random_k": {
+      "controlled": 1
+    },
+    "bracket/single": {
+      "pass": 1
+    },
+    "bracket/top": {
+      "controlled": 2
+    },
+    "bracket/vertical": {
+      "controlled": 2
+    },
+    "convex_profile/all": {
+      "controlled": 2
+    },
+    "convex_profile/convex": {
+      "controlled": 2
+    },
+    "convex_profile/random_k": {
+      "controlled": 3
+    },
+    "convex_profile/single": {
+      "controlled": 1
+    },
+    "convex_profile/top": {
+      "controlled": 2
+    },
+    "convex_profile/vertical": {
+      "controlled": 2
+    },
+    "plate_holes/all": {
+      "controlled": 2
+    },
+    "plate_holes/convex": {
+      "controlled": 2
+    },
+    "plate_holes/random_k": {
+      "pass": 1,
+      "controlled": 2
+    },
+    "plate_holes/single": {
+      "controlled": 1
+    },
+    "plate_holes/top": {
+      "controlled": 2
+    },
+    "plate_holes/vertical": {
+      "controlled": 2
+    },
+    "pocket_block/all": {
+      "controlled": 2
+    },
+    "pocket_block/concave": {
+      "controlled": 2
+    },
+    "pocket_block/convex": {
+      "controlled": 2
+    },
+    "pocket_block/random_k": {
+      "controlled": 1
+    },
+    "pocket_block/single": {
+      "controlled": 1
+    },
+    "pocket_block/top": {
+      "controlled": 2
+    },
+    "pocket_block/vertical": {
+      "controlled": 2
+    },
+    "star_profile/all": {
+      "controlled": 2
+    },
+    "star_profile/concave": {
+      "pass": 1,
+      "controlled": 1
+    },
+    "star_profile/convex": {
+      "controlled": 2
+    },
+    "star_profile/random_k": {
+      "controlled": 1
+    },
+    "star_profile/single": {
+      "controlled": 1
+    },
+    "star_profile/top": {
+      "controlled": 2
+    },
+    "star_profile/vertical": {
+      "defect": 2
+    }
+  },
+  "kinds": {
+    "defect:solid_count_changed": 2,
+    "defect:stale_selection_accepted": 2,
+    "pass:succeeded_above_rmax": 2
+  },
+  "defect_ids": [
+    "S02-1-0009",
+    "S02-1-0051"
+  ],
+  "env": {
+    "python": "3.12.16",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "cpus": 10,
+    "cad": "0.1.0",
+    "ocp": "8.0.1.1.0"
+  },
+  "seed": 1,
+  "workers": 5,
+  "wall_s": 44.4,
+  "analysis": {
+    "fillet_attempts": 504,
+    "selections_with_no_feasible_radius": 0,
+    "by_radius": {
+      "0.1 mm": {
+        "attempts": 72,
+        "succeeded": 72,
+        "valid": 72,
+        "pass": 72
+      },
+      "0.5 mm": {
+        "attempts": 72,
+        "succeeded": 72,
+        "valid": 72,
+        "pass": 72
+      },
+      "0.9 rmax": {
+        "attempts": 72,
+        "succeeded": 72,
+        "valid": 72,
+        "pass": 70,
+        "defect": 2
+      },
+      "1 mm": {
+        "attempts": 72,
+        "succeeded": 71,
+        "valid": 71,
+        "pass": 71,
+        "controlled": 1
+      },
+      "1.1 rmax": {
+        "attempts": 72,
+        "succeeded": 4,
+        "valid": 4,
+        "controlled": 68,
+        "pass": 4
+      },
+      "2 mm": {
+        "attempts": 72,
+        "succeeded": 59,
+        "valid": 59,
+        "pass": 59,
+        "controlled": 13
+      },
+      "5 mm": {
+        "attempts": 72,
+        "succeeded": 36,
+        "valid": 36,
+        "controlled": 36,
+        "pass": 36
+      }
+    },
+    "error_quality_score_distribution(0-4)": {
+      "4": 118
+    },
+    "attempt_ms": {
+      "median": 104.41,
+      "p95": 333.91,
+      "max": 769.02
+    }
+  }
+}

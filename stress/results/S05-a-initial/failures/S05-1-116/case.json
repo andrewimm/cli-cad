@@ -1,0 +1,54 @@
+{
+  "id": "S05-1-116",
+  "category": "holes_near_edges",
+  "expect": "ambiguous",
+  "params": {
+    "width": 81.02,
+    "depth": 58.84,
+    "thickness": 2.28,
+    "wall_height": 29.61,
+    "wall_thickness": 2.7,
+    "hole_d": 3.19,
+    "hole_inset": 1.426,
+    "holes_x": 2,
+    "holes_y": 3,
+    "corner_r": 0.97,
+    "root_r": 0.73,
+    "rib_count": 0,
+    "rib_thickness": 2.74
+  },
+  "outcome": {
+    "status": "ran",
+    "set": {
+      "exit": 0,
+      "ms": 118.1
+    },
+    "revision": 107,
+    "cached": false,
+    "warnings": [],
+    "valid": true,
+    "solids": 3,
+    "mounting_surface": {
+      "exit": 0,
+      "count": 3,
+      "normal": [
+        0.0,
+        0.0,
+        -1.0
+      ]
+    },
+    "wall_face_exit": 0,
+    "daemon_ok": true,
+    "head": 107,
+    "head_is_last_good": true,
+    "worker_pid": 2787,
+    "worker_restarted": false
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "disconnected_solids",
+      "mounting_surface_reference_unstable"
+    ]
+  }
+}

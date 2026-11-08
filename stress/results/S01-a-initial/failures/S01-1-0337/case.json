@@ -1,0 +1,72 @@
+{
+  "id": "S01-1-0337",
+  "category": "partial_overlap",
+  "expect": "valid",
+  "params": {
+    "A": {
+      "kind": "box",
+      "size": [
+        8.426,
+        11.145,
+        17.646
+      ],
+      "at": [
+        0,
+        0,
+        0
+      ]
+    },
+    "B": {
+      "kind": "sphere",
+      "d": 36.749,
+      "at": [
+        4.486,
+        -0.915,
+        1.624
+      ]
+    },
+    "analytic": null
+  },
+  "outcome": {
+    "status": "ran",
+    "result": {
+      "VA": 1657.09650942,
+      "VB": 25985.746621922066,
+      "ops": {
+        "union": {
+          "ok": true,
+          "volume": 25985.746621922066,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 6.534
+        },
+        "cut": {
+          "ok": false,
+          "code": "NO_BODY",
+          "message": "cut left no solid material",
+          "hint": "the tool fully contains the body (cut) or does not overlap it (intersect)",
+          "ms": 0.707
+        },
+        "intersect": {
+          "ok": true,
+          "volume": 1657.09650942,
+          "valid": true,
+          "solids": 1,
+          "shells": 1,
+          "warnings": [],
+          "ms": 18.167
+        }
+      }
+    },
+    "wall_ms": 26.46,
+    "max_rss_mb": 285.0
+  },
+  "verdict": {
+    "class": "defect",
+    "kinds": [
+      "cut:failed_on_valid_input:NO_BODY"
+    ]
+  }
+}
