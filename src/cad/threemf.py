@@ -3,13 +3,18 @@
 Layouts:
 
 * ``objects`` (default): one mesh object per part, each a separate build item at its
-  modelled position, each tied to its material through a ``<basematerials>`` slot.
-  Slicers load them as separate objects (e.g. a box and its lid).
-* ``multimaterial``: all parts merged into ONE object whose triangles carry their
-  part's material (per-triangle ``pid``/``p1``).  PrusaSlicer/OrcaSlicer extruder
-  assignments are written too (``Metadata/Slic3r_PE_model.config``: one volume per
-  part, extruder = material slot + 1), so the parts load as volumes of one object,
-  in place, ready for a multi-material printer.
+  modelled position.  Slicers load them as separate objects (e.g. a box and its lid).
+* ``multimaterial``: one assembly object whose components are the parts' meshes, in
+  place, plus Bambu Studio's ``Metadata/model_settings.config`` naming each part and
+  its filament (material slot k -> filament k+1), so the slicer loads one object with
+  one part per material, ready for an AMS / multi-material printer.
+
+Every part's mesh object references its material's colour in a 3MF Materials-extension
+``<m:colorgroup>`` (the same mechanism Fusion uses for multi-colour exports; Bambu
+Studio assigns filaments from it) and carries ``cad:material`` metadata with the
+material name.  Verified with Bambu Studio 2.07 (CLI): objects mode maps the colours
+to filaments 1..n, multimaterial mode yields one object with named parts on their
+filaments.
 
 Meshes are welded (shared vertices), outward oriented and checked to be closed
 two-manifolds before writing, as the 3MF core specification requires.
@@ -27,6 +32,8 @@ import numpy as np
 from .errors import EXPORT_FAILED, INVALID_ARGUMENT, CadError
 
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
+MATERIAL_NS = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02"
+CAD_NS = "https://github.com/cad-agent/cad/3mf/2026"
 MODES = ("objects", "multimaterial")
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
@@ -138,40 +145,40 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         report["materials"].append({"slot": k, "name": m.name, "color": _color(m.color, "#808080")[:7],
                                     "density": m.density, "kind": m.kind, "extruder": k + 1,
                                     "parts": [n for n, s in slot_of.items() if s == k]})
-    base = "".join(f"<base name={quoteattr(m.name)} displaycolor=\"{_color(m.color, '#808080')}\"/>" for m in slots)
+    colors = "".join(f'<m:color color="{_color(m.color, "#808080")}"/>' for m in slots)
     meta = [f'<metadata name="Application">cad {escape(__version__)}</metadata>']
     if title:
         meta.append(f"<metadata name=\"Title\">{escape(title)}</metadata>")
     objects, items, config = [], [], ""
+    ids = {}
+    for oid, (name, (v, t)) in enumerate(meshes.items(), start=2):
+        ids[name] = oid
+        m = slots[slot_of[name]]
+        md = (f'<metadatagroup><metadata name="cad:material">{escape(m.name)}</metadata>'
+              + (f'<metadata name="cad:density_g_cm3">{m.density}</metadata>' if m.density else "") + "</metadatagroup>")
+        objects.append(f'<object id="{oid}" type="model" name={quoteattr(name)} pid="1" pindex="{slot_of[name]}">'
+                       + md + _mesh_xml(v, t) + "</object>")
     if mode == "objects":
-        for oid, (name, (v, t)) in enumerate(meshes.items(), start=2):
-            objects.append(f'<object id="{oid}" type="model" name={quoteattr(name)} pid="1" pindex="{slot_of[name]}">'
-                           + _mesh_xml(v, t) + "</object>")
-            items.append(f'<item objectid="{oid}"/>')
+        items = [f'<item objectid="{ids[n]}"/>' for n in meshes]
     else:
-        allv, allt, ranges, offset, tri_count = [], [], [], 0, 0
-        tri_xml = []
-        for name, (v, t) in meshes.items():
-            allv.append(v)
-            tt = t + offset
-            tri_xml.append("".join(f'<triangle v1="{a}" v2="{b}" v3="{c}" pid="1" p1="{slot_of[name]}"/>' for a, b, c in tt))
-            ranges.append((name, tri_count, tri_count + len(t) - 1))
-            offset += len(v)
-            tri_count += len(t)
-        V = np.concatenate(allv)
-        vs = "".join(f'<vertex x="{x:.6f}" y="{y:.6f}" z="{z:.6f}"/>' for x, y, z in V)
-        objects.append(f'<object id="2" type="model" name={quoteattr(title or "assembly")} pid="1" pindex="0">'
-                       f"<mesh><vertices>{vs}</vertices><triangles>{''.join(tri_xml)}</triangles></mesh></object>")
-        items.append('<item objectid="2"/>')
-        vols = "".join(
-            f'  <volume firstid="{a}" lastid="{b}">\n'
-            f'   <metadata type="volume" key="name" value={quoteattr(n)}/>\n'
-            f'   <metadata type="volume" key="extruder" value="{slot_of[n] + 1}"/>\n'
-            f"  </volume>\n" for n, a, b in ranges)
-        config = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n <object id="2" instances_count="1">\n'
-                  f'  <metadata type="object" key="name" value={quoteattr(title or "assembly")}/>\n{vols} </object>\n</config>\n')
-    model = (f'<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="{CORE_NS}">'
-             + "".join(meta) + f'<resources><basematerials id="1">{base}</basematerials>' + "".join(objects)
+        aid = len(meshes) + 2
+        label = title or "assembly"
+        objects.append(f'<object id="{aid}" type="model" name={quoteattr(label)}><components>'
+                       + "".join(f'<component objectid="{ids[n]}"/>' for n in meshes) + "</components></object>")
+        items = [f'<item objectid="{aid}"/>']
+        identity = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+        parts_cfg = "".join(
+            f'    <part id="{ids[n]}" subtype="normal_part">\n'
+            f'      <metadata key="name" value={quoteattr(n)}/>\n'
+            f'      <metadata key="matrix" value="{identity}"/>\n'
+            f'      <metadata key="extruder" value="{slot_of[n] + 1}"/>\n'
+            f"    </part>\n" for n in meshes)
+        config = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
+                  f'  <object id="{aid}">\n    <metadata key="name" value={quoteattr(label)}/>\n'
+                  f'    <metadata key="extruder" value="1"/>\n{parts_cfg}  </object>\n</config>\n')
+    model = (f'<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="{CORE_NS}" '
+             f'xmlns:m="{MATERIAL_NS}" xmlns:cad="{CAD_NS}">'
+             + "".join(meta) + f'<resources><m:colorgroup id="1">{colors}</m:colorgroup>' + "".join(objects)
              + "</resources><build>" + "".join(items) + "</build></model>\n")
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -181,7 +188,7 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         z.writestr("_rels/.rels", RELS)
         z.writestr("3D/3dmodel.model", model)
         if config:
-            z.writestr("Metadata/Slic3r_PE_model.config", config)
+            z.writestr("Metadata/model_settings.config", config)
     os.replace(tmp, p)
     report["path"] = str(p)
     report["bytes"] = p.stat().st_size

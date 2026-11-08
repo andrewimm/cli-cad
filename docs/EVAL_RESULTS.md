@@ -151,5 +151,10 @@ All agents found the features through `cad docs --list` / `cad docs materials` /
 v1 feedback: which 3MF layout fits "printed in one go" was unclear (3/3), no cad.toml key for
 it (2/3), `cad clearance` read as reference-only, and section cuts painted both materials the
 same red. Remaining v2 feedback: the two materials' cut faces are still similar in tint.
-Not verified here: import into PrusaSlicer/OrcaSlicer/Bambu Studio (no slicer in this environment);
-the slicer-specific extruder config follows PrusaSlicer's `Slic3r_PE_model.config` format.
+Slicer check (Bambu Studio 2.07, command line): the first 3MF writer (core `basematerials` +
+PrusaSlicer volume config) loaded with correct geometry but every part on filament 1, and the
+multi-material file was flattened into one part. The writer now uses a 3MF colour group (as Fusion
+does) and, for multi-material, an assembly plus Bambu's per-part settings: objects mode lands on
+filaments 1..n, multi-material mode loads as one object with one named part per filament
+(`tests/test_bambu.py`). Not verified: the GUI import dialog's filament-colour mapping, slicing with
+real two-filament profiles, PrusaSlicer.

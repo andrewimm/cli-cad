@@ -178,18 +178,22 @@ def hole_access_volume(hole: dict, direction, diameter: float, length: float, ob
 
 
 def read_3mf(path) -> dict:
-    """Objects, materials and per-material bounding boxes of a 3MF file (via lib3mf)."""
+    """Objects, materials and per-material bounding boxes of a 3MF file (via lib3mf).
+
+    The material of a mesh object is its ``cad:material`` metadata, else the name of the
+    base material it references, else the colour it references (colour groups).
+    """
     import lib3mf
 
     w = lib3mf.get_wrapper()
     model = w.CreateModel()
     model.QueryReader("3mf").ReadFromFile(str(path))
-    names = {}
+    base_names = {}
     it = model.GetBaseMaterialGroups()
     while it.MoveNext():
         g = it.GetCurrentBaseMaterialGroup()
         for pid in g.GetAllPropertyIDs():
-            names[(g.GetResourceID(), pid)] = g.GetName(pid)
+            base_names[(g.GetResourceID(), pid)] = g.GetName(pid)
     by_mat: dict = {}
     objects, closed = [], True
     it = model.GetMeshObjects()
@@ -198,15 +202,15 @@ def read_3mf(path) -> dict:
         closed = closed and o.IsManifoldAndOriented()
         verts = np.array([[v.Coordinates[0], v.Coordinates[1], v.Coordinates[2]] for v in o.GetVertices()])
         tris = np.array([list(t.Indices) for t in o.GetTriangleIndices()])
-        has, rid, pid = o.GetObjectLevelProperty()
-        mats = []
-        for k, tp in enumerate(o.GetAllTriangleProperties()):
-            r, p0 = tp.ResourceID, tp.PropertyIDs[0]
-            mats.append(names.get((r, p0)) if r else (names.get((rid, pid)) if has else None))
-        objects.append({"name": o.GetName(), "triangles": int(len(tris))})
-        for m in set(mats):
-            sel = tris[[i for i, x in enumerate(mats) if x == m]]
-            pts = verts[sel.reshape(-1)]
-            g = by_mat.setdefault(m or "(none)", [])
-            g.append({"min": [round(float(c), 4) for c in pts.min(0)], "max": [round(float(c), 4) for c in pts.max(0)]})
+        name = None
+        mdg = o.GetMetaDataGroup()
+        for k in range(mdg.GetMetaDataCount()):
+            md = mdg.GetMetaData(k)
+            if md.GetName() == "material":
+                name = md.GetValue()
+        rid, pid, has = o.GetObjectLevelProperty()  # (resource id, property id, has property)
+        name = name or base_names.get((rid, pid)) or (f"resource{rid}#{pid}" if has else "(none)")
+        objects.append({"name": o.GetName(), "material": name, "triangles": int(len(tris))})
+        pts = verts[tris.reshape(-1)]
+        by_mat.setdefault(name, []).append({"min": [round(float(c), 4) for c in pts.min(0)], "max": [round(float(c), 4) for c in pts.max(0)]})
     return {"objects": objects, "closed": closed, "by_material": {k: v[0] if len(v) == 1 else v for k, v in by_mat.items()}}

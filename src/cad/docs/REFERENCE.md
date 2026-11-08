@@ -345,14 +345,17 @@ cad export --format stl                          # one STL per part, with a wate
 ```
 
 Which mode: parts that are printed together as one piece in different materials → `multimaterial`
-(the slicer gets one object whose parts are volumes on extruders 1, 2, …). Parts printed as separate
+(the slicer gets one object whose parts are on filaments 1, 2, …). Parts printed as separate
 pieces → `objects`. Set a default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. Check that
 parts touch without overlapping with `cad clearance` (every pair: clear / touching / overlap).
 
-The 3MF file holds all parts (reference parts excluded): mesh units mm, closed oriented meshes, one
-`<basematerials>` slot per distinct material (name + colour) and, in `multimaterial` mode, per-triangle
-material indices plus PrusaSlicer/OrcaSlicer extruder assignments (slot k → extruder k+1). Overlapping
-parts are reported (`MATERIAL_OVERLAP`) because two materials would claim the same volume.
+The 3MF file holds all parts (reference parts excluded): mesh units mm, closed oriented meshes, each
+part's colour in a 3MF colour group (how Bambu Studio picks filaments) and its material name as
+`cad:material` metadata. Material slot k is filament k+1, in first-use order. `multimaterial` mode
+writes one assembly object plus Bambu Studio's per-part settings (name + filament). Verified with
+Bambu Studio 2.07: objects mode loads as separate objects on filaments 1..n; multimaterial mode as one
+object with one part per material. Set the matching filament types/colours in the slicer.
+Overlapping parts are reported (`MATERIAL_OVERLAP`) because two materials would claim the same volume.
 In Python: `part.export("x.3mf")`, or `from cad.threemf import export_3mf; export_3mf({"a": a, "b": b}, "x.3mf", mode="multimaterial")`.
 
 ## Assemblies, motion and designing around components

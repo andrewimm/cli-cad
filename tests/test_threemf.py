@@ -35,14 +35,18 @@ def _objects(model):
     return out
 
 
-def _materials(model):
-    it = model.GetBaseMaterialGroups()
+def _colors(model):
+    it = model.GetColorGroups()
     groups = []
     while it.MoveNext():
-        g = it.GetCurrentBaseMaterialGroup()
-        ids = g.GetAllPropertyIDs()
-        groups.append([(g.GetName(pid), g.GetDisplayColor(pid)) for pid in ids])
+        g = it.GetCurrentColorGroup()
+        groups.append([g.GetColor(pid) for pid in g.GetAllPropertyIDs()])
     return groups
+
+
+def _material_meta(obj):
+    mdg = obj.GetMetaDataGroup()
+    return {mdg.GetMetaData(k).GetName(): mdg.GetMetaData(k).GetValue() for k in range(mdg.GetMetaDataCount())}
 
 
 def test_objects_mode_reads_back_with_materials(tmp_path):
@@ -58,14 +62,14 @@ def test_objects_mode_reads_back_with_materials(tmp_path):
     for o in objs:
         assert o.IsManifoldAndOriented(), o.GetName()
         assert o.GetTriangleCount() > 0
-    (mats,) = _materials(model)
-    assert [n for n, _ in mats] == ["PETG", "TPU", "PLA"]
-    pla = mats[2][1]
+    (colors,) = _colors(model)
+    pla = colors[2]
     assert (pla.Red, pla.Green, pla.Blue) == (0xE8, 0xA0, 0x50)
-    # each object's default property points at its material slot
     by_name = {o.GetName(): o for o in objs}
-    res = by_name["gasket"].GetObjectLevelProperty()
-    assert res[0] and res[-1] > 0, res  # (has property, resource id, property id): TPU is not the first slot
+    assert {n: _material_meta(o)["material"] for n, o in by_name.items()} == {"housing": "PETG", "gasket": "TPU", "inlay": "PLA"}
+    _, pid_tpu, has = by_name["gasket"].GetObjectLevelProperty()  # (resource id, property id, has property)
+    _, pid_petg, _ = by_name["housing"].GetObjectLevelProperty()
+    assert has and pid_tpu != pid_petg  # each object points at its material's colour
     builds = model.GetBuildItems()
     n = 0
     while builds.MoveNext():
@@ -73,20 +77,21 @@ def test_objects_mode_reads_back_with_materials(tmp_path):
     assert n == 3
 
 
-def test_multimaterial_mode_one_object_per_triangle_materials(tmp_path):
+def test_multimaterial_mode_assembly_with_part_filaments(tmp_path):
     parts = _parts()
-    rep = export_3mf(parts, tmp_path / "m.3mf", mode="multimaterial", title="enclosure")
+    export_3mf(parts, tmp_path / "m.3mf", mode="multimaterial", title="enclosure")
     w, model = _read(tmp_path / "m.3mf")
-    (obj,) = _objects(model)
-    assert obj.IsManifoldAndOriented()  # several closed shells in one mesh are still a closed, oriented mesh
-    total = sum(o["triangles"] for o in rep["objects"])
-    assert obj.GetTriangleCount() == total
-    props = obj.GetAllTriangleProperties()
-    used = {p.PropertyIDs[0] for p in props}
-    assert len(used) == 3, "every material appears on its part's triangles"
+    objs = _objects(model)
+    assert sorted(o.GetName() for o in objs) == ["gasket", "housing", "inlay"]
+    assert all(o.IsManifoldAndOriented() for o in objs)
+    builds = model.GetBuildItems()
+    items = []
+    while builds.MoveNext():
+        items.append(builds.GetCurrent().GetObjectResource())
+    assert len(items) == 1 and not items[0].IsMeshObject(), "one assembly build item"
     with zipfile.ZipFile(tmp_path / "m.3mf") as z:
-        cfg = z.read("Metadata/Slic3r_PE_model.config").decode()
-    assert cfg.count("<volume ") == 3 and 'key="extruder" value="2"' in cfg and 'value="gasket"' in cfg
+        cfg = z.read("Metadata/model_settings.config").decode()
+    assert cfg.count("<part ") == 3 and 'value="gasket"' in cfg and '<metadata key="extruder" value="2"/>' in cfg
 
 
 def test_overlap_warning_and_single_part(tmp_path):
