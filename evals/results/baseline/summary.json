@@ -1,0 +1,367 @@
+{
+  "run": {
+    "label": "baseline",
+    "model": "sonnet",
+    "attempts": 2,
+    "tasks": [
+      "enclosure_lid",
+      "l_bracket_ribs",
+      "modify_bracket",
+      "plate_4_holes",
+      "servo_mount",
+      "shaft_coupler"
+    ],
+    "git": "88069b3",
+    "started": 1794097555.7451992
+  },
+  "overall": {
+    "attempts": 12,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 5,
+    "mean_failed_builds": 0,
+    "mean_turns": 9,
+    "mean_cost_usd": 0.123,
+    "total_cost_usd": 1.48,
+    "implementation_peeks": 0,
+    "feedback_received": 12
+  },
+  "tasks": {
+    "enclosure_lid": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1.5,
+      "mean_turns": 8.5,
+      "mean_duration_s": 30.85,
+      "mean_cost_usd": 0.132,
+      "failed_checks": {},
+      "visual_overall_match": 3.5
+    },
+    "l_bracket_ribs": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 4,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 29.65,
+      "mean_cost_usd": 0.127,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "modify_bracket": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 4,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 10.5,
+      "mean_duration_s": 27.85,
+      "mean_cost_usd": 0.125,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "plate_4_holes": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 6,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1.5,
+      "mean_turns": 10,
+      "mean_duration_s": 25.4,
+      "mean_cost_usd": 0.113,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "servo_mount": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 24.6,
+      "mean_cost_usd": 0.117,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "shaft_coupler": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 9,
+      "mean_duration_s": 33.45,
+      "mean_cost_usd": 0.127,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    }
+  },
+  "cad_errors": {},
+  "issue_categories": {
+    "docs_unclear/low": 14,
+    "render_missing/medium": 2,
+    "query_missing/medium": 1,
+    "workaround/low": 1,
+    "other/low": 1
+  },
+  "issues": [
+    {
+      "task": "enclosure_lid",
+      "category": "render_missing",
+      "description": "Combined render of both parts shows them in one image with the lid hiding the lip; no section/cutaway view to verify the lip clearance visually.",
+      "severity": "medium"
+    },
+    {
+      "task": "enclosure_lid",
+      "category": "docs_unclear",
+      "description": "cad.toml format is not documented in cad docs (I wrote it by guess; cad init was not tried because of shell restrictions). Also 'offset' for extrude is only described as plane offset.",
+      "severity": "low"
+    },
+    {
+      "task": "enclosure_lid",
+      "category": "docs_unclear",
+      "description": "Extrude with offset and negative distance (lip going down from Z=40): the interaction of offset on XY plane and negative distance was not documented explicitly; I guessed and verified via bbox (37..43).",
+      "severity": "low"
+    },
+    {
+      "task": "enclosure_lid",
+      "category": "query_missing",
+      "description": "No direct way to measure lip-to-inner-wall clearance (distance_to is 0 because the lid rests on the rim; cannot restrict to specific faces).",
+      "severity": "medium"
+    },
+    {
+      "task": "enclosure_lid",
+      "category": "render_missing",
+      "description": "Default render shows only the assembled exterior; no cross-section view to verify the lip and clearance.",
+      "severity": "medium"
+    },
+    {
+      "task": "l_bracket_ribs",
+      "category": "docs_unclear",
+      "description": "The cad.toml format is not documented in `cad docs`; I guessed a minimal [project] table with name/script and it happened to work (I did not use `cad init` because I was writing files directly).",
+      "severity": "low"
+    },
+    {
+      "task": "l_bracket_ribs",
+      "category": "docs_unclear",
+      "description": "Extrude on the YZ plane with `offset` (offset along +X normal) is only implied by the docs; I had to infer that offset is the start position and distance goes +X.",
+      "severity": "low"
+    },
+    {
+      "task": "l_bracket_ribs",
+      "category": "docs_unclear",
+      "description": "extrude with offset on the YZ plane and symmetric=False: it was not obvious whether offset is the start face position (I assumed start at X=offset, extruding +X). Verified only via render/volume. The cad.toml schema was not documented in the docs I read; I guessed [project] name/entry (it built).",
+      "severity": "low"
+    },
+    {
+      "task": "l_bracket_ribs",
+      "category": "workaround",
+      "description": "Shell heredoc file creation needed approval in this environment; used the Write tool instead (not a cad issue).",
+      "severity": "low"
+    },
+    {
+      "task": "modify_bracket",
+      "category": "docs_unclear",
+      "description": "The 2D 'at' for direction +y/-y is documented as (x, z); it worked first try, but it's not stated whether the hole starts at the bbox face for a +y drill (min y) - confirmed only via inspect (depth 4 at y=16).",
+      "severity": "low"
+    },
+    {
+      "task": "modify_bracket",
+      "category": "other",
+      "description": "The wall hole Z was hard-coded as 22 because the old expression (thickness + wall_height*0.6) would have moved when wall_height changed to 50. A parameter would be cleaner.",
+      "severity": "low"
+    },
+    {
+      "task": "plate_4_holes",
+      "category": "docs_unclear",
+      "description": "`cad docs` shows a `cad init` workflow, but not that init can be run in an existing directory (`cad init .`). The cad.toml schema (entry=, not script=) is not documented, so I guessed a wrong format before using init.",
+      "severity": "low"
+    },
+    {
+      "task": "plate_4_holes",
+      "category": "docs_unclear",
+      "description": "The docs show no cad.toml format (key is `entry`, not `script`). I guessed wrong at first and had to run `cad init` in the workspace to find out; `cad docs` should include a minimal cad.toml.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_mount",
+      "category": "docs_unclear",
+      "description": "The part name comes from Part('servo_mount') but cad.toml project name is separate ('workspace'); render titles show 'workspace r1'. Not obvious which name is the 'part name'.",
+      "severity": "low"
+    },
+    {
+      "task": "servo_mount",
+      "category": "docs_unclear",
+      "description": "Docs do not say whether a cut box with default align (z min) at z=0 and the same height as the plate cuts cleanly through coplanar faces; it worked, but I had to check by inspecting.",
+      "severity": "low"
+    },
+    {
+      "task": "shaft_coupler",
+      "category": "docs_unclear",
+      "description": "Hole `direction` semantics with a 2D `at`: it was not obvious that direction=\"+z\" starts at the bottom face and \"-x\" enters from the +X side (direction is the drilling direction). I inferred it from the docs and confirmed via inspect.",
+      "severity": "low"
+    },
+    {
+      "task": "shaft_coupler",
+      "category": "docs_unclear",
+      "description": "Unclear whether `depth` for a radial hole is measured from the bbox face (yes, per inspect output); no guidance on making a blind hole reliably reach a bore.",
+      "severity": "low"
+    },
+    {
+      "task": "shaft_coupler",
+      "category": "docs_unclear",
+      "description": "hole() with a 3D start point vs 2D point: for direction -x the 2D point is (y, z) and starts at the bbox face; I had to infer that depth=12.5 from the +X face reaches the axis. Not stated whether depth is measured from the bbox face for 2D points (it appears so, inspect reported depth 8.5/10 from the wall).",
+      "severity": "low"
+    },
+    {
+      "task": "shaft_coupler",
+      "category": "docs_unclear",
+      "description": "Hole direction semantics: docs say 'drilling direction' but it was not obvious that a bore from the bottom face needs direction '+z' with a 3D start point on z=0.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "enclosure_lid",
+      "suggestion": "Add a section/cutaway render (clip plane)."
+    },
+    {
+      "task": "enclosure_lid",
+      "suggestion": "Document cad.toml schema."
+    },
+    {
+      "task": "enclosure_lid",
+      "suggestion": "Add a helper for offsetting a 2D profile (Profile.offset(d)) so clearance/lip profiles derive from the box cavity."
+    },
+    {
+      "task": "enclosure_lid",
+      "suggestion": "Add section/cut-away render views (plane + offset)."
+    },
+    {
+      "task": "enclosure_lid",
+      "suggestion": "Add face-to-face distance, e.g. cad measure --distance between named faces or face selections."
+    },
+    {
+      "task": "enclosure_lid",
+      "suggestion": "Document extrude offset + negative distance semantics with an example."
+    },
+    {
+      "task": "l_bracket_ribs",
+      "suggestion": "Document the cad.toml schema in `cad docs`."
+    },
+    {
+      "task": "l_bracket_ribs",
+      "suggestion": "Add a recipe for gussets/ribs: a triangle profile on YZ extruded with offset, with a note on (u,v) = (Y,Z)."
+    },
+    {
+      "task": "l_bracket_ribs",
+      "suggestion": "Optional rib helper e.g. p.gusset(...)."
+    },
+    {
+      "task": "l_bracket_ribs",
+      "suggestion": "Document the cad.toml format in `cad docs` (or note that `cad init` generates it)."
+    },
+    {
+      "task": "l_bracket_ribs",
+      "suggestion": "Document extrude offset semantics for non-XY planes with a worked example (e.g. a rib at a given X)."
+    },
+    {
+      "task": "l_bracket_ribs",
+      "suggestion": "A Profile.triangle / right_triangle helper would be handy for gussets."
+    },
+    {
+      "task": "modify_bracket",
+      "suggestion": "cad inspect could print hole positions relative to named features, and a 'cad diff' between revisions would help confirm that only the intended things changed."
+    },
+    {
+      "task": "modify_bracket",
+      "suggestion": "Document explicitly which bbox face a 2D 'at' hole starts from for each direction."
+    },
+    {
+      "task": "modify_bracket",
+      "suggestion": "Allow holes() positions to be given in a wall-relative frame, or reference an existing feature position so the Z=22 height need not be hardcoded after wall_height changes."
+    },
+    {
+      "task": "plate_4_holes",
+      "suggestion": "Document `cad init .` for the current directory and show a sample cad.toml in the docs."
+    },
+    {
+      "task": "plate_4_holes",
+      "suggestion": "Add a one-line 'plate with holes and filleted corners' recipe to the docs."
+    },
+    {
+      "task": "plate_4_holes",
+      "suggestion": "Document cad.toml in `cad docs`."
+    },
+    {
+      "task": "plate_4_holes",
+      "suggestion": "Mention that cad init in an existing dir (with TASK.md) is safe."
+    },
+    {
+      "task": "servo_mount",
+      "suggestion": "Add a 'cad init --name' or make init use the part name from the script."
+    },
+    {
+      "task": "servo_mount",
+      "suggestion": "Add a rectangular pocket/cutout helper (e.g. p.rect_cut or p.cut_box_through) analogous to hole()."
+    },
+    {
+      "task": "servo_mount",
+      "suggestion": "Add a docs example for a plate with cutout + holes."
+    },
+    {
+      "task": "servo_mount",
+      "suggestion": "Allow a rectangular/slot cut as a hole-like helper (e.g. p.cut_rect(w, d, at)) to avoid box(op='cut') with matching height."
+    },
+    {
+      "task": "shaft_coupler",
+      "suggestion": "Add a documented example of cross/radial holes and bores from both ends."
+    },
+    {
+      "task": "shaft_coupler",
+      "suggestion": "Offer a `cad query`/inspect check that reports whether a hole intersects another void (hole connectivity)."
+    },
+    {
+      "task": "shaft_coupler",
+      "suggestion": "Show hole depth in inspect measured from the entry surface plus the entry point."
+    },
+    {
+      "task": "shaft_coupler",
+      "suggestion": "Add a 'to_axis' / 'until_bore' option or document how to make a radial hole that stops at a bore."
+    },
+    {
+      "task": "shaft_coupler",
+      "suggestion": "Show a worked example for blind holes entering from bottom and side faces in the docs."
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "run": {
+    "label": "heldout-v2.1",
+    "model": "sonnet",
+    "attempts": 2,
+    "tasks": [
+      "hex_standoff",
+      "hinge_leaf",
+      "pipe_flange"
+    ],
+    "git": "7c2b98e",
+    "started": 1794098484.7805922
+  },
+  "overall": {
+    "attempts": 6,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 6.833,
+    "mean_failed_builds": 0,
+    "mean_turns": 9.833,
+    "mean_cost_usd": 0.139,
+    "total_cost_usd": 0.834,
+    "implementation_peeks": 0,
+    "feedback_received": 6
+  },
+  "tasks": {
+    "hex_standoff": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5.5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 24.15,
+      "mean_cost_usd": 0.131,
+      "failed_checks": {},
+      "visual_overall_match": 4.5
+    },
+    "hinge_leaf": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 10.5,
+      "mean_builds": 2,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1.5,
+      "mean_doc_lookups": 1.5,
+      "mean_turns": 13.5,
+      "mean_duration_s": 37.95,
+      "mean_cost_usd": 0.168,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "pipe_flange": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 4.5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 17.9,
+      "mean_cost_usd": 0.119,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    }
+  },
+  "cad_errors": {},
+  "issue_categories": {
+    "docs_unclear/low": 3,
+    "docs_unclear/medium": 2,
+    "render_missing/low": 2,
+    "api_missing/low": 1,
+    "error_unhelpful/high": 1,
+    "api_confusing/medium": 1,
+    "other/low": 1
+  },
+  "issues": [
+    {
+      "task": "hex_standoff",
+      "category": "docs_unclear",
+      "description": "Profile.regular_polygon's 'diameter' is not stated to be circumscribed (vertex-to-vertex) vs across-flats, nor what angle=0 orientation is. I had to build and check the bbox (vertices ended up on X, flats at Y=+-4, which is what I wanted).",
+      "severity": "low"
+    },
+    {
+      "task": "hex_standoff",
+      "category": "api_missing",
+      "description": "No across-flats option for regular_polygon; I had to compute d/cos(30deg) by hand.",
+      "severity": "low"
+    },
+    {
+      "task": "hex_standoff",
+      "category": "docs_unclear",
+      "description": "Profile.regular_polygon's `diameter` is not documented as circumscribed vs. across-flats, and `angle=0` orientation (vertex on +U) is not stated. I computed 8/cos30 and confirmed via bbox (Y=+-4).",
+      "severity": "medium"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "error_unhelpful",
+      "description": "With a 2D `at`, holes() starts at the part's bbox top (Z=6, the knuckle top), not the plate top (Z=2). The 3.5 mm through-hole still cut the plate, but the countersink was silently lost because it sat in air. There was no warning (no HOLE_MISSED / CUT_NO_EFFECT), and cad inspect still showed 3 valid holes. I only found it by querying for cone faces, since the render looked plausible.",
+      "severity": "high"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "docs_unclear",
+      "description": "The docs say a 2D `at` starts on the bbox face it enters. They don't warn that this breaks for parts with a taller feature elsewhere, such as a knuckle or boss. The countersink-specific consequence isn't mentioned.",
+      "severity": "medium"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "render_missing",
+      "description": "The iso render at default size can't distinguish countersunk from plain holes. A section view or close-up through a hole would have shown it. I did not try `--section`.",
+      "severity": "low"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "api_confusing",
+      "description": "With a 2D `at`, hole()/holes() start at the top of the whole part's bbox (Z=6, the knuckle top), not the plate top (Z=2). The countersink was silently placed in mid-air and the holes became plain straight holes (first build, inspect showed depth 2.0 and no warning). Only a section render revealed it. Fix was a 3D start point (x, y, 2).",
+      "severity": "medium"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "docs_unclear",
+      "description": "Docs say `at` 2D starts 'on the bbox face it enters' but do not warn that this goes wrong when a taller feature (knuckle) is added before the holes.",
+      "severity": "low"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "render_missing",
+      "description": "`--section x=-12` rendered a front view that showed the exterior of the retained half, not the cut face, so it was useless; a section plane parallel to the view direction is not obvious. y=-3 front worked well.",
+      "severity": "low"
+    },
+    {
+      "task": "pipe_flange",
+      "category": "docs_unclear",
+      "description": "Not stated whether hole(at=(0,0)) with no depth on a stepped part (disc+hub) drills through the whole part; it did (bbox-top start, through all), but I had to verify via inspect.",
+      "severity": "low"
+    },
+    {
+      "task": "pipe_flange",
+      "category": "other",
+      "description": "cad init . names the project after the directory ('workspace'), not the part; harmless.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "hex_standoff",
+      "suggestion": "Document regular_polygon diameter semantics and angle=0 orientation; add an across_flats= option."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "Add a chamfer/fillet example for 'edges of the end faces excluding the hole' in the docs."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "Document regular_polygon diameter semantics (circumscribed) and angle=0 orientation; consider an across_flats= option."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "Show a hex-prism example in the docs."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Warn (e.g. COUNTERSINK_NO_EFFECT) when a countersink/counterbore does not intersect the material, or when depth-limited features leave no cut."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Let holes accept `start='face:<ref>'` or a face reference such as p.faces('plate.top') to define where the hole starts."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Report countersink and counterbore details in find_holes()/inspect: top diameter, angle, and depth."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Document the 2D-`at` pitfall next to the countersink example, and show the 3D-start form for plates with taller features."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Warn (e.g. HOLE_START_OFF_SURFACE) when a hole's start point is not on material, especially when a countersink/counterbore is requested and ends up outside the solid."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Allow holes to take a face reference as the start surface, e.g. at=(x, y) on p.faces('plate.top')."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Report countersink/counterbore parameters in the `cad inspect` hole listing."
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "Add a revolve-based flange example to docs"
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "Mention in the hole docs that depth=None goes through stepped parts"
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "Add a pipe-flange/revolve-style example to `cad examples list` for round parts with a bolt circle."
+    }
+  ]
+}

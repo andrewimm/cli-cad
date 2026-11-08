@@ -1,0 +1,235 @@
+{
+  "run": {
+    "label": "heldout-baseline",
+    "model": "sonnet",
+    "attempts": 2,
+    "tasks": [
+      "hex_standoff",
+      "hinge_leaf",
+      "pipe_flange"
+    ],
+    "git": "ea11430",
+    "started": 1794098081.9421911
+  },
+  "overall": {
+    "attempts": 6,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 7.167,
+    "mean_failed_builds": 0,
+    "mean_turns": 9.833,
+    "mean_cost_usd": 0.13,
+    "total_cost_usd": 0.779,
+    "implementation_peeks": 0,
+    "feedback_received": 6
+  },
+  "tasks": {
+    "hex_standoff": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 8.5,
+      "mean_builds": 2,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 11.5,
+      "mean_duration_s": 33.65,
+      "mean_cost_usd": 0.134,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "hinge_leaf": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 8,
+      "mean_builds": 1.5,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 10,
+      "mean_duration_s": 32.0,
+      "mean_cost_usd": 0.141,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "pipe_flange": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8,
+      "mean_duration_s": 21.25,
+      "mean_cost_usd": 0.114,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    }
+  },
+  "cad_errors": {
+    "UNKNOWN_REFERENCE": 1
+  },
+  "issue_categories": {
+    "docs_unclear/low": 4,
+    "docs_unclear/medium": 3,
+    "api_confusing/low": 2,
+    "other/low": 2,
+    "api_confusing/medium": 1,
+    "query_missing/low": 1
+  },
+  "issues": [
+    {
+      "task": "hex_standoff",
+      "category": "docs_unclear",
+      "description": "Profile.regular_polygon 'diameter' is not defined in the docs (circumscribed vs across-flats), and neither is what angle=0 means. I had to build and read the bbox to find that diameter is circumscribed and angle=0 puts vertices on X (flats at Y=+-4).",
+      "severity": "medium"
+    },
+    {
+      "task": "hex_standoff",
+      "category": "api_confusing",
+      "description": "Chamfering body.start/body.end convex edges also selected the hole's circular edges when the hole was cut first, so the bore was chamfered too. Selection by face name gives no way to say 'outer loop only'.",
+      "severity": "low"
+    },
+    {
+      "task": "hex_standoff",
+      "category": "docs_unclear",
+      "description": "Profile.regular_polygon 'diameter' is not documented as circumscribed vs across-flats, nor which angle puts a vertex on +X. I assumed circumscribed with a vertex on the X axis and confirmed it from the bbox (X 9.2376, Y 8).",
+      "severity": "medium"
+    },
+    {
+      "task": "hex_standoff",
+      "category": "api_confusing",
+      "description": "edges().convex().horizontal() also selects the circular bore edges at the end faces, so the chamfer silently hit the bore too. It was only visible in the face count and the hole info (depth 19 at z=0.5). Fixed with .linear().",
+      "severity": "low"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "api_confusing",
+      "description": "hole() with a 2D 'at' starts at the part's bounding-box face it enters. After adding the knuckle (top at Z=6) the bbox top was Z=6, not the plate top at Z=2, so the countersink cone sat in empty air above the plate. The result was plain 3.5 mm through holes. There was no warning and the build was valid, with no HOLE_MISSED or CUT_NO_EFFECT, because the cylinder part still cut the plate.",
+      "severity": "medium"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "docs_unclear",
+      "description": "The docs say a 2D point 'starts at the part's bounding-box face' but don't warn that this differs from the local top face when other features are taller. A countersink starting above the surface should be called out.",
+      "severity": "low"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "other",
+      "description": "The find_holes depth for a countersunk hole reports only the cylindrical part (0.25) and doesn't mention the countersink. I could only confirm the countersink via query of cone faces.",
+      "severity": "low"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "docs_unclear",
+      "description": "With a 2D `at`, a hole starts at the part's bbox face. Once the knuckle raises the bbox top to Z=6, a 2D point would start above the plate and the countersink would land in the wrong place. I used a 3D start point (x, y, 2) instead. The docs don't warn about this.",
+      "severity": "medium"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "docs_unclear",
+      "description": "It isn't stated whether a countersink diameter is measured at the start point (the surface) or elsewhere. I assumed the surface. I did not measure the countersink face to confirm.",
+      "severity": "low"
+    },
+    {
+      "task": "hinge_leaf",
+      "category": "query_missing",
+      "description": "find_holes reports a countersunk hole as depth 0.25 (the cylindrical part only) and doesn't report the countersink diameter or angle, so I couldn't verify the 7 mm / 90 degree spec numerically.",
+      "severity": "low"
+    },
+    {
+      "task": "pipe_flange",
+      "category": "docs_unclear",
+      "description": "Docs don't state whether a hole() with a 2D 'at' placed at a hub top starts at the bbox top face; I assumed through-all from bbox top, which worked. Also not stated that bolt_circle holes cut only the disc if started from the top (the hub is inside the bolt circle, so fine).",
+      "severity": "low"
+    },
+    {
+      "task": "pipe_flange",
+      "category": "other",
+      "description": "cad inspect reports hole depth 12 for bolt holes and 30 for the bore, which is helpful; the 'holes=7' count in the summary line is fine.",
+      "severity": "low"
+    },
+    {
+      "task": "pipe_flange",
+      "category": "docs_unclear",
+      "description": "Docs do not say whether hole()/bolt_circle() with default depth cuts through the whole stacked part when the hub is taller than the disc; find_holes reports bolt holes depth 12 (correct) and bore depth 30, which confirmed it.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "hex_standoff",
+      "suggestion": "Document regular_polygon diameter and angle conventions, and add an option such as across_flats=."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "Add an edge filter for outer wire / loop vs inner loops of a face."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "I did not open the final render after fixing the chamfer; I verified with inspect only (bbox, hole depth 20, volume)."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "Document regular_polygon diameter semantics and add an across_flats= option."
+    },
+    {
+      "task": "hex_standoff",
+      "suggestion": "Warn or report when a chamfer touches more edges than expected, or show chamfered edge count in the result."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Warn (e.g. COUNTERSINK_ABOVE_SURFACE) when a countersink or counterbore start is above the material surface it should cut into, or let hole() accept a face reference such as at=plate.top."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Let hole() take a face ref to start on, e.g. face='plate.top'."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Report countersink/counterbore parameters in find_holes() and inspect output."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Add a top-view render that clearly shows countersinks (e.g. a section view)."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Have find_holes report countersink/counterbore diameter, angle and depth."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Warn in the hole docs that 2D `at` uses the bbox face, which may not be the face you mean."
+    },
+    {
+      "task": "hinge_leaf",
+      "suggestion": "Add a through-hole option for a cylinder cut along its axis, or an example of a hinge knuckle."
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "Add a 'flange' or revolve-based example in cad examples for axisymmetric parts."
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "Mention in docs that cylinder(at=...) z is the start of the cylinder with default align='min'."
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "Add a flange/bolt-circle example to the docs"
+    },
+    {
+      "task": "pipe_flange",
+      "suggestion": "cad init in a non-empty dir works well; mention that it overwrites model.py"
+    }
+  ]
+}

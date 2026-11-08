@@ -1,0 +1,53 @@
+{
+  "iterations": 5,
+  "machine": "arm64",
+  "standalone_ms": {
+    "inspect": 619.9,
+    "measure": 618.2,
+    "build_cached": 622.2,
+    "render_cached": 635.4,
+    "query": 626.8
+  },
+  "daemon_cold_start_ms": 600.9,
+  "daemon_warm_ms": {
+    "inspect": 11.1,
+    "measure": 7.8,
+    "build_cached": 8.1,
+    "render_cached": 7.8,
+    "query": 9.0,
+    "status": 7.9
+  },
+  "daemon_full_build_ms": 290.6,
+  "daemon_uncached_render_ms_per_view": 475.2,
+  "standalone_uncached_render_ms_per_view": 1364.4,
+  "worker_max_rss_mb": 776.2,
+  "cache_stats": {
+    "/private/var/folders/g2/brnmnqgs0gv5zkczfyzzqf5w0000gn/T/cadperfkniw9lmq/proj": {
+      "build_cache_hits": 5,
+      "builds_run": 2,
+      "mesh_disk_hits": 1,
+      "mesh_memory_hits": 4,
+      "model_disk_loads": 1,
+      "model_memory_hits": 35,
+      "render_cache_hits": 5,
+      "render_cache_misses": 5
+    }
+  },
+  "worker_recovery_ms": 634.5,
+  "workflow_steps": [
+    "build",
+    "inspect",
+    "render --views iso,front",
+    "measure --bbox",
+    "query edges().concave()",
+    "set wall_height 40",
+    "render --views iso,front",
+    "render --views az=210,el=30",
+    "measure --holes",
+    "unset wall_height",
+    "render --views iso"
+  ],
+  "workflow_standalone_ms": 10459.1,
+  "workflow_daemon_ms": 3266.2,
+  "workflow_speedup": 3.2
+}

@@ -1,0 +1,173 @@
+{
+  "run": {
+    "label": "heldout2-baseline",
+    "model": "sonnet",
+    "attempts": 2,
+    "tasks": [
+      "cable_clip",
+      "nema17_mount"
+    ],
+    "git": "ea11430-dirty",
+    "started": 1794099033.101866
+  },
+  "overall": {
+    "attempts": 4,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 8,
+    "mean_failed_builds": 0,
+    "mean_turns": 11,
+    "mean_cost_usd": 0.144,
+    "total_cost_usd": 0.575,
+    "implementation_peeks": 0,
+    "feedback_received": 4
+  },
+  "tasks": {
+    "cable_clip": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 11.5,
+      "mean_builds": 2,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2,
+      "mean_turns": 13.5,
+      "mean_duration_s": 38.3,
+      "mean_cost_usd": 0.16,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "nema17_mount": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 4.5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8.5,
+      "mean_duration_s": 25.0,
+      "mean_cost_usd": 0.127,
+      "failed_checks": {},
+      "visual_overall_match": 4
+    }
+  },
+  "cad_errors": {},
+  "issue_categories": {
+    "docs_unclear/low": 3,
+    "api_confusing/high": 1,
+    "docs_unclear/medium": 1,
+    "other/low": 1,
+    "api_confusing/medium": 1,
+    "query_missing/low": 1,
+    "api_missing/low": 1
+  },
+  "issues": [
+    {
+      "task": "cable_clip",
+      "category": "api_confusing",
+      "description": "hole() with a 2D position starts at the part's bounding-box face. In this part the ring makes the bbox taller than the tab, so the countersink was cut at z=17.19 (in air) and the holes were plain 4 mm through holes. The build gave no warning, because the through hole still cut material. I only found it by looking at the top render and querying cone faces.",
+      "severity": "high"
+    },
+    {
+      "task": "cable_clip",
+      "category": "docs_unclear",
+      "description": "The docs say a 2D point starts the hole at the bbox face it enters, but they do not warn that this is the whole part's bbox, not the local surface under the hole. They also do not say what happens to a countersink that starts above the material.",
+      "severity": "medium"
+    },
+    {
+      "task": "cable_clip",
+      "category": "other",
+      "description": "The shell sandbox blocked redirects (cat > file), so I used the Write tool for files. This is an environment matter, not a tool problem.",
+      "severity": "low"
+    },
+    {
+      "task": "cable_clip",
+      "category": "api_confusing",
+      "description": "hole()/holes() with a 2D position start at the part's bbox top face. Here the ring makes the bbox top Z=17.19, so the 2D-position countersink silently landed in mid-air: no countersink was cut, no warning (the through hole still worked). I only noticed because the top render showed plain holes and a cone-face query returned 0. Fix was to pass 3D start points (x, y, 3).",
+      "severity": "medium"
+    },
+    {
+      "task": "nema17_mount",
+      "category": "docs_unclear",
+      "description": "Profile.slot's angle convention (angle=90 -> along Y) and that length is end-to-end are not stated in the docs; I assumed it and confirmed via the render and volume check.",
+      "severity": "low"
+    },
+    {
+      "task": "nema17_mount",
+      "category": "query_missing",
+      "description": "find_holes()/inspect do not report slots (non-circular cuts), so slot position and size could only be checked visually or via volume.",
+      "severity": "low"
+    },
+    {
+      "task": "nema17_mount",
+      "category": "docs_unclear",
+      "description": "cad.toml format is not documented in `cad docs`; `cad init` would create it but I wrote it by hand (guessed [project] name/entry keys) and it worked.",
+      "severity": "low"
+    },
+    {
+      "task": "nema17_mount",
+      "category": "docs_unclear",
+      "description": "Profile.slot angle convention (angle=90 = along Y) and whether length is end-to-end are not stated in docs; I verified via render.",
+      "severity": "low"
+    },
+    {
+      "task": "nema17_mount",
+      "category": "api_missing",
+      "description": "No dedicated cut-slot helper like hole(); slots need extrude(op='cut') with a manually chosen depth.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "cable_clip",
+      "suggestion": "Warn (e.g. COUNTERSINK_NO_EFFECT) when a countersink or counterbore produces no cone or cylinder face, or starts above the material."
+    },
+    {
+      "task": "cable_clip",
+      "suggestion": "Offer a face-relative hole start, e.g. at=(x, y) plus on_face='tab.top'."
+    },
+    {
+      "task": "cable_clip",
+      "suggestion": "Make find_holes report countersink or counterbore info, so asserts can check it."
+    },
+    {
+      "task": "cable_clip",
+      "suggestion": "Warn (e.g. COUNTERSINK_NO_EFFECT) when a countersink/counterbore start plane doesn't intersect material at the hole position."
+    },
+    {
+      "task": "cable_clip",
+      "suggestion": "Add a hole option to start at a named face (at_face='tab.top') or at the nearest surface below."
+    },
+    {
+      "task": "cable_clip",
+      "suggestion": "Render the countersink cone faces in a distinguishable way, or include a section view tip in docs."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "State the Profile.slot angle convention and that length is overall in the docs."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "Report slots in find_holes/inspect, or add a separate slot query."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "Add a hole-from-bottom counterbore example (direction='+z' starting at the bottom face)."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "Document cad.toml keys and slot angle/length semantics."
+    },
+    {
+      "task": "nema17_mount",
+      "suggestion": "Add p.slot_cut(length, width, at, angle, depth=None)."
+    }
+  ]
+}

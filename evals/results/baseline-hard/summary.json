@@ -1,0 +1,258 @@
+{
+  "run": {
+    "label": "baseline-hard",
+    "model": "sonnet",
+    "attempts": 2,
+    "tasks": [
+      "angled_port",
+      "phone_stand",
+      "standoff_tray"
+    ],
+    "git": "ea11430",
+    "started": 1794097717.380904
+  },
+  "overall": {
+    "attempts": 6,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 5.833,
+    "mean_failed_builds": 0,
+    "mean_turns": 9.333,
+    "mean_cost_usd": 0.132,
+    "total_cost_usd": 0.79,
+    "implementation_peeks": 0,
+    "feedback_received": 6
+  },
+  "tasks": {
+    "angled_port": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 7.5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1.5,
+      "mean_doc_lookups": 3.5,
+      "mean_turns": 11,
+      "mean_duration_s": 37.75,
+      "mean_cost_usd": 0.146,
+      "failed_checks": {},
+      "visual_overall_match": 4.5
+    },
+    "phone_stand": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 5.5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1.5,
+      "mean_turns": 8.5,
+      "mean_duration_s": 30.85,
+      "mean_cost_usd": 0.131,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    },
+    "standoff_tray": {
+      "attempts": 2,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 4.5,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 1,
+      "mean_turns": 8.5,
+      "mean_duration_s": 27.35,
+      "mean_cost_usd": 0.118,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    }
+  },
+  "cad_errors": {
+    "NOT_FOUND": 2
+  },
+  "issue_categories": {
+    "docs_unclear/low": 8,
+    "api_missing/medium": 2,
+    "other/low": 2,
+    "render_missing/low": 1,
+    "render_missing/medium": 1,
+    "api_confusing/low": 1,
+    "api_missing/low": 1
+  },
+  "issues": [
+    {
+      "task": "angled_port",
+      "category": "api_missing",
+      "description": "p.hole() only accepts axis-aligned directions (+/-x,y,z); no arbitrary or tilted direction vector, so the angled port needed a workaround (rotated cylinder cut).",
+      "severity": "medium"
+    },
+    {
+      "task": "angled_port",
+      "category": "docs_unclear",
+      "description": "Rotation sign convention for Part.rotate (which way +angle about Y tilts +Z) is not stated; I had to verify via cad inspect (axis reported [0.5,0,0.866]).",
+      "severity": "low"
+    },
+    {
+      "task": "angled_port",
+      "category": "render_missing",
+      "description": "No section/cut-away render, so internal blind-hole bottoms and the intersection of the two ports can't be seen directly.",
+      "severity": "low"
+    },
+    {
+      "task": "angled_port",
+      "category": "docs_unclear",
+      "description": "cad.toml format / init in an existing dir (`cad init . --name x`) is not documented in `cad docs`; I guessed a wrong cad.toml first.",
+      "severity": "low"
+    },
+    {
+      "task": "angled_port",
+      "category": "other",
+      "description": "Reported depth of the tilted hole (19.05) includes the drill-cylinder overshoot/rim extent, not the 17.32 axis length from the entry point to the target; hole depth reporting for angled holes is ambiguous.",
+      "severity": "low"
+    },
+    {
+      "task": "angled_port",
+      "category": "api_missing",
+      "description": "Part.hole() only accepts axis-aligned directions; no way to drill an angled blind hole. Needed a separate tool cylinder, rotate it, and cut it.",
+      "severity": "medium"
+    },
+    {
+      "task": "angled_port",
+      "category": "render_missing",
+      "description": "No section/cutaway render, so the internal intersection of the two ports and blind bottoms could not be seen visually; front/top views show only external faces.",
+      "severity": "medium"
+    },
+    {
+      "task": "angled_port",
+      "category": "docs_unclear",
+      "description": "Docs do not state the sign convention for rotate() about y (I assumed right-hand, +Z toward +X) or whether rotate() on a tool Part before cut() is fine; verified only through find_holes axis output.",
+      "severity": "low"
+    },
+    {
+      "task": "angled_port",
+      "category": "other",
+      "description": "find_holes reports the through hole along Y starting at y=-15 with depth 30, and the angled hole's depth 19.05 includes the portion of the tool that extends above the top face; reported depth is not the drilled depth along the axis from the top face.",
+      "severity": "low"
+    },
+    {
+      "task": "phone_stand",
+      "category": "docs_unclear",
+      "description": "cad.toml format is not shown in `cad docs`; I guessed a [project] name/script layout. The build worked, but I could not confirm it is the intended schema (I did not run `cad init` to compare).",
+      "severity": "low"
+    },
+    {
+      "task": "phone_stand",
+      "category": "docs_unclear",
+      "description": "The YZ-plane extrude with symmetric=True centring on X=0 is implied by the docs but not stated. The bbox confirmed it.",
+      "severity": "low"
+    },
+    {
+      "task": "phone_stand",
+      "category": "docs_unclear",
+      "description": "Plane 'YZ' extrude with symmetric=True: had to infer from docs that u=Y, v=Z and the extrusion is centred on X=0; worked first try but a side-profile example would help.",
+      "severity": "low"
+    },
+    {
+      "task": "standoff_tray",
+      "category": "docs_unclear",
+      "description": "cad.toml format is not documented in `cad docs`; I guessed [project] name/entry and it built, but I did not confirm the schema (cad init would have generated it).",
+      "severity": "low"
+    },
+    {
+      "task": "standoff_tray",
+      "category": "api_confusing",
+      "description": "No obvious way to make a hollow wall ring other than box-cut-box in separate Parts; shell() with open top would also remove the floor thickness semantic. Worked, but several temp Parts were needed.",
+      "severity": "low"
+    },
+    {
+      "task": "standoff_tray",
+      "category": "docs_unclear",
+      "description": "Not obvious from docs that a 3D 'at' point for p.holes lets you start a blind hole from a standoff top (z=7) rather than the bbox top; I had to infer it from the 'at' rules. Worked on first try.",
+      "severity": "low"
+    },
+    {
+      "task": "standoff_tray",
+      "category": "api_missing",
+      "description": "No direct way to make a hollow open box / wall ring (box with wall thickness); I built an outer box minus an inner box via a helper Part.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "angled_port",
+      "suggestion": "Allow hole(direction=(dx,dy,dz)) with a 3D start point, and optionally hole(..., through_point=...) / angle_from_vertical."
+    },
+    {
+      "task": "angled_port",
+      "suggestion": "Add a cad render --section option (plane + offset)."
+    },
+    {
+      "task": "angled_port",
+      "suggestion": "Document rotate sign convention (right-hand rule) and cad.toml schema."
+    },
+    {
+      "task": "angled_port",
+      "suggestion": "Add a hole-bottom / blind depth query along the axis."
+    },
+    {
+      "task": "angled_port",
+      "suggestion": "Allow hole(direction=(dx,dy,dz)) with arbitrary vectors, and a start point on the axis."
+    },
+    {
+      "task": "angled_port",
+      "suggestion": "Add a section render (cut plane) option."
+    },
+    {
+      "task": "angled_port",
+      "suggestion": "Document cylinder-tool-and-cut pattern for angled features in the recipes."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Document the cad.toml schema in `cad docs`."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Add a Profile helper for a thick line/plate defined by a start point, angle, length and thickness, which would avoid the manual trigonometry."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Add a docs example of a sloped plate in the YZ plane."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Add a 'side-profile extrude' example (polygon in YZ, symmetric in X)."
+    },
+    {
+      "task": "phone_stand",
+      "suggestion": "Provide a Profile helper for a thick slanted bar (start point, angle, length, thickness)."
+    },
+    {
+      "task": "standoff_tray",
+      "suggestion": "Document the cad.toml schema in cad docs."
+    },
+    {
+      "task": "standoff_tray",
+      "suggestion": "Add a Profile-based ring/frame helper, or allow p.box(..., op='cut') with at= directly (it likely exists, I did not try it)."
+    },
+    {
+      "task": "standoff_tray",
+      "suggestion": "Allow cylinder(..., op='add') directly on the part, avoiding temp Parts."
+    },
+    {
+      "task": "standoff_tray",
+      "suggestion": "Add a Part.box option or helper for open-top trays (shell with a thickness on a box is possible but I used cut)."
+    },
+    {
+      "task": "standoff_tray",
+      "suggestion": "Allow p.cut with a primitive directly, without making a helper Part."
+    }
+  ]
+}
