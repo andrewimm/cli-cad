@@ -230,10 +230,20 @@ class Profile:
         return p
 
     @staticmethod
-    def regular_polygon(sides: int, diameter: float, center: Vec2 = (0, 0), angle: float = 0.0) -> "Profile":
-        """Regular polygon inscribed in a circle of ``diameter`` (e.g. hex nut: sides=6)."""
+    def regular_polygon(sides: int, diameter: float | None = None, center: Vec2 = (0, 0), angle: float = 0.0,
+                        *, across_flats: float | None = None) -> "Profile":
+        """Regular polygon, sized by ``diameter`` (corner to corner, i.e. the circumscribed
+        circle) or ``across_flats`` (distance between opposite flats, the wrench size).
+
+        With ``angle=0`` the first corner lies on +u; for a hexagon that puts the
+        flats perpendicular to v (at v = +-across_flats/2).
+        """
         if sides < 3:
             raise CadError(INVALID_ARGUMENT, "regular polygon needs at least 3 sides")
+        if (diameter is None) == (across_flats is None):
+            raise CadError(INVALID_ARGUMENT, "give exactly one of diameter= (corner to corner) or across_flats=")
+        if across_flats is not None:
+            diameter = across_flats / math.cos(math.pi / sides)
         r = diameter / 2
         pts = [
             (center[0] + r * math.cos(math.radians(angle) + 2 * math.pi * i / sides),

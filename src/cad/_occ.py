@@ -387,6 +387,18 @@ def edge_convexity(edge, face_a, face_b) -> float:
     return d_a.X() * nb[0] + d_a.Y() * nb[1] + d_a.Z() * nb[2]
 
 
+def first_hit(shape: TopoDS_Shape, origin, direction) -> float | None:
+    """Parameter of the first intersection of the ray origin + t*direction (t >= 0) with ``shape``."""
+    from OCP.gp import gp_Dir, gp_Lin
+    from OCP.IntCurvesFace import IntCurvesFace_ShapeIntersector
+
+    inter = IntCurvesFace_ShapeIntersector()
+    inter.Load(shape, 1e-7)
+    inter.Perform(gp_Lin(gp_Pnt(*origin), gp_Dir(*direction)), -1e-6, 1e12)
+    ts = [inter.WParameter(i) for i in range(1, inter.NbPnt() + 1)]
+    return min(ts) if ts else None
+
+
 def fix_shape(shape: TopoDS_Shape) -> TopoDS_Shape:
     from OCP.ShapeFix import ShapeFix_Shape
 

@@ -118,7 +118,9 @@ p.extrude(Profile.slot(30, 8), 1, op="cut", through=True)
 `Profile.rect(w, h, center=(0,0))`, `Profile.rect_corners(p1, p2)`,
 `Profile.circle(diameter, center)`, `Profile.rounded_rect(w, h, radius, center)`,
 `Profile.slot(length, width, center, angle)`, `Profile.polygon([(u,v), ...])`,
-`Profile.regular_polygon(sides, diameter, center, angle)`.
+`Profile.regular_polygon(sides, diameter=None, center, angle, across_flats=None)` — size by
+`diameter` (corner to corner) **or** `across_flats` (wrench size); `angle=0` puts a corner on +u, so a
+hexagon's flats are at v = ±across_flats/2.
 Combine with `a + b` (union) and `a - b` (subtract); `p.translated((du, dv))`, `p.rotated(deg)`,
 `p.offset(d)` (grow by d mm, negative shrinks; holes shrink/grow accordingly), `p.area`.
 
@@ -145,15 +147,16 @@ p.bolt_circle(diameter, circle_diameter=40, count=6, center=(0, 0), start_angle=
 
 - `direction` is the drilling direction: `"-z"` (default, drilled down from the top),
   `"+x"`, … **or any vector** such as `(-0.5, 0, -0.866)` for angled holes.
-- `at` is either a **3D start point** (the hole starts exactly there — use it to drill from a
-  boss top, a wall, or for angled holes), or a **2D point** in the two axes perpendicular to
-  an axis-aligned direction; the hole then starts on the part's bounding-box face it enters:
+- `at` is either a **3D start point** (the hole starts exactly there — use it for angled holes or to
+  start inside/above the part), or a **2D point** in the two axes perpendicular to an axis-aligned
+  direction; the hole then starts where the drilling line **first enters the material** (e.g. the
+  plate top, not a taller boss elsewhere):
 
-  | direction | 2D `at` means | starts at |
+  | direction | 2D `at` means | drilled from |
   |---|---|---|
-  | `-z` / `+z` | (x, y) | top (max Z) / bottom (min Z) of the part's bbox |
-  | `-y` / `+y` | (x, z) | back (max Y) / front (min Y) |
-  | `-x` / `+x` | (y, z) | right (max X) / left (min X) |
+  | `-z` / `+z` | (x, y) | above, downward / below, upward |
+  | `-y` / `+y` | (x, z) | the back (+Y side) / the front (−Y side) |
+  | `-x` / `+x` | (y, z) | the right (+X side) / the left (−X side) |
 
 - `depth` is measured from the start point along the direction; `None` drills through everything.
 - `counterbore=(diameter, depth)`, `countersink=(diameter, angle=90)` are added at the start.
@@ -276,7 +279,7 @@ codes: `INVALID_ARGUMENT`, `NO_BODY`, `EMPTY_SELECTION`, `AMBIGUOUS_SELECTION`,
 `UNKNOWN_REFERENCE`, `REFERENCE_LOST`, `BOOLEAN_FAILED`, `FILLET_FAILED`,
 `CHAMFER_FAILED`, `SHELL_FAILED`, `INVALID_SHAPE`, `VALIDATION_FAILED`,
 `SCRIPT_ERROR`, `NO_MODEL`, `UNKNOWN_PARAMETER`, `PARAMETER_OUT_OF_RANGE`.
-Warnings: `CUT_NO_EFFECT`, `ADD_NO_EFFECT`, `DISCONNECTED_BODIES`, `HOLE_MISSED`.
+Warnings: `CUT_NO_EFFECT`, `ADD_NO_EFFECT`, `DISCONNECTED_BODIES`, `HOLE_MISSED`, `RECESS_NO_EFFECT` (counterbore/countersink cut nothing).
 A failed build never replaces the last good revision.
 
 ## Recipes

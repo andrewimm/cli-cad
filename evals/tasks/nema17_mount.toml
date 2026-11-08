@@ -1,0 +1,59 @@
+id = "nema17_mount"
+title = "NEMA 17 motor mount plate (held out)"
+category = "intermediate"
+split = "heldout"
+prompt = """
+Design a mounting plate for a NEMA 17 stepper motor.
+
+- Plate 60 mm (X) x 60 mm (Y) x 5 mm thick, bottom on Z = 0, centred on the origin.
+- Central through hole 22.5 mm diameter for the motor's locating boss.
+- Four 3.4 mm through holes for the motor screws on a 31 mm square pattern centred on the origin, counterbored from the bottom face 6.5 mm diameter x 3 mm deep (the motor is screwed in from below).
+- Two adjustment slots for mounting the plate: 5.5 mm wide, 14 mm long overall (end to end), running along Y, centred at X = -24 and X = +24, Y = 0, through the plate.
+- Name the part "mount".
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [60, 60, 5]
+min = [-30, -30, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 22.5
+axis = "z"
+positions = [[0, 0]]
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 3.4
+axis = "z"
+positions = [[-15.5, -15.5], [15.5, -15.5], [-15.5, 15.5], [15.5, 15.5]]
+depth = 2
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 6.5
+axis = "z"
+positions = [[-15.5, -15.5], [15.5, -15.5], [-15.5, 15.5], [15.5, 15.5]]
+depth = 3
+tol = 0.1
+
+[[checks]]
+type = "points_outside"
+points = [[-24, 0, 2.5], [24, 6.8, 2.5], [-24, -6.8, 2.5], [26.6, 0, 2.5]]
+note = "slots: centre, both ends, half width"
+
+[[checks]]
+type = "points_inside"
+points = [[24, 7.3, 2.5], [27.0, 0, 2.5], [-15.5, -12.0, 4.5], [-15.5, -13.5, 4.0]]
+note = "slot not too long/wide; material beside the counterbores on top"

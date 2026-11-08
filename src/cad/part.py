@@ -887,6 +887,11 @@ class Part:
             removed = before - _occ.volume(self._shape)
             if removed <= 1e-9 * max(before, 1):
                 feat.warnings.append(CadWarning("CUT_NO_EFFECT", "no hole intersects the part", fid, {"positions": _jsonable(positions)}))
+            for kind, key in (("counterbore", f"{fid}.counterbore"), ("countersink", f"{fid}.countersink")):
+                if (counterbore if kind == "counterbore" else countersink) is not None and key not in self._refs:
+                    feat.warnings.append(CadWarning(
+                        "RECESS_NO_EFFECT", f"the {kind} did not cut any material: its start point is outside the part",
+                        fid, {"starts": _jsonable(starts)}))
             if len(positions) > 1:
                 missing = [i for i in range(len(positions)) if f"{fid}.wall.{i}" not in self._refs]
                 if missing:
@@ -901,8 +906,9 @@ class Part:
 
         return self._run(ftype, name, params, build)
 
-    @staticmethod
-    def _hole_start(p, d, lo, hi, fid):
+    def _hole_start(self, p, d, lo, hi, fid):
+        """Start point of a hole.  3D points are used as given; 2D points start where the
+        drilling line first enters the actual material (falling back to the bbox face)."""
         if len(p) == 3:
             return _occ.vec(p)
         if len(p) != 2:
@@ -914,6 +920,9 @@ class Part:
         pt = [0.0, 0.0, 0.0]
         pt[others[0]], pt[others[1]] = float(p[0]), float(p[1])
         pt[axis] = hi[axis] if d[axis] < 0 else lo[axis]
+        t = _occ.first_hit(self.shape, pt, d)
+        if t is not None:
+            pt = [c + t * dc for c, dc in zip(pt, d)]
         return tuple(pt)
 
     # ================================================================== dress-up features

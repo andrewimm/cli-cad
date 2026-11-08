@@ -292,3 +292,32 @@ def test_angled_hole_vector_direction():
     m.hole(6, at=(-10 + 15 / c * s, 0, 25), direction=(-s, 0, -c), depth=15 / c)
     (h,) = m.find_holes()
     assert h["axis"] == pytest.approx([s, 0, c], abs=1e-6)
+
+
+def test_2d_hole_starts_at_material_surface():
+    # plate with a taller knuckle elsewhere: countersinks must land on the plate top (Z=2), not the bbox top (Z=6)
+    h = Part("leaf")
+    h.box(40, 30, 2)
+    h.cylinder(6, 40, at=(-20, 15, 3), axis="x")
+    f = h.holes(3.5, [(-12, -3), (0, -3)], countersink=(7, 90))
+    assert not f.warnings
+    assert "holes1.countersink" in h.references()
+    from OCP.BRepClass3d import BRepClass3d_SolidClassifier
+    from OCP.gp import gp_Pnt
+    from OCP.TopAbs import TopAbs_OUT
+
+    # the countersink opening at the plate top is empty (radius ~3.4 at Z=1.95)
+    assert BRepClass3d_SolidClassifier(h.shape, gp_Pnt(3.0, -3, 1.95), 1e-6).State() == TopAbs_OUT
+
+
+def test_recess_no_effect_warning():
+    p = Part("p")
+    p.box(20, 20, 4)
+    f = p.hole(3, at=(0, 0, 10), counterbore=(6, 2))  # 3D start 6 mm above the part
+    assert any(w.code == "RECESS_NO_EFFECT" for w in f.warnings)
+
+
+def test_regular_polygon_across_flats():
+    hexa = Profile.regular_polygon(6, across_flats=8)
+    p = Part("h"); p.extrude(hexa, 5)
+    assert p.bbox.depth == pytest.approx(8) and p.bbox.width == pytest.approx(8 / math.cos(math.pi / 6))

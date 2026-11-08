@@ -1,0 +1,43 @@
+id = "cable_clip"
+title = "Screw-down cable clip (held out)"
+category = "intermediate"
+split = "heldout"
+prompt = """
+Design a screw-down cable clip that holds a 10 mm cable.
+
+- Base tab: 36 mm (X) x 14 mm (Y) x 3 mm thick, bottom on Z = 0, centred on the origin.
+- Clip ring: a tube along the Y axis, 14 mm long (same Y extent as the tab), outer diameter 16 mm, inner diameter 10 mm, with its axis at X = 0, Z = 10. The ring merges with the tab where they overlap.
+- An entry gap at the top of the ring: cut a 7 mm wide (X) slot through the ring wall at the top, centred on X = 0, so the cable can be pushed in.
+- Two 4 mm screw holes through the tab at X = -13 and X = +13, Y = 0, each countersunk from the top face to 8 mm diameter (90 degree included angle).
+- Name the part "clip". It must be a single solid.
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [36, 14, 17.194]
+min = [-18, -7, 0]
+tol = 0.05
+
+[[checks]]
+type = "holes"
+diameter = 4
+axis = "z"
+positions = [[-13, 0], [13, 0]]
+tol = 0.1
+
+[[checks]]
+type = "points_inside"
+points = [[6.5, 0, 10], [-6.5, 0, 10], [4.5, 0, 14], [0, 0, 1.5], [5, 0, 4.5]]
+note = "ring walls left/right, upper wall beside the gap, tab, ring lower wall"
+
+[[checks]]
+type = "points_outside"
+points = [[0, 0, 10], [0, 0, 17], [0, 0, 13.5], [-13, 0, 2.9], [-15.6, 0, 2.95]]
+note = "cable bore, entry gap, countersink opening"
