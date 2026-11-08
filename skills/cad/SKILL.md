@@ -1,0 +1,113 @@
+---
+name: cad
+description: Design 3D-printable and machined parts with the `cad` CLI (agent-first parametric CAD on Open CASCADE). Use when asked to model a part, bracket, enclosure, mount, assembly or multi-material print, check dimensions/clearances/wall thickness, render views, or export STEP/STL/3MF. Python scripts in, exact solids, renders and manufacturing files out.
+---
+
+# cad — parametric CAD for agents
+
+`cad` turns a Python script into exact solid geometry (BRep), checks it, renders PNG views
+and exports STEP, STL or 3MF. Everything is a CLI command with `--json` output.
+
+## 1. Make sure it is installed
+
+```bash
+cad --version            # prints "cad 0.1.0"; if "command not found", install it (below)
+```
+
+Install from a checkout of the cad repository (needs `uv` and Rust/`cargo`):
+
+```bash
+scripts/install.sh ~/.local/cad                      # self-contained: Python env + cad + cadd binaries
+ln -sf ~/.local/cad/bin/cad ~/.local/cad/bin/cadd ~/.local/bin/   # any directory on PATH; link both
+```
+
+## 2. Workflow
+
+```bash
+cad init                          # this directory becomes a project (cad.toml + model.py; keeps an existing model.py)
+# write model.py (section 3)
+cad build                         # -> immutable revision; errors name your script line and give a hint
+cad inspect                       # validity, bbox, volume, holes, materials, warnings
+cad render --views iso,top        # PNGs in renders/r<N>/ — open them and look
+cad export --format stl           # out/r<N>/<part>.stl, with a watertightness check
+```
+
+Learn the rest on demand: `cad docs <words>` prints one section (`cad docs holes`,
+`cad docs fillet`, `cad docs materials`, `cad docs assemblies`); `cad docs --list`;
+`cad examples list` / `cad examples show <name>`; `cad help <command>`.
+Add `--json` to any command; exit codes: 0 ok, 2 usage, 3 model error, 4 check failed, 5 not found.
+
+## 3. Writing model.py
+
+```python
+from cad import Part, Parameter
+
+w = Parameter("width", 70)                        # declared parameters: change with `cad set width 80`
+
+def build():                                      # return a Part, a list of Parts, or {name: Part}
+    p = Part("cover", material="PETG")            # one Part = one solid body
+    p.box(w, 45, 3, name="body")                  # width X, depth Y, height Z; centred on X/Y, bottom on Z = 0
+    p.hole_pattern(3.4, spacing=(w - 12, 33), count=(2, 2))   # centre-to-centre spacing, grid centred on (0, 0)
+    p.hole(10, at=(0, 0))                         # drilled down (-z) from where it enters material
+    p.fillet(p.edges().vertical(), 4)             # select edges/faces with predicates, never indices
+    p.assert_valid()
+    return p
+```
+
+Bodies (each takes `op="add" | "cut" | "intersect"`, `name=`, returns a feature):
+`box(w, d, h, at=, align=)`, `cylinder(dia, h, at=, axis="z")`, `sphere(dia, at=)`,
+`extrude(profile, distance, plane="XY", offset=0, symmetric=False, through=False)`, `revolve(profile, plane="XZ")`.
+`box`/`cylinder` accept a list of points for `at` (many bosses/ribs in one fast feature).
+Profiles: `Profile.rect/rounded_rect/circle/slot/polygon/regular_polygon(across_flats=)`, combine with `+` / `-`, `.offset(d)`.
+Holes: `hole`, `holes(d, positions)`, `hole_pattern`, `bolt_circle`; `depth=None` is through;
+`counterbore=(d, depth)`, `countersink=(d, 90)`; `direction=` may be any vector.
+Dress-up: `fillet(edges, r)`, `chamfer(edges, d)`, `shell(t, open_faces=...)`. Transforms: `translate`, `rotate`, `mirror`.
+
+Selections chain: `p.faces().facing("+z").max("z")`, `p.edges().vertical().convex()`, `.concave()`,
+`.circular(radius=)`, `.nearest((x, y, z))`, `.one()` (fails instead of guessing). Named references survive
+later features: `p.faces("body.top")`, `p.faces("hole1.wall")`, a bare feature id (`p.faces("hole1")`),
+or your own `p.tag("mount", p.faces().facing("-z"))`.
+
+## 4. Conventions that trip agents up
+
+- Units mm and degrees; right-handed, **Z up**. `front` view looks from −Y, `top` from +Z.
+- `box` is centred in X/Y with its bottom at `at.z` unless you pass `align=("min", "center", "max")` per axis.
+- Sketch planes: `XY` (normal +Z), `YZ` (u=Y, v=Z, normal +X), **`XZ` (u=X, v=Z, normal −Y)**:
+  a slab from Y = y0 to y0 + t is `extrude(profile, -t, plane="XZ", offset=-y0)`.
+- 2D hole positions are in the two axes perpendicular to the direction (±z → (x, y); ±y → (x, z); ±x → (y, z))
+  and start where the drill line first enters material. Pass a 3D point to start exactly somewhere.
+- `rotate(angle, axis="y")` turns +Z toward +X (right-hand rule); use a negative angle for the other way.
+- Fillet failures say which edges fail and why; fillet fewer edges per call or reduce the radius.
+- Warnings matter: `CUT_NO_EFFECT` (missed the part), `DISCONNECTED_BODIES`, `BODY_SPLIT`, `HOLE_MISSED`.
+- `find_holes()` measures holes in the actual geometry; `part.find_holes()` ≠ `part.holes(...)` (which drills).
+
+## 5. Verify before you finish
+
+| requirement | check |
+|---|---|
+| sizes, positions | `cad inspect`, `cad measure --bbox` |
+| holes | `cad measure --holes` |
+| wall thickness | `cad measure <part> --thickness` (holes near edges leave thin ligaments) |
+| clearance to other parts | `cad clearance --min 0.5` (every pair: clear / touching / overlap) |
+| a component you design around | `Part("servo", reference=True)` (rendered, never exported) + `cad clearance` |
+| moving parts | a motion `Parameter`, then `cad sweep angle 0:90:15 --min 0.5 --render front` |
+| hidden internals | `cad render --views front --section y=0` |
+
+Renders show shape; numbers prove it. Do not report success until the checks pass.
+
+## 6. 3D printing and materials
+
+```python
+from cad import Part, Material
+
+case = Part("case", material="PETG")              # built-ins: PLA PETG ABS ASA TPU PA12 PC Resin Aluminium Steel Brass
+seal = Part("seal", material="TPU")
+badge = Part("badge", material=Material("PLA", color="#e8a050"))   # custom colour (or density=)
+case.box(40, 30, 10)
+case.mass()                                       # grams from the material density
+```
+
+- One material per part; a multi-material print is several parts touching in place (not overlapping).
+- `cad export --format 3mf --3mf-mode multimaterial`: one piece printed with several filaments
+  (Bambu Studio loads it as one object, part k on filament k). `cad export --format 3mf`: separate pieces.
+  Set the default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. `cad materials` lists the library.

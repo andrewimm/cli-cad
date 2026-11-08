@@ -56,6 +56,8 @@ def build():
 ```
 
 Agent-facing documentation: `cad docs` (source: [src/cad/docs/REFERENCE.md](src/cad/docs/REFERENCE.md)).
+An [Agent Skill](skills/cad/SKILL.md) in the skills.sh format teaches other agents to install and use
+`cad`: `npx skills add <path-or-owner/repo> --skill cad` (its examples are executed by `tests/test_skill.py`).
 
 ## What exists today
 
