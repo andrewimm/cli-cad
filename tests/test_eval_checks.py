@@ -246,3 +246,13 @@ def test_lamp_arm_checks_catch_wrong_joint_directions(tmp_path):
     assert "param_rebuild" in failed(grade(t, script(tmp_path, wrong_elbow, "elbow.py")))
     wrong_yaw = src.replace('axis=((0, 0, 0), (0, 0, 1)), angle="yaw"', 'axis=((0, 0, 0), (0, 0, -1)), angle="yaw"')
     assert "param_rebuild" in failed(grade(t, script(tmp_path, wrong_yaw, "yaw.py")))
+
+
+def test_towel_hook_checks_reject_sharp_elbow_and_wrong_rod(tmp_path):
+    t = task("towel_hook")
+    src = (SOLUTION_DIR / "towel_hook.py").read_text()
+    assert grade(t, script(tmp_path, src, "ok.py"))["passed"]
+    sharp = src.replace("radius=12)", "radius=0)")                       # mitred / sharp elbow
+    assert "points_outside" in failed(grade(t, script(tmp_path, sharp, "sharp.py")))
+    square = src.replace("Profile.circle(8)", "Profile.rect(8, 8)")      # square bar instead of round rod
+    assert "python" in failed(grade(t, script(tmp_path, square, "square.py")))

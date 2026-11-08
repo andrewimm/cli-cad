@@ -1,0 +1,71 @@
+id = "towel_hook"
+title = "Towel hook: a bent round rod on a wall plate"
+category = "sweep"
+split = "dev"
+prompt = """
+Design a one-piece towel hook named "towel_hook" to 3D print in PETG.
+
+- Wall plate: 40 mm wide (X, centred on X = 0), 60 mm tall (Z, centred on Z = 0), 5 mm thick, its back face
+  on the wall plane Y = 0 (plate from Y = 0 to 5). Two holes for M4 countersunk screws through the plate
+  (along Y) at (X, Z) = (0, 20) and (0, -20), countersunk on the front face.
+- Hook: a solid round rod 8 mm in diameter. Its centreline starts inside the plate at (0, 2, 0), runs straight
+  out along +Y to the corner (0, 45, 0), then turns straight up (+Z) and ends at (0, 45, 30) with a flat end.
+  The corner is a smooth bend with a 12 mm centreline radius (not a sharp elbow).
+- One solid body.
+"""
+
+[[checks]]
+type = "part_count"
+count = 1
+
+[[checks]]
+type = "valid"
+
+[[checks]]
+type = "bbox"
+size = [40, 49, 60]
+min = [-20, 0, -30]
+tol = 0.1
+
+[[checks]]
+type = "holes"
+diameter = 4.5
+axis = "y"
+positions = [[0, 20], [0, -20]]
+tol = 0.15
+
+[[checks]]
+type = "points_inside"
+note = "on the rod centreline: straight run, bend midpoint, upright"
+points = [[0, 20, 0], [0, 41.485, 3.515], [0, 45, 20], [0, 45, 29.5]]
+
+[[checks]]
+type = "points_outside"
+note = "outside a 12 mm bend (inside a sharp elbow); above the flat end; inside the bend's inner corner"
+points = [[0, 48, -3], [0, 45, 30.5], [0, 36, 9]]
+
+[[checks]]
+type = "python"
+note = "the rod is round, 8 mm, centred on its centreline (cross-sections across both straight runs)"
+code = '''
+def check(parts):
+    from cad.analysis import cross_section
+    p = next(iter(parts.values()))
+    msgs = []
+    for axis, value, centre in (("y", 25.0, (0.0, 0.0)), ("z", 22.0, (0.0, 45.0))):
+        regs = cross_section(p.shape, axis, value)["regions"]
+        k = (0, 2) if axis == "y" else (0, 1)
+        regs = [r for r in regs if all(r["min"][i] - 1e-6 <= c <= r["max"][i] + 1e-6 for i, c in zip(k, centre))]
+        if len(regs) != 1:
+            msgs.append(f"{axis}={value}: no single region around the rod centreline {centre}")
+            continue
+        o = regs[0]["outline"]
+        if o.get("shape") != "circle" or abs(o["diameter"] - 8) > 0.05:
+            msgs.append(f"{axis}={value}: rod section is {o.get('shape')} {o['size']}, want an 8 mm circle")
+            continue
+        c = o["center"]
+        got = (c[0], c[2]) if axis == "y" else (c[0], c[1])
+        if max(abs(a - b) for a, b in zip(got, centre)) > 0.05:
+            msgs.append(f"{axis}={value}: rod centred at {got}, want {centre}")
+    return not msgs, "; ".join(msgs) or "round 8 mm rod on its centreline"
+'''
