@@ -67,8 +67,13 @@ def thickness_report(part: "Part", percentile: float = 2.0, per_face: int = 5, w
     }
 
 
-def clearance_matrix(parts: dict[str, "Part"], min_distance: float | None = None) -> dict:
-    """Minimum distance and overlap volume for every pair of parts (references included)."""
+def clearance_matrix(parts: dict[str, "Part"], min_distance: float | None = None, *, allow_contact: bool = False) -> dict:
+    """Minimum distance and overlap volume for every pair of parts (references included).
+
+    With ``allow_contact`` a pair that touches without overlapping is acceptable
+    (e.g. a component resting on its support); only overlaps and gaps strictly
+    between 0 and ``min_distance`` are violations.
+    """
     from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
 
     names = sorted(parts)
@@ -89,7 +94,8 @@ def clearance_matrix(parts: dict[str, "Part"], min_distance: float | None = None
                 "state": "overlap" if overlap > 1e-6 else ("touching" if d < 1e-6 else "clear"),
             }
             if min_distance is not None:
-                row["ok"] = d >= min_distance - 1e-6
+                touching_ok = allow_contact and d < 1e-6 and overlap <= 1e-6
+                row["ok"] = d >= min_distance - 1e-6 or touching_ok
             ref = parts[a] if parts[a].reference else parts[b] if parts[b].reference else None
             if ref is not None:
                 other = parts[b] if ref is parts[a] else parts[a]
@@ -99,6 +105,7 @@ def clearance_matrix(parts: dict[str, "Part"], min_distance: float | None = None
     out = {"pairs": pairs}
     if min_distance is not None:
         out["min_required"] = min_distance
+        out["contact_allowed"] = allow_contact
         out["violations"] = [p for p in pairs if not p["ok"]]
     return out
 

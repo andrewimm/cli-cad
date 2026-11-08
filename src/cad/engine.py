@@ -244,6 +244,11 @@ class ProjectSession:
         return out
 
     def measure(self, target: str | None, metrics: list[str], rev=None, *, other: str | None = None, density: float | None = None) -> dict:
+        if target is None:
+            r, all_parts = self.parts(rev)
+            if len(all_parts) > 1:  # no target in a multi-part model: measure every part
+                return {"revision": r, "parts": {n: self.measure(n, metrics, r, other=other if other != n else None, density=density)
+                                                  for n in all_parts}}
         r, part, ref = self.split_target(target, rev)
         out: dict[str, Any] = {"revision": r, "part": part.name}
         all_m = not metrics
@@ -479,20 +484,21 @@ class ProjectSession:
         return out
 
     # ------------------------------------------------------------------ design checks
-    def clearance(self, rev=None, *, parts: list[str] | None = None, min_distance: float | None = None) -> dict:
+    def clearance(self, rev=None, *, parts: list[str] | None = None, min_distance: float | None = None,
+                  allow_contact: bool = False) -> dict:
         from .analysis import clearance_matrix
 
         r, all_parts = self.parts(rev)
         sel = {n: all_parts[n] for n in (parts or all_parts)}
         if len(sel) < 2:
             raise CadError(INVALID_ARGUMENT, "clearance needs at least two parts (add a reference=True part for an envelope)")
-        out = clearance_matrix(sel, min_distance)
+        out = clearance_matrix(sel, min_distance, allow_contact=allow_contact)
         out["revision"] = r
         out["references"] = [n for n, p in sel.items() if p.reference]
         return out
 
     def sweep(self, parameter: str, values: list, *, views: str | None = None, size=None, min_distance: float | None = None,
-              section: str | None = None) -> dict:
+              section: str | None = None, allow_contact: bool = False) -> dict:
         """Rebuild at each parameter value, check clearances (and render), then restore the active revision."""
         from .analysis import clearance_matrix
 
@@ -504,7 +510,7 @@ class ProjectSession:
                 r, parts = self.parts(b["revision"])
                 row: dict[str, Any] = {"value": v, "revision": r}
                 if len(parts) >= 2:
-                    cm = clearance_matrix(parts, min_distance)
+                    cm = clearance_matrix(parts, min_distance, allow_contact=allow_contact)
                     row["closest_pair"] = cm["pairs"][0]
                     if min_distance is not None:
                         row["violations"] = cm["violations"]

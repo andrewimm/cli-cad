@@ -836,10 +836,22 @@ class Part:
             starts = [self._hole_start(p, d, lo, hi, feat.id) for p in positions]
             margin = 1.0 + 1e-3 * diag
             tools, refs_wall, refs_floor, refs_cb, refs_cs = [], [], [], [], []
-            for start in starts:
-                length = (depth if depth is not None else _extent_along(lo, hi, start, d) + margin)
-                back = tuple(s - margin * c for s, c in zip(start, d))
-                cyl = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*back), gp_Dir(*d)), diameter / 2, length + margin).Shape()
+            for pos, start in zip(positions, starts):
+                ahead = _extent_along(lo, hi, start, d)
+                if ahead <= 1e-6:
+                    opposite = "".join(("-" if c > 0 else "+") + "xyz"[i] for i, c in enumerate(d) if abs(abs(c) - 1) < 1e-9) or "the opposite direction"
+                    raise CadError(
+                        "HOLE_MISSED",
+                        f"the hole at {_jsonable(pos)} drills along {_jsonable(d)}, but the whole part lies behind its start point",
+                        feature=feat.id,
+                        hint=f"drill toward the part (direction={opposite!r}) or move the start point to the other side",
+                        details={"start": _jsonable(start), "direction": _jsonable(d), "part_bbox": {"min": _jsonable(lo), "max": _jsonable(hi)}},
+                    )
+                # an explicit 3D start is honoured exactly; a start found on the surface backs off to cut cleanly
+                back_off = 0.01 if len(pos) == 3 else margin
+                length = (depth if depth is not None else ahead + margin)
+                back = tuple(s - back_off * c for s, c in zip(start, d))
+                cyl = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*back), gp_Dir(*d)), diameter / 2, length + back_off).Shape()
                 pieces = [cyl]
                 walls = [f for f in _occ.faces(cyl) if _occ.surface_type(f) == "cylinder"]
                 floors = [f for f in _occ.faces(cyl) if _occ.surface_type(f) == "plane"
@@ -847,14 +859,14 @@ class Part:
                 cb_faces, cs_faces = [], []
                 if counterbore is not None:
                     cbd, cbh = counterbore
-                    cb = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*back), gp_Dir(*d)), cbd / 2, cbh + margin).Shape()
+                    cb = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*back), gp_Dir(*d)), cbd / 2, cbh + back_off).Shape()
                     cb_faces = _occ.faces(cb)
                     pieces.append(cb)
                 if countersink is not None:
                     csd, ang = countersink
                     h = (csd - diameter) / 2 / math.tan(math.radians(ang / 2))
                     cone = BRepPrimAPI_MakeCone(gp_Ax2(gp_Pnt(*start), gp_Dir(*d)), csd / 2, diameter / 2, h).Shape()
-                    cap = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*back), gp_Dir(*d)), csd / 2, margin).Shape()
+                    cap = BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(*back), gp_Dir(*d)), csd / 2, back_off).Shape()
                     cs_faces = [f for f in _occ.faces(cone) if _occ.surface_type(f) == "cone"]
                     pieces += [cone, cap]
                 tools.append(pieces)
@@ -872,7 +884,9 @@ class Part:
             alg.SetTools(tl)
             alg.Build()
             if not alg.IsDone():
-                raise CadError(BOOLEAN_FAILED, "hole cut failed", feature=feat.id)
+                raise CadError(BOOLEAN_FAILED, "hole cut failed", feature=feat.id,
+                               hint="a hole tangent to or ending exactly on another face can defeat the kernel: "
+                                    "shift the start point or depth by a small amount", details={"starts": _jsonable(starts)})
             fid = feat.id
             refs = {f"{fid}.wall": ("face", [f for w in refs_wall for f in w])}
             if len(positions) > 1:

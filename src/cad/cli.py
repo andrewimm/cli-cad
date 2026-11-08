@@ -174,6 +174,8 @@ def _parser() -> _Parser:
 
     s = cmd("clearance")
     s.add_argument("--min", type=float, help="required clearance in mm; violations exit with code 4")
+    s.add_argument("--allow-contact", action="store_true", help="touching without overlap is OK (supports, seated parts); "
+                   "per-face gaps of reference parts still show which faces touch")
     s.add_argument("--part", action="append", help="limit to these parts (repeatable)")
     s.add_argument("--revision", "-r")
 
@@ -181,6 +183,7 @@ def _parser() -> _Parser:
     s.add_argument("parameter")
     s.add_argument("values", help="START:STOP:STEP (inclusive) or a comma list, e.g. 0:90:15 or 0,45,90")
     s.add_argument("--min", type=float, help="required clearance between parts in mm; violations exit with code 4")
+    s.add_argument("--allow-contact", action="store_true", help="touching without overlap is OK")
     s.add_argument("--render", metavar="VIEWS", help="also render each value, e.g. front or iso,top")
     s.add_argument("--section", metavar="PLANE")
     s.add_argument("--size", help="WIDTHxHEIGHT for --render")
@@ -457,7 +460,7 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         r = s.export(fmts, rev=args.revision, parts=args.part, out_dir=args.out, tolerance=args.tolerance)
         return r, "\n".join([f"revision {r['revision']}:"] + [f"  {f['path']}  ({f['bytes']} bytes)" for f in r["files"]])
     if c == "clearance":
-        r = s.clearance(args.revision, parts=args.part, min_distance=args.min)
+        r = s.clearance(args.revision, parts=args.part, min_distance=args.min, allow_contact=args.allow_contact)
         lines = [f"revision {r['revision']} clearances" + (f" (required >= {args.min} mm)" if args.min is not None else "") + ":"]
         for p in r["pairs"]:
             flag = "" if p.get("ok", True) else "   <-- VIOLATION"
@@ -474,7 +477,8 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         return r, "\n".join(lines), fail
     if c == "sweep":
         vals = _sweep_values(args.values)
-        r = s.sweep(args.parameter, vals, views=args.render, size=_size(args.size), min_distance=args.min, section=args.section)
+        r = s.sweep(args.parameter, vals, views=args.render, size=_size(args.size), min_distance=args.min, section=args.section,
+                    allow_contact=args.allow_contact)
         lines = [f"sweep {args.parameter} over {vals} (active revision restored to r{r['head']}):"]
         for row in r["results"]:
             cp = row.get("closest_pair")

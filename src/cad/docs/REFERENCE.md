@@ -41,7 +41,7 @@ Renders show shape; numbers prove it. Match each kind of requirement to a check:
 
 | requirement | check |
 |---|---|
-| sizes, positions | `cad inspect`, `cad measure --bbox`, `cad query "faces().facing('+z')"` |
+| sizes, positions | `cad inspect`, `cad measure --bbox` (no part name: every part), `cad query "faces().facing('+z')"` |
 | holes (diameter, position, depth) | `cad measure --holes` |
 | minimum wall thickness | `cad measure <part> --thickness` (holes near edges leave thin ligaments) |
 | clearance to other parts / a component envelope | model the component as `Part(..., reference=True)`, then `cad clearance --min D` |
@@ -173,7 +173,8 @@ p.bolt_circle(diameter, circle_diameter=40, count=6, center=(0, 0), start_angle=
   | `-y` / `+y` | (x, z) | the back (+Y side) / the front (−Y side) |
   | `-x` / `+x` | (y, z) | the right (+X side) / the left (−X side) |
 
-- `depth` is measured from the start point along the direction; `None` drills through everything.
+- `depth` is measured from the start point along the direction; `None` drills through everything
+  ahead of the start point. Drilling away from the part raises `HOLE_MISSED` naming the direction to use.
 - `counterbore=(diameter, depth)`, `countersink=(diameter, angle=90)` are added at the start.
 - `hole_pattern` centres the grid on `center` (absolute coordinates in the plane perpendicular to
   the direction): `spacing=(48, 28), count=(2, 2)` → holes at (±24, ±14); `count=(nx, ny)` is
@@ -329,6 +330,7 @@ def build():
 ```bash
 cad clearance --min 0.5                 # every pair: clear / touching / overlap, closest points;
                                         # for reference parts, the gap in front of each of its faces
+cad clearance --min 0.5 --allow-contact # touching is fine (a part resting on its support), overlap is not
 cad sweep hinge_angle 0:135:15 --min 0.5 --render front    # rebuild at each value, report collisions,
                                         # render each pose; the active revision is restored afterwards
 cad measure frame --thickness           # thinnest walls with locations (holes near edges, thin floors)

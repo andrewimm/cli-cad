@@ -85,3 +85,35 @@ def test_sweep_values_parsing():
 
     assert _sweep_values("0:90:15") == [0, 15, 30, 45, 60, 75, 90]
     assert _sweep_values("0,2.5,10") == [0, 2.5, 10]
+
+
+def test_allow_contact_and_measure_all_parts(tmp_path):
+    proj = _project(tmp_path, LEG)
+    e = Engine()
+    main(["build"], proj, e)
+    code, out, _ = main(["clearance", "--min", "5", "--json"], proj, e)
+    assert code == 4
+    two = '''
+from cad import Part
+def build():
+    a = Part("a"); a.box(10, 10, 10)
+    b = Part("b"); b.box(10, 10, 10, at=(0, 0, 10))
+    return {"a": a, "b": b}
+'''
+    p2 = _project(tmp_path / "p2", two) if (tmp_path / "p2").mkdir() is None else None
+    main(["build"], p2, e)
+    assert main(["clearance", "--min", "0.5"], p2, e)[0] == 4
+    assert main(["clearance", "--min", "0.5", "--allow-contact"], p2, e)[0] == 0
+    code, out, _ = main(["measure", "--volume", "--json"], p2, e)
+    r = json.loads(out)["result"]
+    assert code == 0 and set(r["parts"]) == {"a", "b"} and r["parts"]["a"]["volume"] == pytest.approx(1000)
+
+
+def test_hole_direction_away_from_part_is_explained():
+    p = Part("b")
+    p.box(30, 5, 40, at=(0, -0.5, -10), align=("center", "max", "min"))
+    with pytest.raises(CadError) as e:
+        p.hole(6.2, at=(0, 0, 0), direction="+y")
+    assert e.value.code == "HOLE_MISSED" and "'-y'" in e.value.hint
+    p.hole(6.2, at=(0, 0, 0), direction="-y")
+    assert len(p.find_holes()) == 1
