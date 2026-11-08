@@ -21,10 +21,18 @@ def test_profile_text_size_is_cap_height():
     assert t.description["glyph_faces"] == 5 and t.area > 0
 
 
+def _installed_default_font() -> str:
+    from cad.text import DEFAULT_FONTS, available_fonts
+
+    have = available_fonts()
+    return next(f for f in DEFAULT_FONTS if any(f in x for x in have))
+
+
 def test_unknown_font_is_an_error_not_a_substitution():
+    font = _installed_default_font()  # Helvetica on macOS, DejaVu Sans on most Linux
     with pytest.raises(CadError) as e:
-        Profile.text("x", 5, font="Helvetika")
-    assert "Helvetica" in e.value.hint
+        Profile.text("x", 5, font=font[:-1] + "q")  # a near miss
+    assert font in e.value.hint
 
 
 def test_engrave_removes_text_volume():
@@ -99,6 +107,7 @@ def Material_PLA():
 
 
 def test_cli_fonts(tmp_path):
-    code, out, _ = main(["fonts", "helvet", "--json"], tmp_path)
+    font = _installed_default_font()
+    code, out, _ = main(["fonts", font[:5].lower(), "--json"], tmp_path)
     r = json.loads(out)["result"]
-    assert code == 0 and any("Helvetica" in f for f in r["fonts"])
+    assert code == 0 and any(font in f for f in r["fonts"])

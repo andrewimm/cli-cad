@@ -13,3 +13,4 @@ stress-runs/
 dist/
 /*.log
 /result.json
+junit.xml

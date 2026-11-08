@@ -111,6 +111,14 @@ def main(argv=None) -> None:
                 print(f"{t.id:<18} NO REFERENCE SOLUTION")
                 bad += 1
                 continue
+            needs_slicer = any(c and c[0] == "slice" for c in t.selftest_commands) or any(
+                c.get("type") == "sliced" for c in t.checks)
+            if needs_slicer:
+                from cad.slicer import find_bambu
+
+                if find_bambu() is None:  # e.g. CI runners: the task can only be proven where Bambu Studio is installed
+                    print(f"{t.id:<18} SKIP  needs Bambu Studio for its slice check")
+                    continue
             rd = EVALS.parent / "eval-runs" / "selftest" / t.id if a.render else None
             g = grade(t, prepared_solution(t), rd)
             status = "PASS" if g["passed"] else "FAIL"

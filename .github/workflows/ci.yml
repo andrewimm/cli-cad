@@ -18,7 +18,7 @@ jobs:
     name: Rust (fmt, clippy, build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -36,7 +36,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: System libraries (OpenGL for OCP, X11 for gmsh, a font for text)
         if: runner.os == 'Linux'
         run: |
@@ -53,7 +53,10 @@ jobs:
       - name: Build the cad client and cadd daemon (the daemon tests use them)
         run: cargo build --release
       - name: Tests
-        run: uv run --locked pytest -q -ra
+        run: uv run --locked pytest -q -ra --junitxml=junit.xml
+      - name: Report failed tests as annotations
+        if: failure()
+        run: python3 scripts/junit_annotations.py junit.xml
       - name: CLI smoke test through the daemon
         run: |
           export PATH="$PWD/target/release:$PATH"
@@ -69,7 +72,7 @@ jobs:
     name: Core install without the optional FEA packages
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: System libraries
         run: |
           sudo apt-get update
@@ -91,4 +94,7 @@ jobs:
           print(fea["install"])
           PY
       - name: Core tests (FEA tests skip themselves)
-        run: .venv/bin/python -m pytest -q -ra tests/test_part.py tests/test_engine_cli.py tests/test_fea.py tests/test_render.py
+        run: .venv/bin/python -m pytest -q -ra --junitxml=junit.xml tests/test_part.py tests/test_engine_cli.py tests/test_fea.py tests/test_render.py
+      - name: Report failed tests as annotations
+        if: failure()
+        run: python3 scripts/junit_annotations.py junit.xml
