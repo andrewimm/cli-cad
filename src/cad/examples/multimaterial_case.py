@@ -18,14 +18,16 @@ def build():
     # shallow recess in the front wall for the inlay
     case.box(30, 0.6, 8, at=(0, -W / 2, H / 2), align=("center", "min", "center"), op="cut", name="recess")
 
-    feet = Part("feet", material="TPU")
-    corners = [(sx * (L / 2 - 8), sy * (W / 2 - 8), -1.5) for sx in (-1, 1) for sy in (-1, 1)]
-    feet.cylinder(8, 1.5, at=corners)                      # four feet in one feature, touching the floor
+    feet = []                                              # one part per foot: a part is one solid body
+    for i, (sx, sy) in enumerate([(-1, -1), (1, -1), (-1, 1), (1, 1)]):
+        foot = Part(f"foot{i + 1}", material="TPU")        # all four share the TPU material slot in the 3MF
+        foot.cylinder(8, 1.5, at=(sx * (L / 2 - 8), sy * (W / 2 - 8), -1.5))   # touching the floor from below
+        feet.append(foot)
 
     inlay = Part("inlay", material=Material("PLA", color="#e8a050"))
     inlay.box(30, 0.6, 8, at=(0, -W / 2, H / 2), align=("center", "min", "center"))  # fills the recess exactly
 
-    for p in (case, feet, inlay):
-        p.assert_valid(solids=None if p is feet else 1)
-    assert case.interference(inlay) < 1e-6 and case.interference(feet) < 1e-6
-    return {"case": case, "feet": feet, "inlay": inlay}
+    for p in (case, inlay, *feet):
+        p.assert_valid()
+    assert case.interference(inlay) < 1e-6 and all(case.interference(f) < 1e-6 for f in feet)
+    return {"case": case, "inlay": inlay, **{f.name: f for f in feet}}
