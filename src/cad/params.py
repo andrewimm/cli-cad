@@ -4,8 +4,11 @@ A script declares its tunable values with :func:`Parameter`::
 
     length = Parameter("arm.length", default=85, min=40, max=200, unit="mm")
 
-The returned value is a plain ``float`` (or ``int`` / ``str`` / ``bool`` matching
-the default's type), so it can be used directly in arithmetic.
+The returned value is a ``float`` (or ``int`` / ``str`` / ``bool`` matching the
+default's type), so it can be used directly in arithmetic.  Numbers are a subclass
+that remembers the parameter's name: a feature given the value directly records
+which parameter set it (``cad fea`` uses that to say which parameter to change at a
+hot spot).  Arithmetic results are plain numbers.
 
 Overrides come from the project's parameter overlay (``cad set arm.length 95``
 writes ``params.toml``) or from ``cad run --param arm.length=95``.  The runner
@@ -43,6 +46,7 @@ class _ParamContext:
     def __init__(self, overrides: dict[str, Any]):
         self.overrides = dict(overrides)
         self.declared: dict[str, ParameterInfo] = {}
+        self.studies: list = []  # cad.Study objects declared during the run
 
 
 _ctx: contextvars.ContextVar[_ParamContext | None] = contextvars.ContextVar("cad_params", default=None)
@@ -57,6 +61,37 @@ def parameter_overrides(overrides: dict[str, Any] | None = None) -> Iterator[_Pa
         yield ctx
     finally:
         _ctx.reset(token)
+
+
+class ParamFloat(float):
+    """A float that remembers which Parameter it came from (``.parameter``)."""
+
+    parameter: str
+
+    def __new__(cls, value, name: str):
+        obj = super().__new__(cls, value)
+        obj.parameter = name
+        return obj
+
+    def __reduce__(self):  # pickles and deep-copies as a plain number
+        return (float, (float(self),))
+
+
+class ParamInt(int):
+    parameter: str
+
+    def __new__(cls, value, name: str):
+        obj = super().__new__(cls, value)
+        obj.parameter = name
+        return obj
+
+    def __reduce__(self):
+        return (int, (int(self),))
+
+
+def source_of(v: Any) -> str | None:
+    """Name of the Parameter a value came from, if it came straight from one."""
+    return getattr(v, "parameter", None) if isinstance(v, (ParamFloat, ParamInt)) else None
 
 
 def _coerce(value: Any, like: Any) -> Any:
@@ -102,4 +137,8 @@ def Parameter(
         ctx.declared[name] = ParameterInfo(
             name, default, value, min, max, unit if isinstance(default, (int, float)) else None, description, overridden
         )
+    if isinstance(value, float):
+        return ParamFloat(value, name)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return ParamInt(value, name)
     return value

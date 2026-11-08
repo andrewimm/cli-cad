@@ -345,9 +345,11 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad joints` | an Assembly's joints: world axes, values, limits, what positive motion does |
 | `cad info <file>` | bodies, names, sizes, units in a STEP / IGES / STL / BREP file |
 | `cad slice` | Bambu Studio slice: print time, grams per filament, supports, warnings, .gcode.3mf |
+| `cad fea [STUDY] [-q draft\|normal\|fine] [--list]` | stress analysis of the script's `Study` load cases: safety factor, hot spots -> features/parameters (exit 4 below target) |
+| `cad render --fea STUDY [--fea-field stress\|safety\|displacement\|layers] [--deformed [SCALE]]` | the part coloured by results, numbered hot spots, loads |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
 | `cad clearance [--min D] [--part P]` | gaps / contact / overlap for every pair of parts; per-face gaps for reference envelopes; exit 4 below `--min` |
-| `cad sweep PARAM START:STOP:STEP [--min D] [--render VIEWS]` | rebuild across a parameter range, check clearances and optionally render each value |
+| `cad sweep PARAM START:STOP:STEP [--min D] [--render VIEWS] [--fea STUDY]` | rebuild across a parameter range, check clearances, optionally render, or stress-check each value (`--fea`: lightest value meeting the target) |
 | `cad revisions` / `cad diff [A] [B]` / `cad checkout REV` / `cad restore REV --force` | history; checkout never edits sources, restore does |
 | `cad status`, `cad daemon status|stop|restart` | session / daemon state |
 | `cad capabilities`, `cad help CMD --json`, `cad schema [name]`, `cad examples list|show|copy`, `cad docs` | discovery |
@@ -519,6 +521,73 @@ cad slice --list printers | processes | filaments
   `[print.filaments]` `PLA = "Bambu PLA Matte"`; `[print.settings]` `wall_loops = 3`.
 - Bambu Studio is found via cad.toml `slicer`, `$CAD_BAMBU_STUDIO`, `bambu-studio` on PATH, then the usual
   install locations.
+
+## Stress analysis: where it breaks and how to fix it (cad fea)
+
+Declare load cases in the script with `Study`, then `cad fea`. Optional install (gmsh is GPL):
+`cad capabilities` says whether it is available and prints the exact install command.
+
+```python
+from cad import Part, Parameter, Study
+
+root_r = Parameter("arm.root_fillet", 2.0)
+arm = Part("arm", material="PETG")          # material sets stiffness and strength (see `cad materials`)
+...                                         # build the part, then declare studies after its last feature
+s = Study("payload", arm, target=2)         # target safety factor (strength / peak stress)
+s.fixed("horn.wall")                        # held still: bolted, clamped, glued. fixed(f, directions="z") = resting, can slide
+s.force("tip.top", 8, "-z", at=(90, 0, 5), radius=8)   # N spread over the faces (at/radius: only near a point)
+s.bearing("pin.wall", 30, "+y")             # a pin pushing sideways on a hole (only the pushed side carries it)
+s.torque("hub.bore", 1.2)                   # N*m, about a bore's own axis (axis=, center= for flat faces)
+s.pressure("tank.inner", 0.2)               # MPa into the faces (0.1 MPa = 1 bar)
+s.gravity(3)                                # own weight x 3 g (fast-moving arms)
+```
+
+Faces are reference names, selections (`arm.faces().facing("-z")`) or FeatureRefs, as everywhere else.
+Several studies per script are fine; `cad fea` solves all (or `cad fea payload`). Units: N, N*m, MPa, mm.
+
+```bash
+cad fea                          # every study: OK / BELOW TARGET, peak stress, deflection, hot spots (exit 4 below target)
+cad fea pushrod -q draft         # ~2 s: iterate with draft, confirm with normal (default) or fine
+cad fea --list                   # studies and loads without solving
+cad render --fea pushrod         # the part coloured by stress, legend, numbered hot spots, supports and load arrows
+cad render --fea pushrod --fea-field safety --deformed   # safety bands vs target; bent shape exaggerated over the original
+cad sweep arm.width 8:16:2 --fea pushrod   # safety factor, peak, deflection and mass per value; the lightest that passes
+```
+
+Reading the report (`--json` for everything):
+
+- `safety_factor` = strength / peak stress (the lower of along-layers and across-layers for prints). `ok` = it meets `target`.
+- `hotspots[]` (highest first, numbered as in the picture): stress, location, the faces and their reference names,
+  `features` that made them, `parameters` that set those features (e.g. `arm.root_fillet` -> fillet radius),
+  `suggestions`, and `change_on_refinement_pct`. Fix the geometry at hotspot 1, rebuild, re-run.
+- `away_from_supports_and_sharp_edges`: the peak ignoring a wall thickness around fixed faces and sharp inside
+  edges. An ideal clamp (`fixed`) and a perfectly sharp inside corner both inflate stress without limit; judge
+  the part by this number when the peak is there (`PEAK_AT_SUPPORT`, `STRESS_SINGULARITY`).
+- `loads[]`: area, centroid, `reaction_N` at supports (should balance the loads), `moves_mm` and
+  `stiffness_N_per_mm` for forces, for designing for stiffness (robot links that must not sag).
+- `strength.across_layers_safety_factor`: printed parts are about half as strong pulling layers apart; layers stack
+  along +Z, or as set by `part.print_on(...)`.
+
+Warnings and what to do:
+
+| code | meaning | fix |
+|---|---|---|
+| `LOW_SAFETY_FACTOR` | below target | thicken the loaded section (bending stress ~ 1/thickness^2), enlarge the fillet at the hot spot |
+| `STRESS_SINGULARITY` | hot spot on a sharp inside edge | fillet that edge; the hint has the exact `fillet(...nearest(...))` call |
+| `PEAK_AT_SUPPORT` | peak where the part is held | read `away_from_supports_and_sharp_edges`; fix a realistic area (the face under a screw head) |
+| `LAYER_TENSION` | across-layer stress governs | `print_on(...)` so the load runs along layers, or thicken |
+| `LOAD_FACE_SHARED` | coplanar faces merged; the load covers the whole merged face | add `at=(x, y, z), radius=r` |
+| `LARGE_DEFLECTION` | moves > 5 % of its size: linear results drift | stiffen; trust trends |
+| `MESH_COARSE` | a hot spot changed > 12 % with refinement | `--quality fine` |
+| `MATERIAL_ASSUMED` | material missing stiffness/strength (PLA assumed) | `Part(material="PETG")` or `Material(..., youngs_modulus=, yield_strength=)` |
+| `UNDERCONSTRAINED` (error) | the part can still slide or turn (it names how) | fix more faces or all directions |
+
+How it works and how far to trust it: gmsh meshes the exact BRep into curved quadratic tetrahedra; linear
+elasticity is solved (scikit-fem + algebraic multigrid). `normal` solves twice, refining around the hot spots,
+and reports how much each peak moved. Against textbook cases (beam bending, plate with a hole, shaft torsion,
+thick tube) peaks are within about 2-5 % at normal. Not modelled: infill (assumes solid near hot spots: use more
+walls/infill there), contact, plastic yielding, large deflection, fatigue, and the stiffness difference across
+layers. Strength values are conservative typical filament values (`cad materials`); real filaments vary +-30 %.
 
 ## Assemblies, motion and designing around components
 

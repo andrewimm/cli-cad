@@ -13,6 +13,15 @@ dependencies = [
     "pillow>=13.0.0",
 ]
 
+[project.optional-dependencies]
+# stress analysis (`cad fea`): gmsh meshes (GPL, so optional), scikit-fem + scipy + pyamg solve
+fea = [
+    "gmsh>=4.13",
+    "scikit-fem>=10.0",
+    "scipy>=1.11",
+    "pyamg>=5.0",
+]
+
 [build-system]
 requires = ["uv_build>=0.13.7,<0.14.0"]
 build-backend = "uv_build"
@@ -21,6 +30,10 @@ build-backend = "uv_build"
 dev = [
     "lib3mf>=2.5.0",
     "pytest>=9.2.0",
+    "gmsh>=4.13",
+    "scikit-fem>=10.0",
+    "scipy>=1.11",
+    "pyamg>=5.0",
 ]
 
 [project.scripts]

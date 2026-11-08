@@ -38,6 +38,7 @@ class BuildOutput:
     duration_ms: float = 0.0
     warnings: list[dict] = field(default_factory=list)
     joints: list[dict] = field(default_factory=list)
+    studies: list[dict] = field(default_factory=list)
 
 
 def _purge_project_modules(root: Path) -> None:
@@ -138,6 +139,7 @@ def run_script(
                 ns = runpy.run_path(str(path), run_name="__cad__")
                 parts, assembly = _collect(ns)
                 joints = assembly.describe() if assembly is not None else []
+                studies = _studies(ctx.studies, parts)
             except CadError as e:
                 frames = _script_frames(sys.exc_info()[2], path)
                 if frames:
@@ -172,4 +174,18 @@ def run_script(
     warnings = [dict(w.to_dict(), part=name) for name, p in parts.items() for w in p.warnings]
     warnings += [dict(w, joint=j["name"]) for j in joints for w in j["warnings"]]
     return BuildOutput(parts, dict(ctx.declared), out.getvalue(), err.getvalue(), (time.perf_counter() - t0) * 1000, warnings,
-                       joints)
+                       joints, studies)
+
+
+def _studies(studies: list, parts: dict[str, Part]) -> list[dict]:
+    """Resolve declared Studies against the parts the script produced."""
+    out = []
+    for s in studies:
+        name = next((n for n, p in parts.items() if p is s.part), None)
+        if name is None:  # assemblies return posed copies: match by part name
+            name = next((n for n, p in parts.items() if p.name == s.part.name), None)
+        if name is None:
+            raise CadError(SCRIPT_ERROR, f"study '{s.name}' analyses part '{s.part.name}', which the script does not output",
+                           hint="return that part from build() (or keep it in a module-level variable)")
+        out.append(s.resolve(name))
+    return out

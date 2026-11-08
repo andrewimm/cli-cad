@@ -22,6 +22,7 @@ from .paths import Path
 from .part import BBox, Feature, FeatureRef, Part
 from .profile import Plane, Profile
 from .selection import EdgeSelection, FaceSelection
+from .study import Study
 
 __version__ = "0.1.0"
 
@@ -40,6 +41,7 @@ __all__ = [
     "Part",
     "Plane",
     "Profile",
+    "Study",
     "render",
     "approx",
 ]

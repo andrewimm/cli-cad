@@ -104,6 +104,7 @@ or your own `p.tag("mount", p.faces().facing("-z"))`.
 | hidden internals | `cad render --views front --section y=0` |
 | a vendor part (STEP/STL) | `cad info vendor/x.step`, then `Part.from_file("vendor/x.step", reference=True)`; keep it where the file puts it; outline at a height: `cad measure x --section z=-5` |
 | will it print, how long, how many grams | `cad slice` (Bambu Studio; `NEEDS_SUPPORT` = `part.print_on(face)` to lay it on another face, or `--supports auto`) |
+| strong / stiff enough under load | `Study` in the script + `cad fea` (safety factor, hot spots -> the feature and parameter to change), `cad render --fea NAME` (`cad docs stress`) |
 
 Renders show shape; numbers prove it. Do not report success until the checks pass.
 
@@ -125,3 +126,23 @@ case.mass()                                       # grams from the material dens
   Set the default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. `cad materials` lists the library.
 - `cad slice [--printer "P1S"] [--process "0.16mm Optimal"] [--supports auto]`: print time, grams per filament
   and a ready-to-print `.gcode.3mf` via Bambu Studio (if installed). `cad docs slicing` for options.
+
+## 7. Strength: stress analysis
+
+```python
+from cad import Part, Study
+
+arm = Part("arm", material="PETG")
+arm.box(80, 12, 5, name="beam")
+arm.hole(4, at=(-34, 0), name="pivot")
+s = Study("lift", arm, target=2)             # target safety factor
+s.fixed("pivot.wall")                        # where it is held
+s.force("beam.right", 10, "-z")              # N; also bearing() for pins in holes, torque(), pressure(), gravity()
+```
+
+- `cad fea` (exit 4 below target); fix hotspot 1 (its `parameters` / `suggestions` name what to change), rebuild,
+  re-run. Iterate with `-q draft` (~2 s), confirm with the default `normal`.
+- A peak on a fixed face or a sharp inside edge is an artifact: read `away_from_supports_and_sharp_edges` and
+  fillet sharp inside edges (`STRESS_SINGULARITY` gives the exact call).
+- Coplanar faces merge when bodies join: load part of a merged face with `at=(x, y, z), radius=r`.
+- Optional install; if `cad fea` says `FEA_UNAVAILABLE`, run the command in its hint (or tell the user).

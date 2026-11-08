@@ -40,7 +40,7 @@ from PIL import Image, ImageDraw, ImageFont
 from .errors import INVALID_ARGUMENT, CadError
 from .tessellate import Mesh, tessellate
 
-RENDERER_VERSION = "softraster-1"
+RENDERER_VERSION = "softraster-2"
 
 STANDARD_VIEWS: dict[str, tuple[tuple[float, float, float], tuple[float, float, float]]] = {
     "front": ((0, -1, 0), (0, 0, 1)),
@@ -177,6 +177,7 @@ class SceneItem:
     color: tuple[float, float, float]
     bounds: tuple | None = None  # exact BRep (min, max); mesh bounds are used if absent
     face_colors: dict | None = None  # BRep face index -> colour override (e.g. section caps)
+    vertex_colors: np.ndarray | None = None  # (N, 3) per-vertex colour (stress maps), overrides ``color``
 
 
 def _parse_color(c, default) -> tuple[float, float, float]:
@@ -336,7 +337,8 @@ def rasterize(
             # gentle specular so curved surfaces read as curved
             h = (key + cam.eye) / np.linalg.norm(key + cam.eye)
             spec = 0.18 * np.clip(n @ h, 0, None) ** 24
-            base = np.tile(np.array(item.color, dtype=float), (len(n), 1))
+            base = (np.asarray(item.vertex_colors, dtype=float) if item.vertex_colors is not None
+                    else np.tile(np.array(item.color, dtype=float), (len(n), 1)))
             if item.face_colors:
                 vface = np.zeros(len(n), dtype=np.int64)
                 vface[m.triangles.reshape(-1)] = np.repeat(m.face_ids, 3)
@@ -368,6 +370,8 @@ def rasterize(
         "_scale_px_per_mm": scale / ss,
         "_cu": cu,
         "_cv": cv,
+        "_zbuf": zbuf,  # supersampled depth (along -eye) for overlay visibility tests
+        "_ss": ss,
     }
     return img, framing
 
@@ -652,6 +656,8 @@ def render_one(
     fit_bounds: tuple | None = None,
     section: dict | None = None,
     joints: list[dict] | None = None,
+    overlays: Sequence | None = None,
+    margin: float = 0.08,
 ) -> tuple[Image.Image, dict]:
     """Render one view; returns the image and its metadata dict (without the image path).
 
@@ -662,9 +668,11 @@ def render_one(
         raise CadError(INVALID_ARGUMENT, "nothing to render" + (" on the kept side of the section plane" if section else ""))
     lo, hi = fit_bounds if fit_bounds is not None else scene_bounds(scene)
     img, framing = rasterize(scene, cam, size[0], size[1], style=style, background=background, supersample=supersample,
-                             fit_bounds=(np.asarray(lo), np.asarray(hi)))
+                             fit_bounds=(np.asarray(lo), np.asarray(hi)), margin=margin)
     if joints:
         img = overlay_joints(img, cam, framing, joints, float(np.linalg.norm(np.asarray(hi) - np.asarray(lo))))
+    for draw in overlays or ():  # callables (img, cam, framing) -> img, e.g. a stress legend
+        img = draw(img, cam, framing)
     if annotate_images:
         label = title + (f"  |  SECTION {section['plane']} (cut faces tinted red)" if section else "")
         img = annotate(img, cam, framing, label, [float(c) for c in (np.asarray(hi) - np.asarray(lo))])

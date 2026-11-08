@@ -128,6 +128,7 @@ class ProjectSession:
                 "parameters": {k: v.to_dict() for k, v in out.parameters.items()},
                 "parts": geom,
                 "joints": out.joints,
+                "studies": out.studies,
                 "build": {"duration_ms": round(out.duration_ms, 2), "stdout": out.stdout[-20000:],
                           "stderr": out.stderr[-20000:], "warnings": warnings},
                 "cad_version": __version__,
@@ -375,11 +376,30 @@ class ProjectSession:
         deflection: float | None = None,
         section: str | None = None,
         joints: bool = False,
+        fea: str | None = None,
+        fea_field: str = "stress",
+        deformed=None,
+        quality: str = "normal",
     ) -> dict:
         from . import renderer as R
 
         r, all_parts = self.parts(rev)
         m = self.store.manifest(r)
+        fea_data = None
+        if fea:
+            from . import fea_render
+
+            if section:
+                raise CadError(INVALID_ARGUMENT, "--section cannot be combined with --fea yet",
+                               hint="render the stress map from several views instead (e.g. --views iso,front,bottom)")
+            if fea_field not in fea_render.FIELDS:
+                raise CadError(INVALID_ARGUMENT, f"unknown --fea-field {fea_field!r}", hint=f"use one of {', '.join(fea_render.FIELDS)}")
+            r, report, arrays = self.fea_fields(fea, r, quality)
+            parts = [report["part"]]
+            lo_, hi_ = arrays["vertices"].min(0), arrays["vertices"].max(0)
+            diag = float(np.linalg.norm(hi_ - lo_))
+            scale = fea_render.deform_scale(arrays, diag, deformed)
+            fea_data = (report, arrays, scale, diag)
         names = parts or list(all_parts)
         for n in names:
             if n not in all_parts:
@@ -406,6 +426,13 @@ class ProjectSession:
             "joints": m.get("joints", []) if joints else None,
             "renderer": R.RENDERER_VERSION,
         }
+        if fea_data:
+            report, arrays, scale, diag = fea_data
+            title = f"{names[0]}  (rev {r})  |  study {fea}: {fea_field}"
+            scene_key.update(title=title, fea={"study": fea, "field": fea_field, "scale": scale, "quality": quality,
+                                               "version": fea_render.VERSION,
+                                               "key": self._fea_key(m, all_parts[names[0]], next(
+                                                   x for x in m.get("studies", []) if x["name"] == fea), quality)})
         out = Path(out_dir) if out_dir else self.root / "renders" / f"r{r}"
         if not out.is_absolute():
             out = self.root / out
@@ -425,6 +452,15 @@ class ProjectSession:
                 cached = True
             else:
                 self.stats.bump("render_cache_misses")
+                if fea_data and scene is None:
+                    from . import fea_render
+
+                    report, arrays, scale, diag = fea_data
+                    item, legend = fea_render.scene_item(arrays, report, fea_field, scale, names[0])
+                    scene = [item]
+                    overlays = [fea_render.overlay(arrays, report, legend, scale, diag, fea_field)]
+                elif not fea_data:
+                    overlays = None
                 if scene is None:
                     scene = [R.SceneItem(n, self.mesh(r, n, all_parts[n], deflection),
                                          R._parse_color(all_parts[n].color, R.REFERENCE_COLOR if all_parts[n].reference
@@ -440,11 +476,17 @@ class ProjectSession:
                 img, meta = R.render_one(view_scene, cam, size=size, style=style, background=bg, title=title,
                                          fit_bounds=full_bounds, section=sec,
                                          annotate_images=annotate, metadata={"revision": r, "project": cfg.name},
-                                         joints=scene_key["joints"])
+                                         joints=scene_key["joints"], overlays=overlays, margin=0.13 if fea_data else 0.08)
+                if fea_data:
+                    meta["fea"] = {"study": fea, "field": fea_field, "deformation_scale": fea_data[2],
+                                   "hotspots": [{"id": h["id"], "at": h["at"], "von_mises_MPa": h["von_mises_MPa"]}
+                                                for h in fea_data[0]["hotspots"]],
+                                   "safety_factor": fea_data[0]["safety_factor"]}
                 R.save_png(img, cpng)
                 cjson.write_text(json.dumps(meta, indent=1))
                 cached = False
-            suffix = (f"_section_{R._safe_name(section)}" if section else "") + ("_joints" if joints else "")
+            suffix = (f"_section_{R._safe_name(section)}" if section else "") + ("_joints" if joints else "") \
+                + (f"_fea_{R._safe_name(fea)}_{fea_field}" + ("_deformed" if fea_data[2] else "") if fea_data else "")
             dst = out / f"{prefix}_{cam.name}{suffix}.png"
             shutil.copyfile(cpng, dst)
             meta = dict(meta)
@@ -458,7 +500,8 @@ class ProjectSession:
         if sheet and len(images) > 1:
             from PIL import Image
 
-            sheet_path = out / f"{prefix}_sheet{'_section_' + R._safe_name(section) if section else ''}{'_joints' if joints else ''}.png"
+            sheet_path = out / (f"{prefix}_sheet{'_section_' + R._safe_name(section) if section else ''}{'_joints' if joints else ''}"
+                                f"{f'_fea_{R._safe_name(fea)}_{fea_field}' if fea_data else ''}.png")
             R.save_png(R.contact_sheet([(p.stem, Image.open(p)) for p in images], size), sheet_path)
         return {"revision": r, "parts": names, "out_dir": str(out), "images": results,
                 "sheet": str(sheet_path) if sheet_path else None}
@@ -586,6 +629,80 @@ class ProjectSession:
             report["skipped_reference_parts"] = skipped
         return report
 
+    # ------------------------------------------------------------------ stress analysis
+    def studies(self, rev=None) -> tuple[int, list[dict]]:
+        r = self.resolve_rev(rev)
+        return r, self.store.manifest(r).get("studies", [])
+
+    def fea(self, study: str | None = None, *, rev=None, quality: str = "normal") -> dict:
+        """Solve the script's Study load cases (all of them, or one by name); results are cached per revision."""
+        from . import fea
+
+        r, studies = self.studies(rev)
+        if not studies:
+            raise CadError(NOT_FOUND, f"revision {r} declares no stress studies",
+                           hint='in the script: s = Study("payload", part); s.fixed("base.bottom"); s.force("arm.tip", 20, "-z")  '
+                                "(see `cad docs stress`)")
+        chosen = studies
+        if study is not None:
+            chosen = [x for x in studies if x["name"] == study]
+            if not chosen:
+                raise CadError(NOT_FOUND, f"no study named {study!r} in revision {r}", details={"studies": [x["name"] for x in studies]})
+        fea.require()
+        if quality not in fea.QUALITY:
+            raise CadError(INVALID_ARGUMENT, f"unknown quality {quality!r}", hint=f"use one of {', '.join(fea.QUALITY)}")
+        _, all_parts = self.parts(r)
+        m = self.store.manifest(r)
+        results = []
+        meshes: dict[str, Any] = {}
+        for spec in chosen:
+            part = all_parts[spec["part"]]
+            report = self._fea_one(r, m, part, spec, quality, meshes)
+            results.append(report)
+        out = {"revision": r, "quality": quality, "ok": all(x["ok"] for x in results), "studies": results}
+        return out
+
+    def _fea_key(self, m: dict, part: Part, spec: dict, quality: str) -> str:
+        from . import fea
+
+        return hash_json({"geom": m["parts"][spec["part"]]["geometry_hash"], "spec": spec, "quality": [quality, fea.QUALITY[quality]],
+                          "material": part.material.to_dict() if part.material else None, "print_down": part.print_down,
+                          "solver": fea.SOLVER_VERSION, "cad": __version__})
+
+    def _fea_one(self, r: int, m: dict, part: Part, spec: dict, quality: str, meshes: dict) -> dict:
+        from . import fea
+
+        key = self._fea_key(m, part, spec, quality)
+        cache = self.store.cache_dir / "fea" / key[:32]
+        if (cache / "report.json").exists() and (cache / "fields.npz").exists():
+            self.stats.bump("fea_cache_hits")
+            report = json.loads((cache / "report.json").read_text())
+            report["cached"] = True
+            return report
+        self.stats.bump("fea_runs")
+        mk = (spec["part"], quality)
+        sol, meshes[mk] = fea.analyse(part, spec, quality, base_mesh=meshes.get(mk))
+        report = sol.report
+        _link_parameters(report, part, m.get("parameters", {}))
+        cache.mkdir(parents=True, exist_ok=True)
+        sol.save(cache / "fields.npz")
+        (cache / "report.json").write_text(json.dumps(report, indent=1))
+        report = dict(report, cached=False)
+        return report
+
+    def fea_fields(self, study: str, rev=None, quality: str = "normal") -> tuple[int, dict, dict]:
+        """(revision, report, arrays) for one study, solving it if needed."""
+        r, studies = self.studies(rev)
+        names = [x["name"] for x in studies]
+        if study not in names:
+            raise CadError(NOT_FOUND, f"no study named {study!r} in revision {r}", details={"studies": names})
+        report = self.fea(study, rev=r, quality=quality)["studies"][0]
+        spec = next(x for x in studies if x["name"] == study)
+        _, all_parts = self.parts(r)
+        key = self._fea_key(self.store.manifest(r), all_parts[spec["part"]], spec, quality)
+        d = np.load(self.store.cache_dir / "fea" / key[:32] / "fields.npz")
+        return r, report, {k: d[k] for k in d.files}
+
     # ------------------------------------------------------------------ design checks
     def clearance(self, rev=None, *, parts: list[str] | None = None, min_distance: float | None = None,
                   allow_contact: bool = False) -> dict:
@@ -620,7 +737,7 @@ class ProjectSession:
         return j["parameter"]
 
     def sweep(self, parameter: str, values: list, *, views: str | None = None, size=None, min_distance: float | None = None,
-              section: str | None = None, allow_contact: bool = False) -> dict:
+              section: str | None = None, allow_contact: bool = False, fea: str | None = None, quality: str = "draft") -> dict:
         """Rebuild at each parameter (or joint) value, check clearances (and render), then restore the active revision."""
         from .analysis import clearance_matrix
 
@@ -638,6 +755,16 @@ class ProjectSession:
                     if min_distance is not None:
                         row["violations"] = cm["violations"]
                 row["warnings"] = b.get("warnings", [])
+                if fea:
+                    st = self.fea(fea, rev=r, quality=quality)["studies"][0]
+                    away = st.get("away_from_supports_and_sharp_edges") or {}
+                    part = parts[st["part"]]
+                    row["fea"] = {"safety_factor": st["safety_factor"], "ok": st["ok"], "max_von_mises_MPa": st["max_von_mises_MPa"],
+                                  "away_safety_factor": away.get("safety_factor"),
+                                  "max_displacement_mm": st["max_displacement_mm"],
+                                  "mass_g": round(part.mass(), 3) if part.material and part.material.density else None,
+                                  "hotspot": (st["hotspots"][0]["features"] if st["hotspots"] else []),
+                                  "warnings": [w["code"] for w in st["warnings"]]}
                 if views:
                     rr = self.render(views, rev=r, size=size, sheet=False, section=section)
                     row["images"] = [i["path"] for i in rr["images"]]
@@ -649,6 +776,12 @@ class ProjectSession:
         if min_distance is not None:
             out["min_required"] = min_distance
             out["ok"] = all(not row.get("violations") for row in rows)
+        if fea:
+            out["fea"] = {"study": fea, "quality": quality}
+            passing = [row for row in rows if row["fea"]["ok"]]
+            if passing:  # the lightest value that meets the target (or the first, without a material density)
+                best = min(passing, key=lambda row: row["fea"]["mass_g"] if row["fea"]["mass_g"] is not None else 0)
+                out["fea"]["lightest_passing"] = {"value": best["value"], **best["fea"]}
         return out
 
     # ------------------------------------------------------------------ params
@@ -802,6 +935,19 @@ class Engine:
 
 
 # --------------------------------------------------------------------------- helpers
+
+
+def _link_parameters(report: dict, part: Part, parameters: dict) -> None:
+    """Name the script parameters that directly set a setting of each hotspot's features."""
+    by_id = {f.id: f for f in part.features}
+    for h in report.get("hotspots", []):
+        links = []
+        for fid in h.get("features", []):
+            f = by_id.get(fid)
+            for setting, name in (f.param_sources.items() if f else ()):
+                links.append({"parameter": name, "value": parameters.get(name, {}).get("value"), "feature": fid, "setting": setting})
+        if links:
+            h["parameters"] = links
 
 
 def _r(v) -> list[float]:

@@ -146,6 +146,7 @@ class Feature:
     metrics: dict = field(default_factory=dict)
     duration_ms: float = 0.0
     phases_ms: dict = field(default_factory=dict)  # where the time went: tools, boolean, validate, references, measure
+    param_sources: dict = field(default_factory=dict)  # setting ("radius", "at[0]") -> Parameter name that set it
 
     def to_dict(self) -> dict:
         return {
@@ -161,6 +162,7 @@ class Feature:
             "metrics": self.metrics,
             "duration_ms": round(self.duration_ms, 3),
             "phases_ms": {k: round(v, 3) for k, v in self.phases_ms.items()},
+            **({"param_sources": self.param_sources} if self.param_sources else {}),
         }
 
 
@@ -224,6 +226,21 @@ def _jsonable(v: Any) -> Any:
     if isinstance(v, Part):
         return {"part": v.name}
     return repr(v)
+
+
+def _param_sources(params: dict) -> dict:
+    """{"radius": "fillet_r", "at[1]": "y"}: settings given straight from a Parameter."""
+    from .params import source_of
+
+    out = {}
+    for k, v in params.items():
+        if source_of(v):
+            out[k] = source_of(v)
+        elif isinstance(v, (list, tuple)):
+            for i, x in enumerate(v):
+                if source_of(x):
+                    out[f"{k}[{i}]"] = source_of(x)
+    return out
 
 
 def _axis_dir(axis: str | Sequence[float]) -> tuple[float, float, float]:
@@ -369,7 +386,7 @@ class Part:
 
     def _run(self, ftype: str, name: str | None, params: dict, fn) -> FeatureRef:
         fid = self._new_id(ftype, name)
-        feat = Feature(fid, ftype, _jsonable(params))
+        feat = Feature(fid, ftype, _jsonable(params), param_sources=_param_sources(params))
         prev = next((f.id for f in reversed(self.features) if f.status == "ok"), None)
         if prev and self._shape is not None:
             feat.depends_on.append(prev)
@@ -2315,6 +2332,7 @@ class Part:
                         fd.get("outputs", {}), fd.get("status", "ok"),
                         [CadWarning(w["code"], w["message"], w.get("feature"), w.get("details", {})) for w in fd.get("warnings", [])],
                         fd.get("error"), fd.get("metrics", {}), fd.get("duration_ms", 0.0))
+            f.param_sources = dict(fd.get("param_sources", {}))
             p.features.append(f)
         return p
 

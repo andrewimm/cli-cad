@@ -22,7 +22,9 @@ cad capabilities
 ```
 
 Or install for everyday use: `scripts/install.sh` builds a self-contained `~/.local/cad` and links
-`cad`/`cadd` into `~/.local/bin` (re-run it to update). In sandboxes that forbid Unix sockets (e.g.
+`cad`/`cadd` into `~/.local/bin` (re-run it to update). Stress analysis (`cad fea`) needs optional
+packages, not installed by default because the mesher (gmsh) is GPL: `scripts/install.sh --fea`, or
+`uv sync --extra fea` for development (`cad fea` prints the exact command if they are missing). In sandboxes that forbid Unix sockets (e.g.
 Codex), `cad` falls back to standalone mode automatically.
 
 The `cad` binary finds the venv automatically (`.venv/bin/python` above the
@@ -73,6 +75,7 @@ An [Agent Skill](skills/cad/SKILL.md) in the skills.sh format teaches other agen
 | Feature graph | per-feature params, dependencies (incl. selection provenance), outputs, warnings, timings, failed features |
 | Rendering | deterministic NumPy software rasteriser: 7 standard + arbitrary views, section (cut-away) views, orthographic, auto-framing, shaded/edges/lines, silhouettes, annotations (axes triad, scale bar), JSON camera metadata, contact sheet |
 | Manufacturing | STEP / STL / BREP export, 3MF with materials (separate objects or one multi-material object Bambu Studio assigns filaments from), `cad slice` through Bambu Studio (print time, grams per filament, supports, ready-to-print .gcode.3mf) |
+| Stress analysis | `Study` load cases on named faces (fixed, force, bearing, torque, pressure, gravity), `cad fea`: curved quadratic tetrahedra (gmsh) + linear elasticity (scikit-fem, AMG), two-pass hot-spot refinement, safety factor incl. across print layers, hot spots traced to features and parameters, artifact warnings (sharp corners, clamps); `cad render --fea` stress / safety / displacement maps with legend, hot spots and loads |
 | Runtime | Rust `cad` client + `cadd` daemon, one Python worker per project, auto-start, crash recovery, timeouts, optional rlimits, standalone mode |
 | State | immutable revisions with atomic publication, parameter overlay, source snapshots, build/mesh/render/export caches surviving restarts, diff/checkout/restore |
 | Evals | 23 declarative tasks (16 dev, 7 held-out) with reference solutions, deterministic grader, independent-agent runner (Claude Code CLI), cad call logging, structured feedback, visual review, reports/compare, performance eval |

@@ -4,9 +4,12 @@
 #   PREFIX/bin/cad    CLI client   (finds PREFIX/.venv automatically)
 #   PREFIX/bin/cadd   session daemon
 #   LINK_DIR/cad, LINK_DIR/cadd   symlinks (default LINK_DIR: ~/.local/bin; set CAD_LINK_DIR="" to skip)
-# Usage: scripts/install.sh [PREFIX]   (default: ~/.local/cad)
-# Re-run to update; the symlinks keep pointing at the new binaries.
+# Usage: scripts/install.sh [--fea] [PREFIX]   (default: ~/.local/cad)
+#   --fea   also install the optional stress-analysis packages (gmsh is GPL-licensed, hence optional)
+# Re-run to update; the symlinks keep pointing at the new binaries (and keep any optional packages).
 set -euo pipefail
+FEA=0
+if [ "${1:-}" = "--fea" ]; then FEA=1; shift; fi
 PREFIX="${1:-$HOME/.local/cad}"
 LINK_DIR="${CAD_LINK_DIR-$HOME/.local/bin}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,6 +21,10 @@ cargo build --release -q
 mkdir -p "$PREFIX/bin"
 uv venv -q --allow-existing --python 3.12 "$PREFIX/.venv"
 uv pip install -q --reinstall --python "$PREFIX/.venv/bin/python" dist/cad-*.whl
+if [ "$FEA" = 1 ]; then
+  echo "installing stress-analysis packages (gmsh, scikit-fem, scipy, pyamg)..." >&2
+  uv pip install -q --python "$PREFIX/.venv/bin/python" "$(ls dist/cad-*.whl)[fea]"
+fi
 # replace, never overwrite in place: macOS kills a binary whose signed file was modified in place (SIGKILL)
 rm -f "$PREFIX/bin/cad" "$PREFIX/bin/cadd"
 cp target/release/cad target/release/cadd "$PREFIX/bin/"

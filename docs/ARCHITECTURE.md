@@ -12,6 +12,9 @@ src/cad/                 Python package (canonical modelling API + engine)
   tessellate.py          BRep -> mesh + edge polylines; canonical BREP hashing
   renderer.py            software rasteriser, cameras, annotation, metadata
   export.py              STEP / STL / BREP
+  study.py, fea.py       Study load cases; meshing (gmsh, in a subprocess), solving, hot spots, report
+  _fea_mesh.py           the only gmsh code, run as a separate script (GPL, optional; own OCCT copy)
+  fea_render.py          stress maps: colours, legend, hot-spot markers, load glyphs
   runner.py              executes a model script, collects Parts, maps errors to script lines
   project.py             cad.toml, params.toml, .cad/ revisions (atomic publish), locking
   engine.py              project sessions: build / inspect / measure / query / render / export / diff
@@ -23,6 +26,17 @@ evals/                   tasks, reference solutions, cadeval harness
 ```
 
 ## Decisions and trade-offs
+
+**Stress analysis: gmsh + scikit-fem, not CalculiX.** Everything installs with pip on macOS and Linux
+(CalculiX has no Homebrew formula and would mean shipping a Fortran binary). gmsh meshes the exact BRep
+into curved 10-node tetrahedra in a separate process (it bundles its own OCCT, and it is GPL, so it is
+an optional extra the core never imports); scikit-fem solves linear elasticity with quadratic elements
+and pyamg multigrid. Curved elements mattered: straight-sided ones read 5-15 % high on holes and shafts.
+`normal` quality solves twice, refining around the first pass's hot spots, which both sharpens peaks
+and measures how far they moved (sharp inside corners never settle). Loads live in the script as
+`Study` objects addressed by face references and are stored per revision as face indices; mesh
+surfaces are matched back to BRep faces by exact centre of mass and area. CalculiX remains an option
+for contact and nonlinear materials later.
 
 **Kernel bindings: OCP (`cadquery-ocp`, OCCT 8.0).** Maintained, pip-installable
 wheels for macOS/Linux, near-complete OCCT surface. CadQuery/build123d were not
@@ -96,4 +110,4 @@ fail and why). Non-fatal geometry smells are warnings attached to features.
 - `find_holes()` recognises cylindrical holes; slots, tapered holes and holes split into >2 faces may be reported partially.
 - Feature graph is a record, not a re-executable DAG; edits happen in the script.
 - Resource limits: RLIMIT_AS is not enforced by macOS.
-- No FEA yet. Planned: Gmsh meshing + CalculiX via an analysis worker kind managed by the same daemon, with loads/fixtures addressed through named references (`part.faces("mounting_surface")`), so the reference system was built first.
+- Stress analysis is linear static on one part at a time: no contact between parts, plasticity, buckling, large deflection, fatigue, or anisotropic stiffness of prints (only a separate across-layer strength check), and infill is not modelled (solid assumed). Loads from joints and bonded multi-part assemblies are not wired up yet. Peak stresses are within ~2-5 % of textbook cases at the default quality; idealised clamps and sharp inside corners are reported as artifacts rather than hidden.

@@ -62,8 +62,9 @@ COMMANDS: dict[str, dict] = {
     "query": {"summary": "Evaluate a selection expression, e.g. \"faces().facing('+z')\", and list matches", "project": True},
     "render": {"summary": "Render PNG views (iso, front, back, left, right, top, bottom, az=..,el=.., dir=x,y,z)", "project": True},
     "export": {"summary": "Export STEP / STL / 3MF (with materials) / BREP for a revision (reference parts are skipped)", "project": True},
-    "materials": {"summary": "List built-in materials (density, colour) for Part(..., material=...)", "project": False},
+    "materials": {"summary": "List built-in materials (density, colour, stiffness, strength) for Part(..., material=...)", "project": False},
     "slice": {"summary": "Slice with Bambu Studio: print time, filament grams per material, layers, supports, warnings; writes a .gcode.3mf", "project": True},
+    "fea": {"summary": "Stress analysis of the script's Study load cases: safety factor, peak stress, deflection, hot spots traced to features", "project": True},
     "joints": {"summary": "Joints of an Assembly: type, parts, world axis, value, limits, what a positive value does", "project": True},
     "fasteners": {"summary": "Metric screw, nut and heat-set insert dimensions used by screw_hole() (M2-M8)", "project": False},
     "info": {"summary": "What a STEP / IGES / STL / BREP file contains: bodies, names, sizes, units (before importing it)", "project": False},
@@ -175,6 +176,13 @@ def _parser() -> _Parser:
     s.add_argument("--no-annotate", action="store_true", help="omit the title, axis triad and scale bar")
     s.add_argument("--no-sheet", action="store_true", help="do not write the combined contact sheet")
     s.add_argument("--joints", action="store_true", help="draw joint axes (Assembly) with their positive direction")
+    s.add_argument("--fea", metavar="STUDY", help="colour the part by a stress study's results (solves it if needed), "
+                   "with a legend, numbered hot spots, supports and loads")
+    s.add_argument("--fea-field", default="stress", choices=["stress", "safety", "displacement", "layers"],
+                   help="stress = von Mises MPa; safety = safety-factor bands vs the target; layers = tension across print layers")
+    s.add_argument("--deformed", nargs="?", const="auto", metavar="SCALE",
+                   help="draw the bent shape, exaggerated (auto) or by SCALE, over a faint outline of the original")
+    s.add_argument("--quality", default="normal", choices=["draft", "normal", "fine"], help="mesh quality for --fea")
 
     s = cmd("export")
     s.add_argument("--format", "-f", help="comma-separated: step,stl,3mf,brep (default from cad.toml)")
@@ -203,6 +211,12 @@ def _parser() -> _Parser:
     s.add_argument("--3mf-mode", dest="threemf_mode", choices=["objects", "multimaterial"])
     s.add_argument("--out", help="output directory (default out/r<N>)")
     s.add_argument("--list", choices=["printers", "processes", "filaments"], help="list Bambu presets and exit")
+    s = cmd("fea")
+    s.add_argument("study", nargs="?", help="study name (default: every Study in the script)")
+    s.add_argument("--revision", "-r")
+    s.add_argument("--quality", "-q", default="normal", choices=["draft", "normal", "fine"],
+                   help="mesh density: draft is quick for iterating, fine checks a peak (default normal)")
+    s.add_argument("--list", action="store_true", help="list the declared studies and their loads without solving")
     cmd("fasteners")
     s = cmd("joints")
     s.add_argument("--revision", "-r")
@@ -226,6 +240,8 @@ def _parser() -> _Parser:
     s.add_argument("--render", metavar="VIEWS", help="also render each value, e.g. front or iso,top")
     s.add_argument("--section", metavar="PLANE")
     s.add_argument("--size", help="WIDTHxHEIGHT for --render")
+    s.add_argument("--fea", metavar="STUDY", help="also run this stress study at each value: safety factor, peak, deflection, mass")
+    s.add_argument("--quality", default="draft", choices=["draft", "normal", "fine"], help="mesh quality for --fea (default draft)")
 
     cmd("params")
 
@@ -485,7 +501,13 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         from .materials import library
 
         lib = library()
-        text = "\n".join(f"{m['name']:<10} {m['density']:>5} g/cm3  {m['color']}  {m['kind']:<8} {m['notes']}" for m in lib)
+        def mech(m):
+            if not m.get("youngs_modulus"):
+                return ""
+            layer = f", {m['layer_strength']:g} across layers" if m.get("layer_strength") else ""
+            return f"  E {m['youngs_modulus']:g} MPa, strength {m['yield_strength']:g} MPa{layer}"
+
+        text = "\n".join(f"{m['name']:<10} {m['density']:>5} g/cm3  {m['color']}  {m['kind']:<8} {m['notes']}{mech(m)}" for m in lib)
         return {"materials": lib}, text + "\n\nuse: Part('lid', material='PETG')  or  Material('name', density=1.2, color='#rrggbb')"
     if c == "init":
         from .project import init_project
@@ -539,7 +561,8 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
     if c == "render":
         r = s.render(args.views, rev=args.revision, parts=args.part, size=_size(args.size), style=args.style,
                      background=args.background, out_dir=args.out, annotate=not args.no_annotate, sheet=not args.no_sheet,
-                     section=args.section, joints=args.joints)
+                     section=args.section, joints=args.joints, fea=args.fea, fea_field=args.fea_field,
+                     deformed=_deformed_arg(args.deformed), quality=args.quality)
         lines = [f"revision {r['revision']}: {len(r['images'])} view(s) -> {r['out_dir']}"]
         for im in r["images"]:
             lines.append(f"  {im['view']:<10} {im['path']}  ({'cached' if im['cached'] else 'rendered'}, "
@@ -626,15 +649,29 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
             raise UsageError("give the values to sweep, e.g. `cad sweep knee 0:90:15`")
         vals = _sweep_values(values)
         r = s.sweep(param.strip(), vals, views=args.render, size=_size(args.size), min_distance=args.min, section=args.section,
-                    allow_contact=args.allow_contact)
+                    allow_contact=args.allow_contact, fea=args.fea, quality=args.quality)
         lines = [f"sweep {param.strip()} over {vals} (active revision restored to r{r['head']}):"]
         for row in r["results"]:
             cp = row.get("closest_pair")
             desc = f"closest {cp['a']}<->{cp['b']} {cp['state']} {cp['min_distance']} mm" if cp else "single part"
             bad = f"  VIOLATIONS: {[(v['a'], v['b'], v['min_distance']) for v in row['violations']]}" if row.get("violations") else ""
+            if "fea" in row and not row.get("closest_pair"):
+                desc = ""
+            if "fea" in row:
+                fr = row["fea"]
+                desc += (f"{'OK ' if fr['ok'] else 'LOW'} safety factor {fr['safety_factor']:<6g}"
+                         + (f" (away from supports/corners {fr['away_safety_factor']:g})" if fr.get("away_safety_factor") else "")
+                         + f", peak {fr['max_von_mises_MPa']:.3g} MPa, moves {fr['max_displacement_mm']:.3g} mm"
+                         + (f", {fr['mass_g']:g} g" if fr.get("mass_g") is not None else ""))
             lines.append(f"  {param.strip()}={row['value']}: r{row['revision']} {desc}{bad}")
             for img in row.get("images", []):
                 lines.append(f"      {img}")
+        if r.get("fea"):
+            lp = r["fea"].get("lightest_passing")
+            lines.append(f"  lightest value meeting the target: {param.strip()}={lp['value']}" if lp
+                         else "  no value meets the target safety factor")
+            if r["fea"]["quality"] == "draft":
+                lines.append("  (draft meshes read peaks optimistic by up to ~15 %: set the value and confirm with `cad fea`)")
         fail = None
         if r.get("ok") is False:
             bad = [x["value"] for x in r["results"] if x.get("violations")]
@@ -651,6 +688,23 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         if extra:
             lines.append(f"  overlay entries not declared by the model: {extra}")
         return r, "\n".join(lines)
+    if c == "fea":
+        if args.list:
+            r, studies = s.studies(args.revision)
+            lines = [f"revision {r}: {len(studies)} stud{'y' if len(studies) == 1 else 'ies'}"]
+            for st in studies:
+                lines.append(f"  {st['name']} on {st['part']} (target safety factor {st['target']:g})")
+                for ld in st["loads"]:
+                    lines.append(f"      {_fmt_load(ld)}")
+            return {"revision": r, "studies": studies}, "\n".join(lines)
+        r = s.fea(args.study, rev=args.revision, quality=args.quality)
+        text = "\n\n".join(_fmt_fea(r["revision"], x) for x in r["studies"])
+        fail = None
+        if not r["ok"]:
+            bad = [f"{x['study']} ({x['safety_factor']:g} < {x['target']:g})" for x in r["studies"] if not x["ok"]]
+            fail = {"code": "VALIDATION_FAILED", "message": f"safety factor below target: {', '.join(bad)}",
+                    "hint": "see hotspots: fix the geometry there, rebuild and re-run `cad fea`"}
+        return r, text, fail
     if c == "joints":
         r = s.joints(args.revision)
         if not r["joints"]:
@@ -711,6 +765,81 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         r = s.restore(args.revision, force=args.force)
         return r, f"restored r{r['revision']}: {r.get('restored')}"
     raise UsageError(f"unknown command {c}")
+
+
+def _deformed_arg(v):
+    if v is None or v == "auto":
+        return v
+    try:
+        return float(v)
+    except ValueError:
+        raise CadError(INVALID_ARGUMENT, f"--deformed takes a scale factor or nothing (auto), got {v!r}") from None
+
+
+def _pt(v) -> str:
+    return "(" + ", ".join(f"{round(float(x), 4) + 0.0:g}" for x in v) + ")"
+
+
+def _fmt_load(ld: dict) -> str:
+    t = ld["type"]
+    where = f" {ld['faces']}" if "faces" in ld else ""
+    if t == "fixed":
+        return f"fixed{where}" + (f" (only {ld['directions']})" if ld.get("directions", "xyz") != "xyz" else "")
+    if t in ("force", "bearing"):
+        return f"{t}{where}: {ld.get('newtons', ld.get('total_N'))} N along {_pt(ld['direction'])}"
+    if t == "torque":
+        return f"torque{where}: {ld.get('newton_metres', ld.get('total_Nm'))} N*m" + (f" about {_pt(ld['axis'])}" if ld.get("axis") else "")
+    if t == "pressure":
+        return f"pressure{where}: {ld['mpa']} MPa"
+    if t == "gravity":
+        return f"gravity: {ld['g']} g along {_pt(ld['direction'])}"
+    return t
+
+
+def _fmt_fea(rev: int, r: dict) -> str:
+    mat = r["material"]
+    st = r["strength"]
+    head = "OK" if r["ok"] else "BELOW TARGET"
+    lines = [f"revision {rev}, study {r['study']} on {r['part']} ({mat['name']}), {r['mesh']['quality']} mesh"
+             + (" (cached)" if r.get("cached") else "") + ":",
+             f"  {head}: safety factor {r['safety_factor']:g} (target {r['target']:g}); peak von Mises {r['max_von_mises_MPa']:.4g} MPa "
+             f"vs {mat['yield_strength_MPa']:g} MPa strength, at {_pt(r['max_von_mises_at'])}"]
+    if st.get("across_layers_safety_factor") is not None:
+        lines.append(f"  across layers: {st['max_tension_across_layers_MPa']:.4g} MPa tension vs {mat['layer_strength_MPa']:g} MPa "
+                     f"(safety factor {st['across_layers_safety_factor']:g}); layers stack along {_pt(st['build_direction'])}")
+    away = r.get("away_from_supports_and_sharp_edges")
+    if away:
+        lines.append(f"  away from supports and sharp inside edges: peak {away['max_von_mises_MPa']:.4g} MPa, "
+                     f"safety factor {away['safety_factor']:g}")
+    lines.append(f"  max displacement {r['max_displacement_mm']:.4g} mm at {_pt(r['max_displacement_at'])}")
+    for ld in r["loads"]:
+        extra = ""
+        if ld["type"] == "fixed" and "reaction_N" in ld:
+            extra = f" (reaction {_pt(ld['reaction_N'])} N)"
+        elif "moves_mm" in ld:
+            extra = f", moves {ld['moves_mm']:.4g} mm" + (f" ({ld['stiffness_N_per_mm']:.4g} N/mm)" if "stiffness_N_per_mm" in ld else "")
+        lines.append(f"  load: {_fmt_load(ld)}{extra}")
+    if r["hotspots"]:
+        lines.append("  hotspots (highest first):")
+    for h in r["hotspots"]:
+        names = [n for f in h["faces"] for n in f["names"] if n.split(".", 1)[0] in h["features"]] \
+            or [n for f in h["faces"] for n in f["names"]] or [f"face {f['index']} ({f['type']})" for f in h["faces"]]
+        names = list(dict.fromkeys(names))
+        shown = ", ".join(names[:3]) + (f" (+{len(names) - 3} names)" if len(names) > 3 else "")
+        flags = (" [on a fixed face]" if h.get("at_support") else "") + (" [on a loaded face]" if h.get("at_load") else "") \
+            + (f" [rose {h['change_on_refinement_pct']:g}% on refinement]" if h.get("change_on_refinement_pct", 0) > 12 else "")
+        lines.append(f"    {h['id']}. {h['von_mises_MPa']:.4g} MPa at {_pt(h['at'])} on {shown}{flags}")
+        for pl in h.get("parameters", []):
+            lines.append(f"       set by parameter {pl['parameter']} = {pl['value']:g} ({pl['feature']}.{pl['setting']})")
+        if h["suggestions"]:
+            lines.append(f"       try: {h['suggestions'][0]}")
+    for w in r["warnings"]:
+        lines.append(f"  warning {w['code']}: {w['message']}")
+    sec = r["seconds"]
+    lines.append(f"  mesh {r['mesh']['tetrahedra']} tetrahedra ({r['mesh']['unknowns']} unknowns, ~{r['mesh']['element_size_mm']:.3g} mm); "
+                 f"{sec['total']:.3g} s" + (" when solved" if r.get("cached") else ""))
+    lines.append(f"  picture: cad render --fea {r['study']}   (--fea-field safety | displacement | layers, --deformed)")
+    return "\n".join(lines)
 
 
 def _sweep_values(text: str) -> list:
@@ -952,9 +1081,17 @@ def _capabilities() -> dict:
         "export_formats": ["step", "stl", "brep"],
         "exit_codes": {str(v): k for k, v in EXIT.items()},
         "json_envelope": {"ok": "bool", "command": "str", "result": "object", "warnings": "list", "error": "{code,message,hint?,feature?,details?}"},
-        "python_api": "from cad import Part, Profile, Plane, Parameter  (run `cad docs` for the reference)",
+        "python_api": "from cad import Part, Profile, Plane, Parameter, Study  (run `cad docs` for the reference)",
+        "stress_analysis": _fea_status(),
         "modes": {"daemon": "default; the cad binary auto-starts cadd", "standalone": "cad --no-daemon ... or cad run script.py"},
     }
+
+
+def _fea_status() -> dict:
+    from . import fea
+
+    miss = fea.missing()
+    return {"available": not miss, "missing": miss, **({"install": fea.install_hint(miss)} if miss else {})}
 
 
 def _capabilities_text() -> str:
@@ -963,7 +1100,9 @@ def _capabilities_text() -> str:
     lines += [f"  {k:<13} {v}" for k, v in c["commands"].items()]
     lines += ["", f"views: {', '.join(c['render']['views'])}, plus {', '.join(c['render']['custom'])}",
               f"styles: {', '.join(c['render']['styles'])};  export: {', '.join(c['export_formats'])}",
-              "exit codes: " + ", ".join(f"{k}={v}" for k, v in c["exit_codes"].items())]
+              "exit codes: " + ", ".join(f"{k}={v}" for k, v in c["exit_codes"].items()),
+              "stress analysis (cad fea): " + ("available" if c["stress_analysis"]["available"]
+                                               else f"not installed — {c['stress_analysis']['install']}")]
     return "\n".join(lines)
 
 
