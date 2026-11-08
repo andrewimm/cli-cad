@@ -81,6 +81,8 @@ def main(argv=None) -> None:
     s.add_argument("--visual", action="store_true", help="vision-model review of renders")
     s.add_argument("--label", default="")
     s.add_argument("--out", help="run directory (default eval-runs/<timestamp>-<label>)")
+    s = sub.add_parser("regrade", help="re-run grading of every attempt in a run (after a grader/task fix)")
+    s.add_argument("run_dir")
     s = sub.add_parser("report")
     s.add_argument("run_dir")
     s = sub.add_parser("compare")
@@ -138,6 +140,25 @@ def main(argv=None) -> None:
         run_batch(tasks, out, attempts=a.attempts, model=a.model, max_turns=a.max_turns, timeout_s=a.timeout,
                   budget_usd=a.budget_usd, visual=a.visual, parallel=a.parallel, label=a.label)
         print((out / "summary.md").read_text())
+    elif a.cmd == "regrade":
+        from .grade import grade
+        from .report import write_report
+
+        run = Path(a.run_dir)
+        changed = 0
+        for gpath in sorted(run.glob("*/a*/grade.json")):
+            d = gpath.parent
+            t = load_task(EVALS / "tasks" / f"{d.parent.name}.toml")
+            old = json.loads(gpath.read_text())
+            new = grade(t, d / "workspace")
+            new["renders"] = old.get("renders", [])
+            new["regraded"] = True
+            if new["passed"] != old["passed"] or new["score"] != old["score"]:
+                changed += 1
+                print(f"{d.parent.name}/{d.name}: passed {old['passed']} -> {new['passed']}, score {old['score']} -> {new['score']}")
+            gpath.write_text(json.dumps(new, indent=2, default=str))
+        write_report(run)
+        print(f"regraded; {changed} attempt(s) changed")
     elif a.cmd == "report":
         from .report import write_report
 

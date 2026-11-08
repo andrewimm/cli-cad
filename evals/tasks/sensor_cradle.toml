@@ -68,4 +68,4 @@ formats = ["step", "stl"]
 type = "file"
 path = "PRINT.md"
 min_chars = 30
-must_mention = ["cradle"]
+note = "single-part task: the brief does not ask to name the part, so no mentions are required"
