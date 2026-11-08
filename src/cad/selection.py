@@ -135,7 +135,7 @@ class _Selection:
         return self._derive(ranked[:count], f"nearest({_r(p)}, {count})")
 
     def named(self, name: str):
-        """Intersect with the named reference ``name`` (see ``Part.name``)."""
+        """Intersect with the named reference ``name`` (see ``Part.tag``)."""
         ref = _occ.ShapeSet(self._part._resolve_ref(name, self.kind))
         return self._derive([s for s in self._items if s in ref], f"named({name!r})")
 

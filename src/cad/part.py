@@ -306,10 +306,11 @@ class Part:
     def _names_of(self, shape, kind: str) -> list[str]:
         return sorted(n for n, ss in self._refs.items() if self._ref_kind[n] == kind and any(shape.IsSame(s) for s in ss))
 
-    def name(self, name: str, selection: _Selection, *, replace: bool = False) -> "Part":
+    def tag(self, name: str, selection: _Selection, *, replace: bool = False) -> "Part":
         """Give a selection a semantic name that survives later features.
 
-        ``part.name("mounting_surface", part.faces().facing("-z"))``
+        ``part.tag("mounting_surface", part.faces().facing("-z"))`` then
+        ``part.faces("mounting_surface")``.
         """
         if not isinstance(selection, _Selection):
             raise CadError(INVALID_ARGUMENT, "name() expects a face or edge selection")
@@ -317,7 +318,7 @@ class Part:
             raise CadError(EMPTY_SELECTION, f"cannot name an empty selection ({selection.description})")
         if name in self._refs and not replace:
             raise CadError(INVALID_ARGUMENT, f"reference '{name}' already exists", hint="pass replace=True to overwrite")
-        self._check_current(selection, f"name:{name}")
+        self._check_current(selection, f"tag:{name}")
         self._refs[name] = list(selection.shapes)
         self._ref_kind[name] = selection.kind
         self._ref_origin[name] = "user"
@@ -1260,6 +1261,49 @@ class Part:
         p._ref_lost = dict(self._ref_lost)
         p.features = _copy.deepcopy(self.features)
         p._counters = dict(self._counters)
+        return p
+
+    # ================================================================== persistence
+    def _persisted_refs(self) -> dict:
+        """Named references as indices into faces()/edges() order (for revision storage)."""
+        if self._shape is None:
+            return {}
+        index = {"face": _occ.faces(self._shape), "edge": _occ.edges(self._shape)}
+        lookup = {k: {} for k in index}
+        for k, items in index.items():
+            for i, s in enumerate(items):
+                lookup[k].setdefault(hash(s), []).append((i, s))
+        out = {}
+        for n, shapes in self._refs.items():
+            kind = self._ref_kind[n]
+            idx = []
+            for s in shapes:
+                for i, o in lookup[kind].get(hash(s), ()):
+                    if o.IsSame(s):
+                        idx.append(i)
+                        break
+            out[n] = {"kind": kind, "indices": idx, "origin": self._ref_origin.get(n)}
+        return {"refs": out, "lost": dict(self._ref_lost)}
+
+    @classmethod
+    def _rehydrate(cls, name: str, shape: TopoDS_Shape, color=None, refs: dict | None = None, features: list[dict] | None = None) -> "Part":
+        """Rebuild a queryable Part from stored geometry (no script re-execution)."""
+        p = cls(name, color=color)
+        p._shape = shape
+        refs = refs or {}
+        index = {"face": _occ.faces(shape), "edge": _occ.edges(shape)}
+        for n, r in refs.get("refs", {}).items():
+            items = index[r["kind"]]
+            p._refs[n] = [items[i] for i in r["indices"] if 0 <= i < len(items)]
+            p._ref_kind[n] = r["kind"]
+            p._ref_origin[n] = r.get("origin")
+        p._ref_lost = dict(refs.get("lost", {}))
+        for fd in features or []:
+            f = Feature(fd["id"], fd["type"], fd.get("params", {}), fd.get("depends_on", []), fd.get("selections", []),
+                        fd.get("outputs", {}), fd.get("status", "ok"),
+                        [CadWarning(w["code"], w["message"], w.get("feature"), w.get("details", {})) for w in fd.get("warnings", [])],
+                        fd.get("error"), fd.get("metrics", {}), fd.get("duration_ms", 0.0))
+            p.features.append(f)
         return p
 
     def __repr__(self) -> str:

@@ -174,6 +174,7 @@ class SceneItem:
     name: str
     mesh: Mesh
     color: tuple[float, float, float]
+    bounds: tuple | None = None  # exact BRep (min, max); mesh bounds are used if absent
 
 
 def _parse_color(c, default) -> tuple[float, float, float]:
@@ -216,7 +217,9 @@ def build_scene(model: Any, deflection: float | None = None, mesh_cache: dict | 
             mesh = tessellate(shape, deflection)
             if mesh_cache is not None:
                 mesh_cache[key] = mesh
-        scene.append(SceneItem(name, mesh, _parse_color(color, PALETTE[i % len(PALETTE)])))
+        from . import _occ
+
+        scene.append(SceneItem(name, mesh, _parse_color(color, PALETTE[i % len(PALETTE)]), _occ.bbox(shape)))
     return scene
 
 
@@ -321,7 +324,7 @@ def rasterize(
     return img, framing
 
 
-def _raster_triangles(sx, sy, sz, tris, shade, fids, color, zbuf, idbuf, chunk_fragments: int = 3_000_000) -> None:
+def _raster_triangles(sx, sy, sz, tris, shade, fids, color, zbuf, idbuf, chunk_fragments: int = 600_000) -> None:
     """Vectorised scanline rasterisation with a deterministic z-buffer resolve.
 
     Fragments (pixel centres inside a triangle) are generated per row span, so
@@ -522,6 +525,69 @@ def annotate(img: Image.Image, cam: Camera, framing: dict, title: str, bbox_size
 # --------------------------------------------------------------------------- public API
 
 
+def scene_bounds(scene: list[SceneItem]) -> tuple[np.ndarray, np.ndarray]:
+    los, his = [], []
+    for it in scene:
+        lo, hi = (np.asarray(it.bounds[0]), np.asarray(it.bounds[1])) if it.bounds else it.mesh.bounds
+        los.append(lo)
+        his.append(hi)
+    return np.min(los, axis=0), np.max(his, axis=0)
+
+
+def render_one(
+    scene: list[SceneItem],
+    cam: Camera,
+    *,
+    size: tuple[int, int] = (1024, 768),
+    style: str = "shaded_edges",
+    background=(1.0, 1.0, 1.0),
+    title: str = "model",
+    annotate_images: bool = True,
+    supersample: int = 2,
+    metadata: dict | None = None,
+) -> tuple[Image.Image, dict]:
+    """Render one view; returns the image and its metadata dict (without the image path)."""
+    lo, hi = scene_bounds(scene)
+    img, framing = rasterize(scene, cam, size[0], size[1], style=style, background=background, supersample=supersample)
+    if annotate_images:
+        img = annotate(img, cam, framing, title, [float(c) for c in (hi - lo)])
+    meta = {
+        "image": {"width": size[0], "height": size[1], "format": "png"},
+        "camera": cam.to_dict(),
+        "framing": {k: v for k, v in framing.items() if not k.startswith("_")},
+        "model": {
+            "name": title,
+            "parts": [it.name for it in scene],
+            "bbox": {"min": _rl(lo), "max": _rl(hi), "size": _rl(hi - lo)},
+            "units": "mm",
+            **(metadata or {}),
+        },
+        "style": style,
+        "renderer": RENDERER_VERSION,
+        "conventions": "right-handed, Z up; front view looks from -Y toward +Y",
+    }
+    return img, meta
+
+
+def save_png(img: Image.Image, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp.png")
+    img.save(tmp, format="PNG")
+    os.replace(tmp, path)
+
+
+def parse_views(views: Sequence[str] | str) -> list[Camera]:
+    if isinstance(views, str):
+        views = list(ALL_VIEWS) if views.strip() == "all" else _split_views(views)
+    out = []
+    for v in views:
+        if isinstance(v, str) and v.strip() == "all":
+            out.extend(parse_view(x) for x in ALL_VIEWS)
+        else:
+            out.append(parse_view(v))
+    return out
+
+
 def render_views(
     model: Any,
     views: Sequence[str] | str = DEFAULT_VIEWS,
@@ -540,55 +606,31 @@ def render_views(
 ) -> list[dict]:
     """Render ``model`` from each view to ``<out_dir>/<prefix>_<view>.png``.
 
-    Each PNG gets a sibling ``.json`` with camera, framing and model metadata.
-    With ``sheet=True`` a ``<prefix>_sheet.png`` contact sheet of all views is
-    written too (one image to inspect instead of many).  Returns one dict per
-    image: ``{"view", "path", "metadata_path", "camera", ...}``.
+    ``model`` is a Part, a list/dict of Parts, or a raw OCCT shape.  Each PNG
+    gets a sibling ``.json`` with camera, framing and model metadata.  With
+    ``sheet=True`` a ``<prefix>_sheet.png`` contact sheet of all views is
+    written too.  Returns one dict per image.
     """
-    if isinstance(views, str):
-        views = ALL_VIEWS if views == "all" else [v for v in _split_views(views)]
-    cams = [parse_view(v) for v in views]
+    cams = parse_views(views)
     out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
     scene = build_scene(model, deflection, mesh_cache)
     title = prefix or "+".join(it.name for it in scene)
     prefix = prefix or _safe_name(title)
-    allv = np.concatenate([it.mesh.vertices for it in scene])
-    lo, hi = allv.min(0), allv.max(0)
-    bbox_size = [float(c) for c in (hi - lo)]
     bg = _parse_color(background, (1.0, 1.0, 1.0))
-    results = []
-    images = []
+    results, images = [], []
     for cam in cams:
-        img, framing = rasterize(scene, cam, size[0], size[1], style=style, background=bg, supersample=supersample)
-        if annotate_images:
-            img = annotate(img, cam, framing, title, bbox_size)
+        img, meta = render_one(scene, cam, size=size, style=style, background=bg, title=title,
+                               annotate_images=annotate_images, supersample=supersample, metadata=metadata)
         path = out / f"{prefix}_{cam.name}.png"
-        tmp = path.with_name(path.name + ".tmp.png")
-        img.save(tmp, format="PNG", optimize=False)
-        os.replace(tmp, path)
-        meta = {
-            "image": {"path": str(path), "width": size[0], "height": size[1], "format": "png"},
-            "camera": cam.to_dict(),
-            "framing": {k: v for k, v in framing.items() if not k.startswith("_")},
-            "model": {
-                "name": title,
-                "parts": [it.name for it in scene],
-                "bbox": {"min": _rl(lo), "max": _rl(hi), "size": _rl(hi - lo)},
-                "units": "mm",
-                **(metadata or {}),
-            },
-            "style": style,
-            "renderer": RENDERER_VERSION,
-            "conventions": "right-handed, Z up; front view looks from -Y toward +Y",
-        }
+        save_png(img, path)
+        meta["image"]["path"] = str(path)
         mpath = path.with_suffix(".json")
         mpath.write_text(json.dumps(meta, indent=2))
         results.append({"view": cam.name, "path": str(path), "metadata_path": str(mpath), "camera": meta["camera"], "framing": meta["framing"]})
         images.append((cam.name, img))
     if sheet and len(images) > 1:
         sp = out / f"{prefix}_sheet.png"
-        _contact_sheet(images, size).save(sp)
+        save_png(contact_sheet(images, size), sp)
         results.append({"view": "sheet", "path": str(sp), "views": [n for n, _ in images]})
     return results
 
@@ -617,7 +659,7 @@ def _split_views(s: str) -> list[str]:
     return out
 
 
-def _contact_sheet(images: list[tuple[str, Image.Image]], size: tuple[int, int]) -> Image.Image:
+def contact_sheet(images: list[tuple[str, Image.Image]], size: tuple[int, int]) -> Image.Image:
     n = len(images)
     cols = 2 if n <= 4 else 3
     rows = math.ceil(n / cols)

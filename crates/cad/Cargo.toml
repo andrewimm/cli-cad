@@ -1,0 +1,22 @@
+[package]
+name = "cad"
+version = "0.1.0"
+edition = "2021"
+description = "CLI client and session daemon for the agent-first CAD engine"
+license = "Apache-2.0"
+
+[lib]
+name = "cadcore"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cad"
+path = "src/bin/cad.rs"
+
+[[bin]]
+name = "cadd"
+path = "src/bin/cadd.rs"
+
+[dependencies]
+serde_json = "1"
+libc = "0.2"

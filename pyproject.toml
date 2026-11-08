@@ -21,3 +21,6 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.2.0",
 ]
+
+[project.scripts]
+cadpy = "cad.cli:console_main"

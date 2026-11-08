@@ -140,18 +140,18 @@ def _edge_polylines(shape, lin: float, ang: float) -> list[np.ndarray]:
     return out
 
 
-def shape_digest(shape) -> str:
-    """Content hash of a shape (via its BREP serialisation) for cache keys."""
-    import os
-    import tempfile
+def brep_bytes(shape) -> bytes:
+    """Canonical BREP serialisation without triangulation (stable for hashing)."""
+    import io
 
     from OCP.BRepTools import BRepTools
+    from OCP.TopTools import TopTools_FormatVersion
 
-    fd, path = tempfile.mkstemp(suffix=".brep")
-    os.close(fd)
-    try:
-        BRepTools.Write_s(shape, path)
-        with open(path, "rb") as f:
-            return hashlib.sha256(f.read()).hexdigest()
-    finally:
-        os.unlink(path)
+    buf = io.BytesIO()
+    BRepTools.Write_s(shape, buf, False, False, TopTools_FormatVersion.TopTools_FormatVersion_VERSION_1)
+    return buf.getvalue()
+
+
+def shape_digest(shape) -> str:
+    """Content hash of a shape for cache keys."""
+    return hashlib.sha256(brep_bytes(shape)).hexdigest()

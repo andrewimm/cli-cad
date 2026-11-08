@@ -1,0 +1,739 @@
+"""The ``cad`` command line.
+
+``main(argv, cwd)`` is a pure function returning ``(exit_code, stdout, stderr)``
+so it can run in-process (standalone mode, ``python -m cad``) or inside the
+long-lived model worker that the daemon talks to.  The Rust ``cad`` binary is a
+thin client that forwards argv to the daemon (or execs this module directly with
+``--no-daemon``).
+
+Exit codes (stable, see ``cad capabilities``):
+
+  0 success
+  1 internal error
+  2 usage error (bad arguments, unknown parameter)
+  3 model error (script raised, geometry operation failed, no parts)
+  4 validation failed (assert_valid / checks)
+  5 not found (project, revision, part, reference)
+  6 worker crashed (daemon only)
+  7 timeout (daemon only)
+  8 daemon unavailable
+"""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import io
+import json
+import os
+import sys
+import time
+import traceback
+from pathlib import Path
+from typing import Any
+
+from . import __version__
+from .errors import CadError
+
+EXIT = {"ok": 0, "internal": 1, "usage": 2, "model": 3, "validation": 4, "not_found": 5,
+        "worker_crashed": 6, "timeout": 7, "daemon_unavailable": 8}
+
+_CODE_EXIT = {
+    "VALIDATION_FAILED": 4,
+    "NOT_FOUND": 5,
+    "UNKNOWN_REFERENCE": 5,
+    "REFERENCE_LOST": 3,
+    "NO_PROJECT": 5,
+    "UNKNOWN_PARAMETER": 2,
+    "PARAMETER_OUT_OF_RANGE": 2,
+    "USAGE": 2,
+}
+
+# --------------------------------------------------------------------------- command table
+
+COMMANDS: dict[str, dict] = {
+    "init": {"summary": "Create a new project (cad.toml + model.py template)", "project": False},
+    "open": {"summary": "Make a project (or script's directory) the current project for later commands", "project": False},
+    "status": {"summary": "Show the current project, active revision, last build and session stats", "project": True},
+    "build": {"summary": "Run the model script and publish an immutable revision (cached if inputs are unchanged)", "project": True},
+    "run": {"summary": "Standalone: run a script once, optionally render/export, no project or daemon state", "project": False},
+    "inspect": {"summary": "Summarise parts of a revision: validity, bbox, volume, holes, features, references", "project": True},
+    "measure": {"summary": "Measure a part or named reference: volume, area, bbox, com, holes, distance", "project": True},
+    "query": {"summary": "Evaluate a selection expression, e.g. \"faces().facing('+z')\", and list matches", "project": True},
+    "render": {"summary": "Render PNG views (iso, front, back, left, right, top, bottom, az=..,el=.., dir=x,y,z)", "project": True},
+    "export": {"summary": "Export STEP / STL / BREP files for a revision", "project": True},
+    "params": {"summary": "List declared parameters and the override overlay", "project": True},
+    "set": {"summary": "Override parameters (writes params.toml) and rebuild", "project": True},
+    "unset": {"summary": "Remove parameter overrides and rebuild", "project": True},
+    "revisions": {"summary": "List revisions and the last build attempt", "project": True},
+    "diff": {"summary": "Compare two revisions: sources, parameters, geometry deltas", "project": True},
+    "checkout": {"summary": "Change the active revision (does not touch source files)", "project": True},
+    "restore": {"summary": "Restore source files and parameters from a revision (explicit, needs --force)", "project": True},
+    "capabilities": {"summary": "Machine-readable description of commands, views, formats and exit codes", "project": False},
+    "schema": {"summary": "JSON shapes of command results and errors", "project": False},
+    "examples": {"summary": "List, show or copy bundled example projects", "project": False},
+    "docs": {"summary": "Print the API reference (Markdown)", "project": False},
+    "help": {"summary": "Help for a command (use --json for machine-readable)", "project": False},
+}
+
+
+class UsageError(Exception):
+    pass
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message):  # never sys.exit from inside the worker
+        raise UsageError(f"{self.prog}: {message}")
+
+    def exit(self, status=0, message=None):
+        if message:
+            raise UsageError(message)
+        raise _HelpShown()
+
+
+class _HelpShown(Exception):
+    pass
+
+
+def _parser() -> _Parser:
+    p = _Parser(prog="cad", description="Agent-first parametric CAD.  Run `cad capabilities --json` for a full description.")
+    p.add_argument("--version", action="store_true", help="print version and exit")
+    sub = p.add_subparsers(dest="command", parser_class=_Parser)
+
+    def cmd(name, **kw):
+        sp = sub.add_parser(name, help=COMMANDS[name]["summary"], description=COMMANDS[name]["summary"], **kw)
+        sp.add_argument("--json", action="store_true", help="machine-readable JSON output")
+        if COMMANDS[name]["project"]:
+            sp.add_argument("--project", "-C", help="project directory (default: cwd ancestors, then the opened project)")
+        return sp
+
+    s = cmd("init")
+    s.add_argument("dir", nargs="?", default=".")
+    s.add_argument("--name")
+    s.add_argument("--example", help="start from a bundled example (see `cad examples list`)")
+
+    s = cmd("open")
+    s.add_argument("path", help="project directory or a model .py file")
+
+    cmd("status")
+
+    s = cmd("build")
+    s.add_argument("--param", "-p", action="append", default=[], metavar="NAME=VALUE", help="one-off override (not saved)")
+    s.add_argument("--force", action="store_true", help="rebuild even if an identical revision exists")
+
+    s = cmd("run")
+    s.add_argument("script")
+    s.add_argument("--param", "-p", action="append", default=[], metavar="NAME=VALUE")
+    s.add_argument("--render", metavar="VIEWS", help="comma-separated views, e.g. iso,front or all")
+    s.add_argument("--export", metavar="FORMATS", help="comma-separated: step,stl,brep")
+    s.add_argument("--out", help="output directory (default ./out/<script-name>)")
+    s.add_argument("--size", default="1024x768")
+    s.add_argument("--style", default="shaded_edges", choices=["shaded_edges", "shaded", "lines"])
+
+    s = cmd("inspect")
+    s.add_argument("part", nargs="?")
+    s.add_argument("--revision", "-r")
+    s.add_argument("--features", action="store_true", help="include the full feature graph")
+    s.add_argument("--refs", action="store_true", help="include named references")
+
+    s = cmd("measure")
+    s.add_argument("target", nargs="?", help="part, part.reference (e.g. bracket.base.top), or reference in single-part projects")
+    s.add_argument("--revision", "-r")
+    for m in ("volume", "area", "bbox", "com", "holes", "validity", "length"):
+        s.add_argument(f"--{m}", action="store_true")
+    s.add_argument("--distance", metavar="OTHER", help="minimum distance (and interference) to another part or reference")
+    s.add_argument("--density", type=float, metavar="G_PER_CM3", help="report mass for this density")
+
+    s = cmd("query")
+    s.add_argument("target", nargs="?", help="part name (optional for single-part projects)")
+    s.add_argument("expr", nargs="?", default="", help="selection expression, e.g. \"edges().vertical().convex()\"")
+    s.add_argument("--revision", "-r")
+
+    s = cmd("render")
+    s.add_argument("--views", "-v", help="e.g. iso,front,right,top | all | az=30,el=20 | dir=1,-1,0.5 (default from cad.toml)")
+    s.add_argument("--revision", "-r")
+    s.add_argument("--part", action="append", help="render only these parts (repeatable)")
+    s.add_argument("--size", help="WIDTHxHEIGHT, default 1024x768")
+    s.add_argument("--style", default="shaded_edges", choices=["shaded_edges", "shaded", "lines"])
+    s.add_argument("--background", default="#ffffff")
+    s.add_argument("--out", help="output directory (default renders/r<rev>)")
+    s.add_argument("--no-annotate", action="store_true", help="omit the title, axis triad and scale bar")
+    s.add_argument("--no-sheet", action="store_true", help="do not write the combined contact sheet")
+
+    s = cmd("export")
+    s.add_argument("--format", "-f", help="comma-separated: step,stl,brep (default from cad.toml)")
+    s.add_argument("--revision", "-r")
+    s.add_argument("--part", action="append")
+    s.add_argument("--out", help="output directory (default out/r<rev>)")
+    s.add_argument("--tolerance", type=float, default=0.01, help="STL chordal tolerance in mm")
+
+    cmd("params")
+
+    s = cmd("set")
+    s.add_argument("assignments", nargs="+", metavar="NAME VALUE | NAME=VALUE")
+    s.add_argument("--no-build", action="store_true")
+    s.add_argument("--force", action="store_true", help="allow parameters the model does not declare")
+
+    s = cmd("unset")
+    s.add_argument("names", nargs="+")
+    s.add_argument("--no-build", action="store_true")
+
+    s = cmd("revisions")
+    s.add_argument("--limit", type=int, default=50)
+
+    s = cmd("diff")
+    s.add_argument("a", nargs="?", default="-1", help="revision (default: previous)")
+    s.add_argument("b", nargs="?", default="head", help="revision (default: head)")
+
+    s = cmd("checkout")
+    s.add_argument("revision")
+
+    s = cmd("restore")
+    s.add_argument("revision")
+    s.add_argument("--force", action="store_true")
+
+    cmd("capabilities")
+    s = cmd("schema")
+    s.add_argument("name", nargs="?")
+
+    s = cmd("examples")
+    s.add_argument("action", nargs="?", default="list", choices=["list", "show", "copy"])
+    s.add_argument("name", nargs="?")
+    s.add_argument("dest", nargs="?")
+
+    cmd("docs")
+    s = cmd("help")
+    s.add_argument("topic", nargs="?")
+    return p
+
+
+# --------------------------------------------------------------------------- state
+
+
+def state_dir() -> Path:
+    d = os.environ.get("CAD_STATE_DIR")
+    if d:
+        return Path(d)
+    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
+    return Path(base) / "cad"
+
+
+def current_project_file() -> Path:
+    return state_dir() / "current_project"
+
+
+def resolve_project(args, cwd: Path) -> Path:
+    from .project import CONFIG_NAME, find_project_root
+
+    if getattr(args, "project", None):
+        p = (cwd / args.project).resolve()
+        root = find_project_root(p) if not (p / CONFIG_NAME).exists() else p
+        if root is None:
+            raise CadError("NO_PROJECT", f"{p} is not inside a cad project (no cad.toml)", hint="create one with `cad init`")
+        return root
+    root = find_project_root(cwd)
+    if root:
+        return root
+    f = current_project_file()
+    if f.exists():
+        r = Path(f.read_text().strip())
+        if (r / CONFIG_NAME).exists():
+            return r
+    raise CadError("NO_PROJECT", "no project found: not inside a project directory and no project is open",
+                   hint="run `cad open <dir>` or `cad init <dir>`, or pass --project")
+
+
+def _kv(items: list[str]) -> dict[str, Any]:
+    from .project import parse_value
+
+    out = {}
+    for it in items:
+        if "=" not in it:
+            raise UsageError(f"expected NAME=VALUE, got {it!r}")
+        k, v = it.split("=", 1)
+        out[k.strip()] = parse_value(v)
+    return out
+
+
+def _size(s: str | None):
+    if not s:
+        return None
+    try:
+        w, h = s.lower().split("x")
+        return int(w), int(h)
+    except ValueError as e:
+        raise UsageError(f"--size must look like 1024x768, got {s!r}") from e
+
+
+# --------------------------------------------------------------------------- entry
+
+
+_ENGINE = None
+
+
+def default_engine():
+    global _ENGINE
+    if _ENGINE is None:
+        from .engine import Engine
+
+        _ENGINE = Engine()
+    return _ENGINE
+
+
+def main(argv: list[str], cwd: str | os.PathLike | None = None, engine=None) -> tuple[int, str, str]:
+    cwd = Path(cwd or os.getcwd())
+    out, err = io.StringIO(), io.StringIO()
+    as_json = "--json" in argv
+    t0 = time.perf_counter()
+    command = None
+    try:
+        parser = _parser()
+        try:
+            with contextlib.redirect_stdout(out):
+                args = parser.parse_args(argv)
+        except _HelpShown:
+            return 0, out.getvalue(), ""
+        if args.version:
+            return 0, f"cad {__version__}\n", ""
+        command = args.command
+        if command is None:
+            return 0, parser.format_help(), ""
+        result, text = _dispatch(args, cwd, engine or default_engine(), parser)
+        warnings = result.get("warnings", []) if isinstance(result, dict) else []
+        if as_json:
+            env = {"ok": True, "command": command, "result": result, "warnings": warnings,
+                   "duration_ms": round((time.perf_counter() - t0) * 1000, 2)}
+            out.write(json.dumps(env, indent=2, default=str) + "\n")
+        else:
+            out.write(text if text.endswith("\n") else text + "\n")
+            for w in warnings:
+                err.write(f"warning [{w.get('code')}]: {w.get('message')}\n")
+        return 0, out.getvalue(), err.getvalue()
+    except UsageError as e:
+        return _fail(as_json, command, {"code": "USAGE", "message": str(e), "hint": "see `cad help <command>`"}, 2, out, err)
+    except CadError as e:
+        return _fail(as_json, command, e.to_dict(), _exit_for(e.code), out, err)
+    except Exception as e:  # internal bug: report with traceback
+        tb = traceback.format_exc()
+        return _fail(as_json, command, {"code": "INTERNAL", "message": f"{type(e).__name__}: {e}", "details": {"traceback": tb[-4000:]}}, 1, out, err)
+
+
+def _exit_for(code: str) -> int:
+    if code in _CODE_EXIT:
+        return _CODE_EXIT[code]
+    return 3
+
+
+def _fail(as_json, command, error, code, out, err):
+    if as_json:
+        out.write(json.dumps({"ok": False, "command": command, "error": error, "exit_code": code}, indent=2, default=str) + "\n")
+    else:
+        msg = f"error [{error['code']}]"
+        if error.get("feature"):
+            msg += f" in feature '{error['feature']}'"
+        msg += f": {error['message']}\n"
+        if error.get("hint"):
+            msg += f"  hint: {error['hint']}\n"
+        loc = (error.get("details") or {}).get("location")
+        if loc:
+            msg += f"  at {loc.get('file')}:{loc.get('line')}: {loc.get('code', '')}\n"
+        det = {k: v for k, v in (error.get("details") or {}).items() if k not in ("location", "traceback")}
+        if det:
+            msg += "  details: " + json.dumps(det, default=str)[:1500] + "\n"
+        if error["code"] == "INTERNAL":
+            msg += (error.get("details") or {}).get("traceback", "")
+        err.write(msg)
+    return code, out.getvalue(), err.getvalue()
+
+
+def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
+    c = args.command
+    if c == "help":
+        return _help(args.topic, parser)
+    if c == "capabilities":
+        return _capabilities(), _capabilities_text()
+    if c == "schema":
+        from .schema import SCHEMAS
+
+        if args.name:
+            if args.name not in SCHEMAS:
+                raise CadError("NOT_FOUND", f"no schema named {args.name!r}", details={"available": sorted(SCHEMAS)})
+            return SCHEMAS[args.name], json.dumps(SCHEMAS[args.name], indent=2)
+        return SCHEMAS, json.dumps(SCHEMAS, indent=2)
+    if c == "docs":
+        text = _docs_text()
+        return {"markdown": text}, text
+    if c == "examples":
+        return _examples(args, cwd)
+    if c == "init":
+        from .project import init_project
+
+        tmpl = None
+        if args.example:
+            tmpl = _example_source(args.example)
+        root = init_project((cwd / args.dir).resolve(), args.name, tmpl)
+        _set_current(root)
+        return {"root": str(root), "current": True}, f"created project at {root} (now the current project)\nnext: edit model.py, then `cad build`"
+    if c == "open":
+        return _open(args, cwd, engine)
+    if c == "run":
+        return _run(args, cwd)
+
+    root = resolve_project(args, cwd)
+    s = engine.session(root)
+    if c == "status":
+        r = s.status()
+        lb = r["last_build"] or {}
+        return r, (f"project {r['project']} at {r['root']}\n  head revision: {r['head']}  ({r['revisions']} revisions)\n"
+                   f"  last build: {lb.get('status', 'none')}" + (f" — {lb['error']['message']}" if lb.get("error") else "")
+                   + f"\n  session pid {r['session']['pid']}, stats {r['session']['stats']}")
+    if c == "build":
+        r = s.build(_kv(args.param), force=args.force)
+        return r, _fmt_build(r)
+    if c == "inspect":
+        r = s.inspect(args.revision, args.part, features=args.features, refs=args.refs)
+        return r, _fmt_inspect(r)
+    if c == "measure":
+        metrics = [m for m in ("volume", "area", "bbox", "com", "holes", "validity", "length") if getattr(args, m)]
+        r = s.measure(args.target, metrics, args.revision, other=args.distance, density=args.density)
+        return r, _fmt_yaml(r)
+    if c == "query":
+        target, expr = args.target, args.expr
+        if target and not expr and ("(" in target):
+            target, expr = None, target
+        r = s.query(target, expr or "faces()", args.revision)
+        return r, _fmt_query(r)
+    if c == "render":
+        r = s.render(args.views, rev=args.revision, parts=args.part, size=_size(args.size), style=args.style,
+                     background=args.background, out_dir=args.out, annotate=not args.no_annotate, sheet=not args.no_sheet)
+        lines = [f"revision {r['revision']}: {len(r['images'])} view(s) -> {r['out_dir']}"]
+        for im in r["images"]:
+            lines.append(f"  {im['view']:<10} {im['path']}  ({'cached' if im['cached'] else 'rendered'}, "
+                         f"1px={im['mm_per_pixel']:.4g}mm, right={im['screen_axes']['right']} up={im['screen_axes']['up']})")
+        if r["sheet"]:
+            lines.append(f"  sheet      {r['sheet']}")
+        return r, "\n".join(lines)
+    if c == "export":
+        fmts = [f.strip() for f in args.format.split(",")] if args.format else None
+        r = s.export(fmts, rev=args.revision, parts=args.part, out_dir=args.out, tolerance=args.tolerance)
+        return r, "\n".join([f"revision {r['revision']}:"] + [f"  {f['path']}  ({f['bytes']} bytes)" for f in r["files"]])
+    if c == "params":
+        r = s.params()
+        lines = [f"parameters (revision {r['revision']}):"]
+        for k, d in sorted(r["declared"].items()):
+            rng = f" [{d.get('min')}..{d.get('max')}]" if d.get("min") is not None or d.get("max") is not None else ""
+            ov = "  (overridden)" if k in r["overlay"] else ""
+            lines.append(f"  {k} = {d['value']} {d.get('unit') or ''}{rng}  default {d['default']}{ov}")
+        extra = [k for k in r["overlay"] if k not in r["declared"]]
+        if extra:
+            lines.append(f"  overlay entries not declared by the model: {extra}")
+        return r, "\n".join(lines)
+    if c == "set":
+        vals = _assignments(args.assignments)
+        r = s.set_params(vals, force=args.force)
+        text = f"params.toml: {r['overlay']}"
+        if not args.no_build:
+            b = s.build()
+            r["build"] = b
+            r["warnings"] = b.get("warnings", [])
+            text += "\n" + _fmt_build(b)
+        return r, text
+    if c == "unset":
+        r = s.unset_params(args.names)
+        text = f"params.toml: {r['overlay']}"
+        if not args.no_build:
+            b = s.build()
+            r["build"] = b
+            text += "\n" + _fmt_build(b)
+        return r, text
+    if c == "revisions":
+        r = s.revisions(args.limit)
+        lines = []
+        for rv in r["revisions"]:
+            mark = "*" if rv["head"] else " "
+            parts = ", ".join(f"{n} {p['bbox']} vol={p['volume']}" for n, p in rv["parts"].items())
+            lines.append(f"{mark} r{rv['revision']:<4} {rv['created_at']}  src {rv['source_hash']}  {rv['overrides'] or ''}  {parts}")
+        lb = r["last_build"]
+        if lb and lb.get("status") == "failed":
+            lines.append(f"last build FAILED: {lb['error']['message']} (head unchanged at r{r['head']})")
+        return r, "\n".join(lines) or "no revisions yet"
+    if c == "diff":
+        r = s.diff(args.a, args.b)
+        return r, _fmt_yaml(r)
+    if c == "checkout":
+        r = s.checkout(args.revision)
+        return r, f"active revision is now r{r['head']} ({r['note']})"
+    if c == "restore":
+        r = s.restore(args.revision, force=args.force)
+        return r, f"restored r{r['revision']}: {r.get('restored')}"
+    raise UsageError(f"unknown command {c}")
+
+
+def _assignments(items: list[str]) -> dict[str, Any]:
+    from .project import parse_value
+
+    vals: dict[str, Any] = {}
+    i = 0
+    while i < len(items):
+        it = items[i]
+        if "=" in it:
+            k, v = it.split("=", 1)
+            vals[k] = parse_value(v)
+            i += 1
+        elif i + 1 < len(items):
+            vals[it] = parse_value(items[i + 1])
+            i += 2
+        else:
+            raise UsageError(f"missing value for parameter {it!r}")
+    return vals
+
+
+def _set_current(root: Path) -> None:
+    f = current_project_file()
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(str(root) + "\n")
+
+
+def _open(args, cwd: Path, engine):
+    from .project import CONFIG_NAME, find_project_root
+
+    p = (cwd / args.path).resolve()
+    if p.is_file() and p.suffix == ".py":
+        root = find_project_root(p)
+        if root is None:
+            root = p.parent
+            cfg = root / CONFIG_NAME
+            if not cfg.exists():
+                cfg.write_text(f'[project]\nname = "{p.stem}"\nentry = "{p.name}"\n')
+    elif p.is_dir():
+        root = p if (p / CONFIG_NAME).exists() else find_project_root(p)
+        if root is None:
+            raise CadError("NO_PROJECT", f"{p} has no cad.toml", hint="use `cad init` to create a project, or open a .py file")
+    else:
+        raise CadError("NOT_FOUND", f"{p} does not exist")
+    _set_current(root)
+    s = engine.session(root)
+    st = s.status()
+    return st, f"opened {st['project']} at {root} (head revision: {st['head']})"
+
+
+def _run(args, cwd: Path):
+    from .runner import run_script
+
+    script = (cwd / args.script).resolve()
+    t0 = time.perf_counter()
+    out = run_script(script, _kv(args.param))
+    outdir = Path(args.out) if args.out else cwd / "out" / script.stem
+    if not outdir.is_absolute():
+        outdir = cwd / outdir
+    result: dict[str, Any] = {
+        "script": str(script),
+        "parts": {n: p.summary() for n, p in out.parts.items()},
+        "parameters": {k: v.value for k, v in out.parameters.items()},
+        "stdout": out.stdout,
+        "warnings": out.warnings,
+    }
+    if args.render:
+        from .renderer import render_views
+
+        result["renders"] = render_views(out.parts, args.render, outdir, size=_size(args.size), style=args.style,
+                                         prefix=script.stem)
+    if args.export:
+        files = []
+        for fmt in [f.strip() for f in args.export.split(",")]:
+            for n, p in out.parts.items():
+                files.append(p.export(str(outdir / f"{n}.{fmt}")))
+        result["exports"] = files
+    result["duration_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+    lines = [_fmt_parts(result["parts"])]
+    if out.stdout.strip():
+        lines.append("script output:\n" + _indent(out.stdout.rstrip()))
+    for r in result.get("renders", []):
+        lines.append(f"render {r['view']}: {r['path']}")
+    for f in result.get("exports", []):
+        lines.append(f"export: {f}")
+    return result, "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- formatting
+
+
+def _indent(s: str, n: int = 2) -> str:
+    return "\n".join(" " * n + line for line in s.splitlines())
+
+
+def _fmt_parts(parts: dict) -> str:
+    lines = []
+    for n, p in parts.items():
+        sz = p.get("bbox", {}).get("size") or p.get("bbox_size")
+        lines.append(f"part {n}: valid={p.get('valid')} solids={p.get('solids')} bbox={sz} volume={p.get('volume')} holes={p.get('holes')}")
+    return "\n".join(lines)
+
+
+def _fmt_build(r: dict) -> str:
+    head = f"revision {r['revision']} ({'cached, inputs unchanged' if r['cached'] else 'built'} in {r['duration_ms']:.0f} ms)"
+    lines = [head, _fmt_parts(r["parts"])]
+    if r.get("parameters"):
+        lines.append("parameters: " + ", ".join(f"{k}={v}" for k, v in r["parameters"].items()))
+    if r.get("stdout", "").strip():
+        lines.append("script output:\n" + _indent(r["stdout"].rstrip()))
+    return "\n".join(lines)
+
+
+def _fmt_inspect(r: dict) -> str:
+    lines = [f"{r['project']} revision {r['revision']} (head {r['head']}, built {r['created_at']})"]
+    if r["parameters"]:
+        lines.append("parameters: " + ", ".join(f"{k}={v['value']}" for k, v in r["parameters"].items()))
+    for n, p in r["parts"].items():
+        b = p["bbox"]
+        lines.append(f"part {n}: valid={p['valid']} solids={p['solids']} faces={p['faces']} edges={p['edges']}")
+        lines.append(f"  bbox min {b['min']} max {b['max']} size {b['size']}")
+        lines.append(f"  volume {p['volume']} mm3, area {p['area']} mm2, center of mass {p['center_of_mass']}")
+        for h in p["hole_list"]:
+            lines.append(f"  hole d={h['diameter']} axis={h['axis']} at {h['position']} depth {h['depth']} {h['names']}")
+        if "feature_list" in p:
+            lines.append("  features: " + ", ".join(p["feature_list"]))
+        if "references" in p:
+            lines.append("  references: " + ", ".join(f"{k}({v['count']})" if v["status"] == "ok" else f"{k}(lost in {v['lost_in']})"
+                                                      for k, v in p["references"].items()))
+        if "feature_graph" in p:
+            for f in p["feature_graph"]:
+                lines.append(f"  - {f['id']} [{f['type']}] deps={f['depends_on']} params={json.dumps(f['params'], default=str)[:200]}")
+        for w in p.get("warnings", []):
+            lines.append(f"  warning [{w['code']}] {w.get('feature', '')}: {w['message']}")
+    return "\n".join(lines)
+
+
+def _fmt_query(r: dict) -> str:
+    if "items" not in r:
+        return json.dumps(r["value"], indent=2, default=str)
+    lines = [f"{r['selection']}: {r['count']} {r['kind']}(s)"]
+    for i, it in enumerate(r["items"]):
+        lines.append(f"  [{i}] " + json.dumps(it, default=str))
+    return "\n".join(lines)
+
+
+def _fmt_yaml(d: Any, ind: int = 0) -> str:
+    pad = "  " * ind
+    if isinstance(d, dict):
+        lines = []
+        for k, v in d.items():
+            if isinstance(v, (dict, list)) and v and not _is_flat(v):
+                lines.append(f"{pad}{k}:")
+                lines.append(_fmt_yaml(v, ind + 1))
+            else:
+                lines.append(f"{pad}{k}: {json.dumps(v, default=str)}")
+        return "\n".join(lines)
+    if isinstance(d, list):
+        return "\n".join(f"{pad}- {json.dumps(x, default=str)}" for x in d)
+    return f"{pad}{d}"
+
+
+def _is_flat(v) -> bool:
+    if isinstance(v, list):
+        return all(not isinstance(x, (dict, list)) for x in v)
+    return False
+
+
+# --------------------------------------------------------------------------- discovery
+
+
+def _help(topic, parser):
+    if not topic:
+        return {"commands": {k: v["summary"] for k, v in COMMANDS.items()}}, parser.format_help()
+    if topic not in COMMANDS:
+        raise CadError("NOT_FOUND", f"no command {topic!r}", details={"commands": sorted(COMMANDS)})
+    sp = parser._subparsers._group_actions[0].choices[topic]
+    opts = []
+    for a in sp._actions:
+        if isinstance(a, argparse._HelpAction):
+            continue
+        opts.append({
+            "name": a.option_strings[0] if a.option_strings else a.dest,
+            "flags": a.option_strings,
+            "positional": not a.option_strings,
+            "help": a.help,
+            "default": a.default if a.default is not argparse.SUPPRESS else None,
+            "choices": list(a.choices) if a.choices else None,
+            "repeatable": isinstance(a, argparse._AppendAction),
+            "takes_value": a.nargs != 0,
+        })
+    return {"command": topic, "summary": COMMANDS[topic]["summary"], "requires_project": COMMANDS[topic]["project"],
+            "arguments": opts, "usage": sp.format_usage().strip()}, sp.format_help()
+
+
+def _capabilities() -> dict:
+    from .renderer import ALL_VIEWS, STANDARD_VIEWS, STYLES
+
+    return {
+        "name": "cad",
+        "version": __version__,
+        "kernel": "Open CASCADE (OCP bindings)",
+        "units": {"length": "mm", "angle": "degrees"},
+        "coordinate_system": "right-handed, Z up; front view looks from -Y; width=X, depth=Y, height=Z",
+        "commands": {k: v["summary"] for k, v in COMMANDS.items()},
+        "render": {"views": sorted(STANDARD_VIEWS), "default_set": list(ALL_VIEWS), "custom": ["az=<deg>,el=<deg>", "dir=x,y,z[,up=x,y,z]"],
+                   "styles": list(STYLES), "projection": ["orthographic"], "outputs": ["png", "json metadata", "contact sheet"]},
+        "export_formats": ["step", "stl", "brep"],
+        "exit_codes": {str(v): k for k, v in EXIT.items()},
+        "json_envelope": {"ok": "bool", "command": "str", "result": "object", "warnings": "list", "error": "{code,message,hint?,feature?,details?}"},
+        "python_api": "from cad import Part, Profile, Plane, Parameter  (run `cad docs` for the reference)",
+        "modes": {"daemon": "default; the cad binary auto-starts cadd", "standalone": "cad --no-daemon ... or cad run script.py"},
+    }
+
+
+def _capabilities_text() -> str:
+    c = _capabilities()
+    lines = [f"cad {c['version']} — units mm/deg, {c['coordinate_system']}", "", "commands:"]
+    lines += [f"  {k:<13} {v}" for k, v in c["commands"].items()]
+    lines += ["", f"views: {', '.join(c['render']['views'])}, plus {', '.join(c['render']['custom'])}",
+              f"styles: {', '.join(c['render']['styles'])};  export: {', '.join(c['export_formats'])}",
+              "exit codes: " + ", ".join(f"{k}={v}" for k, v in c["exit_codes"].items())]
+    return "\n".join(lines)
+
+
+def _docs_text() -> str:
+    p = Path(__file__).parent / "docs" / "REFERENCE.md"
+    return p.read_text() if p.exists() else "reference not installed"
+
+
+def _examples_dir() -> Path:
+    return Path(__file__).parent / "examples"
+
+
+def _example_source(name: str) -> str:
+    p = _examples_dir() / f"{name}.py"
+    if not p.exists():
+        raise CadError("NOT_FOUND", f"no example {name!r}", details={"available": sorted(x.stem for x in _examples_dir().glob("*.py"))})
+    return p.read_text()
+
+
+def _examples(args, cwd: Path):
+    d = _examples_dir()
+    if args.action == "list":
+        items = []
+        for p in sorted(d.glob("*.py")):
+            doc = p.read_text().split('"""')
+            items.append({"name": p.stem, "summary": doc[1].strip().splitlines()[0] if len(doc) > 2 else ""})
+        return {"examples": items}, "\n".join(f"{i['name']:<22} {i['summary']}" for i in items)
+    if not args.name:
+        raise UsageError("example name required")
+    src = _example_source(args.name)
+    if args.action == "show":
+        return {"name": args.name, "source": src}, src
+    from .project import init_project
+
+    dest = (cwd / (args.dest or args.name)).resolve()
+    init_project(dest, args.name, src)
+    return {"root": str(dest)}, f"copied example {args.name} to {dest}\nnext: cd {dest} && cad build && cad render"
+
+
+def console_main() -> None:  # pragma: no cover - entry point
+    code, out, err = main(sys.argv[1:])
+    sys.stdout.write(out)
+    sys.stderr.write(err)
+    sys.exit(code)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    console_main()
