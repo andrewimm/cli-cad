@@ -157,3 +157,12 @@ def test_bottom_chamfer_follows_print_on():
     top.bottom_chamfer(0.5)
     assert cross_section(top.shape, "z", 29.95)["regions"][0]["size"][0] == pytest.approx(49.1, abs=0.01)
     assert cross_section(top.shape, "z", 15.05)["regions"][0]["size"][0] == pytest.approx(50)
+
+
+def test_3mf_overlap_check_uses_design_pose(tmp_path):
+    from cad.threemf import export_3mf
+
+    base = Part("base", material="PETG"); base.box(40, 30, 10)
+    lid = Part("lid", material="PETG"); lid.box(40, 30, 2, at=(0, 0, 10), name="plate"); lid.print_on(lid.faces("plate.top"))
+    r = export_3mf({"base": base, "lid": lid}, tmp_path / "x.3mf")
+    assert not r["warnings"] and r["oriented_for_print"]

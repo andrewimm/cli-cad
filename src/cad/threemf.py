@@ -157,6 +157,7 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         raise CadError(INVALID_ARGUMENT, f"unknown 3MF mode {mode!r}", hint=f"use one of {MODES}")
     if not parts:
         raise CadError(INVALID_ARGUMENT, "nothing to export")
+    assembled = parts  # overlap / contact checks use the design pose, not the print layout
     parts, orient_notes = orient_for_print(parts, mode)
     # material slots, in first-use order; parts without a material get a per-part default slot
     slots: list[Material] = []
@@ -185,7 +186,7 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         names = list(parts)
         for i, a in enumerate(names):
             for b in names[i + 1:]:
-                ov = parts[a].interference(parts[b])
+                ov = assembled[a].interference(assembled[b])
                 if ov > 1e-6:
                     report["warnings"].append({"code": "MATERIAL_OVERLAP" if mode == "multimaterial" else "PARTS_OVERLAP",
                                                "message": f"parts '{a}' and '{b}' overlap by {ov:.3f} mm3"
@@ -194,7 +195,7 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
     if mode == "objects" and len(slots) > 1 and len(parts) > 1:
         names = list(parts)
         touching = [(a, b) for i, a in enumerate(names) for b in names[i + 1:]
-                    if slot_of[a] != slot_of[b] and parts[a].distance_to(parts[b]) < 1e-6]
+                    if slot_of[a] != slot_of[b] and assembled[a].distance_to(assembled[b]) < 1e-6]
         if touching:
             report["warnings"].append({"code": "CONSIDER_MULTIMATERIAL",
                                        "message": f"parts in different materials touch ({', '.join(f'{a}/{b}' for a, b in touching[:4])}); "
