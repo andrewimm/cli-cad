@@ -234,11 +234,14 @@ def _wrap_occ(fid: str, what: str, code: str, exc: Exception, hint: str | None =
 class Part:
     """A single solid body built from features.  See module docs for conventions."""
 
-    def __init__(self, name: str = "part", *, color: str | Sequence[float] | None = None):
+    def __init__(self, name: str = "part", *, color: str | Sequence[float] | None = None, reference: bool = False):
+        """``reference=True`` marks a body you design *around* (a servo, a PCB, a bearing):
+        it is rendered and measured against, but never exported."""
         if not isinstance(name, str) or not name:
             raise CadError(INVALID_ARGUMENT, "Part name must be a non-empty string")
         self.name = name
         self.color = color
+        self.reference = bool(reference)
         self._shape: TopoDS_Shape | None = None
         self._refs: dict[str, list[TopoDS_Shape]] = {}
         self._ref_kind: dict[str, str] = {}
@@ -1169,6 +1172,30 @@ class Part:
             )
         return self
 
+    def wall_thickness(self, percentile: float = 2.0, samples_per_face: int = 5) -> dict:
+        """Sampled local wall thickness: ``min``, a low percentile, and the thinnest spots.
+
+        Rays are cast inward from points on every face; thin walls, floors and the
+        ligament between a hole and an edge all appear as small values.
+        """
+        from .analysis import thickness_report
+
+        return thickness_report(self, percentile, samples_per_face)
+
+    def assert_min_thickness(self, minimum: float, *, percentile: float = 2.0) -> "Part":
+        """Raise ``VALIDATION_FAILED`` if the wall thickness (at ``percentile``) is below ``minimum``."""
+        rep = self.wall_thickness(percentile)
+        value = rep.get(f"p{percentile:g}", 0.0)
+        if value < minimum - 1e-6:
+            raise CadError(
+                VALIDATION_FAILED,
+                f"part '{self.name}' has walls thinner than {minimum} mm (p{percentile:g} = {value} mm)",
+                hint="thicken the wall or move the feature: see details.thinnest for locations "
+                     "(a hole too close to an edge leaves a thin ligament)",
+                details={"thinnest": rep["thinnest"]},
+            )
+        return self
+
     def distance_to(self, other: "Part") -> float:
         """Minimum distance between the two bodies (0 if they touch or overlap)."""
         return _occ.distance(self.shape, other.shape)[0]
@@ -1242,6 +1269,7 @@ class Part:
         return {
             "name": self.name,
             "has_body": True,
+            "reference": self.reference,
             "valid": self.is_valid(),
             "solids": self.solid_count,
             "faces": len(_occ.faces(self._shape)),
@@ -1278,7 +1306,7 @@ class Part:
         """Independent copy (geometry is shared immutably, history is copied)."""
         import copy as _copy
 
-        p = Part(name or self.name, color=self.color)
+        p = Part(name or self.name, color=self.color, reference=self.reference)
         p._shape = self._shape
         p._refs = {k: list(v) for k, v in self._refs.items()}
         p._ref_kind = dict(self._ref_kind)
@@ -1311,9 +1339,10 @@ class Part:
         return {"refs": out, "lost": dict(self._ref_lost)}
 
     @classmethod
-    def _rehydrate(cls, name: str, shape: TopoDS_Shape, color=None, refs: dict | None = None, features: list[dict] | None = None) -> "Part":
+    def _rehydrate(cls, name: str, shape: TopoDS_Shape, color=None, refs: dict | None = None, features: list[dict] | None = None,
+                   reference: bool = False) -> "Part":
         """Rebuild a queryable Part from stored geometry (no script re-execution)."""
-        p = cls(name, color=color)
+        p = cls(name, color=color, reference=reference)
         p._shape = shape
         refs = refs or {}
         index = {"face": _occ.faces(shape), "edge": _occ.edges(shape)}

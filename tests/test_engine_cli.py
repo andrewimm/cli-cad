@@ -162,3 +162,12 @@ def test_section_render_and_reference_distance(tmp_path):
     assert c == 3 and r["error"]["code"] == "INVALID_ARGUMENT"
     c, r = j(["measure", "lid.lip", "--distance", "box.shell1.inner"], proj, e)
     assert c == 0 and r["result"]["distance"]["min_distance"] > 0
+
+
+def test_build_auto_creates_project_file(tmp_path):
+    (tmp_path / "model.py").write_text("from cad import Part\np = Part('a')\np.box(1, 1, 1)\n")
+    c, r = j(["build"], tmp_path)
+    assert c == 0 and r["result"]["created_project_file"].endswith("cad.toml")
+    assert (tmp_path / "cad.toml").exists()
+    c, r = j(["inspect"], tmp_path / "missing" if False else tmp_path)
+    assert c == 0

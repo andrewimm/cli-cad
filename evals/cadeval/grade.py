@@ -48,7 +48,10 @@ def load_submission(path: Path, overrides: dict | None = None) -> tuple[dict[str
     t = time.perf_counter()
     out = run_script(script, params)
     info["build_ms"] = round((time.perf_counter() - t) * 1000, 1)
-    return out.parts, info
+    refs = [n for n, p in out.parts.items() if getattr(p, "reference", False)]
+    if refs:
+        info["reference_parts_ignored"] = refs  # design-around envelopes are not deliverables
+    return {n: p for n, p in out.parts.items() if n not in refs}, info
 
 
 def _pick(parts: dict[str, Part], name: str | None) -> Part:

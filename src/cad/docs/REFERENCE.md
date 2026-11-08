@@ -35,6 +35,21 @@ Add `--json` to any command for a machine-readable envelope
 
 One-shot, no project: `cad run model.py --render iso,front --export step --out out/`.
 
+### Verify before you finish
+
+Renders show shape; numbers prove it. Match each kind of requirement to a check:
+
+| requirement | check |
+|---|---|
+| sizes, positions | `cad inspect`, `cad measure --bbox`, `cad query "faces().facing('+z')"` |
+| holes (diameter, position, depth) | `cad measure --holes` |
+| minimum wall thickness | `cad measure <part> --thickness` (holes near edges leave thin ligaments) |
+| clearance to other parts / a component envelope | model the component as `Part(..., reference=True)`, then `cad clearance --min D` |
+| moving parts | a motion `Parameter`, then `cad sweep PARAM START:STOP:STEP --min D --render front` |
+| hidden internals (cavities, pockets, bores) | `cad render --views front,iso_bottom --section y=0` |
+
+`cad build` in a directory with `model.py` but no `cad.toml` creates the project file for you.
+
 ### Project files
 
 A project is a directory with `cad.toml` (what `cad init` writes):
@@ -160,7 +175,9 @@ p.bolt_circle(diameter, circle_diameter=40, count=6, center=(0, 0), start_angle=
 
 - `depth` is measured from the start point along the direction; `None` drills through everything.
 - `counterbore=(diameter, depth)`, `countersink=(diameter, angle=90)` are added at the start.
-- `hole_pattern` centres the grid: `spacing=(48, 28), count=(2, 2)` → holes at (±24, ±14).
+- `hole_pattern` centres the grid on `center` (absolute coordinates in the plane perpendicular to
+  the direction): `spacing=(48, 28), count=(2, 2)` → holes at (±24, ±14); `count=(nx, ny)` is
+  (columns along the first axis, rows along the second).
 - Faces: `<id>.wall` (all), `<id>.wall.<i>` (per hole), `.floor` (blind), `.counterbore`, `.countersink`.
 - A hole that misses the part produces a `CUT_NO_EFFECT` / `HOLE_MISSED` warning.
 
@@ -232,6 +249,8 @@ p.mass(1.24)       # grams for density g/cm³ (PLA 1.24, PETG 1.27, ABS 1.04, Al
 p.find_holes()     # [{diameter, axis, position, depth, names}] found in the actual geometry
 p.is_valid()       # BRep validity
 p.assert_valid(solids=1)          # raises VALIDATION_FAILED with problems listed
+p.wall_thickness()                # {"min", "p2", "thinnest": [{thickness, at, measured_along, faces}]}
+p.assert_min_thickness(3)         # raises VALIDATION_FAILED with the thinnest locations
 p.distance_to(other)              # min distance (0 if touching/overlapping)
 p.interference(other)             # shared volume (0 = no collision)
 p.faces("lip").distance_to(box.faces("shell1.inner"))   # gap between selections (or a Part)
@@ -254,11 +273,13 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad open <dir or file.py>` | make a project current (commands work from any directory afterwards) |
 | `cad build [-p name=value] [--force]` | build → revision N (identical inputs reuse an existing revision) |
 | `cad inspect [part] [--features] [--refs] [-r REV]` | summary, holes, features, warnings |
-| `cad measure [part[.ref]] [--volume --area --bbox --com --holes] [--distance OTHER] [--density D]` | numbers, or the faces of a reference (e.g. `bracket.base.top`); `--distance` accepts parts or references on both sides, e.g. `cad measure lid.lip --distance box.shell1.inner` |
+| `cad measure [part[.ref]] [--volume --area --bbox --com --holes --thickness] [--distance OTHER] [--density D]` | numbers, or the faces of a reference (e.g. `bracket.base.top`); `--distance` accepts parts or references on both sides, e.g. `cad measure lid.lip --distance box.shell1.inner` |
 | `cad query [part] "<expr>"` | evaluate a selection, e.g. `cad query "edges().vertical().convex()"` |
 | `cad render [--views ...] [--section y=0] [--part P] [--size WxH] [--style shaded_edges|shaded|lines] [-r REV]` | PNG + JSON metadata per view, plus a contact sheet; `--section` cuts away the half facing the camera (`x=5:+` keeps the +X side) |
 | `cad export [--format step,stl,brep] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
+| `cad clearance [--min D] [--part P]` | gaps / contact / overlap for every pair of parts; per-face gaps for reference envelopes; exit 4 below `--min` |
+| `cad sweep PARAM START:STOP:STEP [--min D] [--render VIEWS]` | rebuild across a parameter range, check clearances and optionally render each value |
 | `cad revisions` / `cad diff [A] [B]` / `cad checkout REV` / `cad restore REV --force` | history; checkout never edits sources, restore does |
 | `cad status`, `cad daemon status|stop|restart` | session / daemon state |
 | `cad capabilities`, `cad help CMD --json`, `cad schema [name]`, `cad examples list|show|copy`, `cad docs` | discovery |
@@ -270,6 +291,51 @@ Views: `iso front back left right top bottom iso_back iso_left iso_bottom all`,
 `dir=x,y,z[,up=x,y,z]` (direction from the model toward the camera).
 Every PNG has a sidecar JSON with the camera vectors, `mm_per_pixel`, and the
 model bbox; images are annotated with the view, screen axes, an axis triad and a scale bar.
+
+## Assemblies, motion and designing around components
+
+A script may return several parts (`return {"base": base, "arm": arm}`); each is a separate
+printable body, positioned in one shared assembly frame. Common patterns:
+
+```python
+from cad import Parameter, Part
+
+angle = Parameter("hinge_angle", 0, min=0, max=135, unit="deg")
+
+def build():
+    # a component you design around: rendered and measured, never exported
+    motor = Part("motor", reference=True)
+    motor.cylinder(28, 40, at=(0, 0, 6))
+
+    frame = Part("frame")
+    frame.box(50, 50, 6)
+    frame.hole(9, at=(0, 0))                       # shaft clearance
+
+    flap = Part("flap")
+    flap.box(40, 4, 30, at=(0, 30, 6), align=("center", "min", "min"))
+    flap.rotate(angle, axis="x", center=(0, 30, 6))  # a motion parameter drives the pose
+    return {"motor": motor, "frame": frame, "flap": flap}
+```
+
+- **Rotation sense** (right-hand rule, positive = counter-clockwise looking from +axis toward the
+  origin): about `y`, +Z turns toward +X; about `z`, +X turns toward +Y; about `x`, +Y turns toward +Z.
+  To swing something toward the opposite side, use a negative angle.
+- **Layering along an axis:** keep moving parts in separate slabs (e.g. links at different Y or Z)
+  with the required gap between slabs. On the `"XZ"` plane (u = X, v = Z) `offset=d` places the sketch at
+  Y = −d and positive distances extrude toward −Y, so a slab from Y = y0 to Y = y0 + t is
+  `extrude(profile, -t, plane="XZ", offset=-y0)`.
+- **Check it:**
+
+```bash
+cad clearance --min 0.5                 # every pair: clear / touching / overlap, closest points;
+                                        # for reference parts, the gap in front of each of its faces
+cad sweep hinge_angle 0:135:15 --min 0.5 --render front    # rebuild at each value, report collisions,
+                                        # render each pose; the active revision is restored afterwards
+cad measure frame --thickness           # thinnest walls with locations (holes near edges, thin floors)
+```
+
+In Python: `part.wall_thickness()`, `part.assert_min_thickness(3)`, `part.distance_to(other)`,
+`part.interference(other)`. `cad export` skips reference parts.
 
 ## Errors
 

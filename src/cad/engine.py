@@ -105,7 +105,8 @@ class ProjectSession:
                 graph["persisted_refs"] = part._persisted_refs()
                 (tmp / "parts" / f"{name}.json").write_text(json.dumps(graph, indent=1, default=str))
                 geom[name] = {"brep": f"parts/{name}.brep", "geometry_hash": ghash, "summary": summary,
-                              "color": part.color if not isinstance(part.color, tuple) else list(part.color)}
+                              "color": part.color if not isinstance(part.color, tuple) else list(part.color),
+                              "reference": part.reference}
             src = tmp / "source"
             for rel in files:
                 dst = src / rel
@@ -188,7 +189,7 @@ class ProjectSession:
             graph = json.loads(gpath.read_text()) if gpath.exists() else {}
             color = info.get("color")
             parts[name] = Part._rehydrate(name, shape, tuple(color) if isinstance(color, list) else color,
-                                          graph.get("persisted_refs"), graph.get("features"))
+                                          graph.get("persisted_refs"), graph.get("features"), info.get("reference", False))
         self._remember(r, parts)
         return r, parts
 
@@ -277,6 +278,8 @@ class ProjectSession:
         if all_m or "validity" in metrics:
             out["valid"] = part.is_valid()
             out["solids"] = part.solid_count
+        if "thickness" in metrics:
+            out["wall_thickness"] = part.wall_thickness()
         if density is not None:
             out["mass_g"] = round(part.mass(density), 4)
         if other:
@@ -402,14 +405,15 @@ class ProjectSession:
                 self.stats.bump("render_cache_misses")
                 if scene is None:
                     scene = [R.SceneItem(n, self.mesh(r, n, all_parts[n], deflection),
-                                         R._parse_color(all_parts[n].color, R.PALETTE[i % len(R.PALETTE)]),
+                                         R._parse_color(all_parts[n].color, R.REFERENCE_COLOR if all_parts[n].reference
+                                                        else R.PALETTE[i % len(R.PALETTE)]),
                                          _occ.bbox(all_parts[n].shape))
                              for i, n in enumerate(names)]
                 if full_bounds is None:
                     full_bounds = R.scene_bounds(scene)
                 view_scene, sec = scene, None
                 if section:
-                    view_scene, sec = R.section_scene([(n, all_parts[n].shape, all_parts[n].color) for n in names],
+                    view_scene, sec = R.section_scene([(n, all_parts[n].shape, all_parts[n].color, all_parts[n].reference) for n in names],
                                                       cam, section, deflection, section_cache)
                 img, meta = R.render_one(view_scene, cam, size=size, style=style, background=bg, title=title,
                                          fit_bounds=full_bounds, section=sec,
@@ -452,7 +456,8 @@ class ProjectSession:
         if not out.is_absolute():
             out = self.root / out
         files = []
-        for n in parts or list(all_parts):
+        skipped = [] if parts else [n for n, p in all_parts.items() if p.reference]
+        for n in parts or [n for n in all_parts if n not in skipped]:
             if n not in all_parts:
                 raise CadError(NOT_FOUND, f"no part named '{n}'", details={"parts": list(all_parts)})
             for fmt in formats:
@@ -468,7 +473,54 @@ class ProjectSession:
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(cpath, dst)
                 files.append({"part": n, "format": fmt, "path": str(dst), "bytes": dst.stat().st_size})
-        return {"revision": r, "files": files}
+        out = {"revision": r, "files": files}
+        if skipped:
+            out["skipped_reference_parts"] = skipped
+        return out
+
+    # ------------------------------------------------------------------ design checks
+    def clearance(self, rev=None, *, parts: list[str] | None = None, min_distance: float | None = None) -> dict:
+        from .analysis import clearance_matrix
+
+        r, all_parts = self.parts(rev)
+        sel = {n: all_parts[n] for n in (parts or all_parts)}
+        if len(sel) < 2:
+            raise CadError(INVALID_ARGUMENT, "clearance needs at least two parts (add a reference=True part for an envelope)")
+        out = clearance_matrix(sel, min_distance)
+        out["revision"] = r
+        out["references"] = [n for n, p in sel.items() if p.reference]
+        return out
+
+    def sweep(self, parameter: str, values: list, *, views: str | None = None, size=None, min_distance: float | None = None,
+              section: str | None = None) -> dict:
+        """Rebuild at each parameter value, check clearances (and render), then restore the active revision."""
+        from .analysis import clearance_matrix
+
+        head = self.store.head()
+        rows = []
+        try:
+            for v in values:
+                b = self.build({parameter: v})
+                r, parts = self.parts(b["revision"])
+                row: dict[str, Any] = {"value": v, "revision": r}
+                if len(parts) >= 2:
+                    cm = clearance_matrix(parts, min_distance)
+                    row["closest_pair"] = cm["pairs"][0]
+                    if min_distance is not None:
+                        row["violations"] = cm["violations"]
+                row["warnings"] = b.get("warnings", [])
+                if views:
+                    rr = self.render(views, rev=r, size=size, sheet=False, section=section)
+                    row["images"] = [i["path"] for i in rr["images"]]
+                rows.append(row)
+        finally:
+            if head is not None:
+                self.store.set_head(head)
+        out: dict[str, Any] = {"parameter": parameter, "values": values, "results": rows, "head": head}
+        if min_distance is not None:
+            out["min_required"] = min_distance
+            out["ok"] = all(not row.get("violations") for row in rows)
+        return out
 
     # ------------------------------------------------------------------ params
     def params(self) -> dict:

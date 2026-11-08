@@ -61,7 +61,9 @@ COMMANDS: dict[str, dict] = {
     "measure": {"summary": "Measure a part or named reference: volume, area, bbox, com, holes, distance", "project": True},
     "query": {"summary": "Evaluate a selection expression, e.g. \"faces().facing('+z')\", and list matches", "project": True},
     "render": {"summary": "Render PNG views (iso, front, back, left, right, top, bottom, az=..,el=.., dir=x,y,z)", "project": True},
-    "export": {"summary": "Export STEP / STL / BREP files for a revision", "project": True},
+    "export": {"summary": "Export STEP / STL / BREP files for a revision (reference parts are skipped)", "project": True},
+    "clearance": {"summary": "Minimum distance / overlap between every pair of parts (including reference envelopes)", "project": True},
+    "sweep": {"summary": "Rebuild over a range of one parameter, checking clearances (and rendering) at each value", "project": True},
     "params": {"summary": "List declared parameters and the override overlay", "project": True},
     "set": {"summary": "Override parameters (writes params.toml) and rebuild", "project": True},
     "unset": {"summary": "Remove parameter overrides and rebuild", "project": True},
@@ -142,6 +144,7 @@ def _parser() -> _Parser:
     s.add_argument("--revision", "-r")
     for m in ("volume", "area", "bbox", "com", "holes", "validity", "length"):
         s.add_argument(f"--{m}", action="store_true")
+    s.add_argument("--thickness", action="store_true", help="sampled wall thickness with the thinnest locations")
     s.add_argument("--distance", metavar="OTHER", help="minimum distance (and interference) to another part or reference")
     s.add_argument("--density", type=float, metavar="G_PER_CM3", help="report mass for this density")
 
@@ -168,6 +171,19 @@ def _parser() -> _Parser:
     s.add_argument("--part", action="append")
     s.add_argument("--out", help="output directory (default out/r<rev>)")
     s.add_argument("--tolerance", type=float, default=0.01, help="STL chordal tolerance in mm")
+
+    s = cmd("clearance")
+    s.add_argument("--min", type=float, help="required clearance in mm; violations exit with code 4")
+    s.add_argument("--part", action="append", help="limit to these parts (repeatable)")
+    s.add_argument("--revision", "-r")
+
+    s = cmd("sweep")
+    s.add_argument("parameter")
+    s.add_argument("values", help="START:STOP:STEP (inclusive) or a comma list, e.g. 0:90:15 or 0,45,90")
+    s.add_argument("--min", type=float, help="required clearance between parts in mm; violations exit with code 4")
+    s.add_argument("--render", metavar="VIEWS", help="also render each value, e.g. front or iso,top")
+    s.add_argument("--section", metavar="PLANE")
+    s.add_argument("--size", help="WIDTHxHEIGHT for --render")
 
     cmd("params")
 
@@ -236,6 +252,11 @@ def resolve_project(args, cwd: Path) -> Path:
     root = find_project_root(cwd)
     if root:
         return root
+    if (cwd / "model.py").is_file() and getattr(args, "command", None) in ("build", "set", "unset"):
+        # a model script but no project yet: create the minimal project file instead of failing
+        (cwd / "cad.toml").write_text(f'[project]\nname = "{cwd.name}"\nentry = "model.py"\n')
+        args._auto_init = str(cwd / "cad.toml")
+        return cwd
     f = current_project_file()
     if f.exists():
         r = Path(f.read_text().strip())
@@ -303,17 +324,25 @@ def main(argv: list[str], cwd: str | os.PathLike | None = None, engine=None) -> 
         command = args.command
         if command is None:
             return 0, parser.format_help(), ""
-        result, text = _dispatch(args, cwd, engine or default_engine(), parser)
+        ret = _dispatch(args, cwd, engine or default_engine(), parser)
+        result, text = ret[0], ret[1]
+        failure = ret[2] if len(ret) > 2 else None  # a check that ran but did not pass: show results and fail
         warnings = result.get("warnings", []) if isinstance(result, dict) else []
+        code = _exit_for(failure["code"]) if failure else 0
         if as_json:
-            env = {"ok": True, "command": command, "result": result, "warnings": warnings,
+            env = {"ok": failure is None, "command": command, "result": result, "warnings": warnings,
                    "duration_ms": round((time.perf_counter() - t0) * 1000, 2)}
+            if failure:
+                env["error"] = failure
+                env["exit_code"] = code
             out.write(json.dumps(env, indent=2, default=str) + "\n")
         else:
             out.write(text if text.endswith("\n") else text + "\n")
             for w in warnings:
                 err.write(f"warning [{w.get('code')}]: {w.get('message')}\n")
-        return 0, out.getvalue(), err.getvalue()
+            if failure:
+                err.write(f"error [{failure['code']}]: {failure['message']}\n")
+        return code, out.getvalue(), err.getvalue()
     except UsageError as e:
         return _fail(as_json, command, {"code": "USAGE", "message": str(e), "hint": "see `cad help <command>`"}, 2, out, err)
     except CadError as e:
@@ -394,12 +423,16 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
                    + f"\n  session pid {r['session']['pid']}, stats {r['session']['stats']}")
     if c == "build":
         r = s.build(_kv(args.param), force=args.force)
-        return r, _fmt_build(r)
+        text = _fmt_build(r)
+        if getattr(args, "_auto_init", None):
+            r["created_project_file"] = args._auto_init
+            text = f"note: created {args._auto_init} (entry = model.py)\n" + text
+        return r, text
     if c == "inspect":
         r = s.inspect(args.revision, args.part, features=args.features, refs=args.refs)
         return r, _fmt_inspect(r)
     if c == "measure":
-        metrics = [m for m in ("volume", "area", "bbox", "com", "holes", "validity", "length") if getattr(args, m)]
+        metrics = [m for m in ("volume", "area", "bbox", "com", "holes", "validity", "length", "thickness") if getattr(args, m)]
         r = s.measure(args.target, metrics, args.revision, other=args.distance, density=args.density)
         return r, _fmt_yaml(r)
     if c == "query":
@@ -423,6 +456,38 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         fmts = [f.strip() for f in args.format.split(",")] if args.format else None
         r = s.export(fmts, rev=args.revision, parts=args.part, out_dir=args.out, tolerance=args.tolerance)
         return r, "\n".join([f"revision {r['revision']}:"] + [f"  {f['path']}  ({f['bytes']} bytes)" for f in r["files"]])
+    if c == "clearance":
+        r = s.clearance(args.revision, parts=args.part, min_distance=args.min)
+        lines = [f"revision {r['revision']} clearances" + (f" (required >= {args.min} mm)" if args.min is not None else "") + ":"]
+        for p in r["pairs"]:
+            flag = "" if p.get("ok", True) else "   <-- VIOLATION"
+            extra = f", overlap {p['overlap_volume']} mm3" if p["overlap_volume"] else ""
+            lines.append(f"  {p['a']} <-> {p['b']}: {p['state']}, min distance {p['min_distance']} mm{extra} "
+                         f"at {p['closest_points'][0]} / {p['closest_points'][1]}{flag}")
+            for f in p.get("reference_faces", []):
+                gap = "open (nothing in front)" if f["gap"] is None else ("contact" if f["gap"] < 1e-4 else f"{f['gap']} mm")
+                lines.append(f"      {p['b'] if p['b'] in r['references'] else p['a']} face {', '.join(f['faces'])} (normal {f['normal']}): gap {gap}")
+        fail = None
+        if r.get("violations"):
+            fail = {"code": "VALIDATION_FAILED", "message": f"{len(r['violations'])} pair(s) closer than {args.min} mm",
+                    "hint": "for envelopes, per-face distances show which faces touch; contact on a supporting face is often intended"}
+        return r, "\n".join(lines), fail
+    if c == "sweep":
+        vals = _sweep_values(args.values)
+        r = s.sweep(args.parameter, vals, views=args.render, size=_size(args.size), min_distance=args.min, section=args.section)
+        lines = [f"sweep {args.parameter} over {vals} (active revision restored to r{r['head']}):"]
+        for row in r["results"]:
+            cp = row.get("closest_pair")
+            desc = f"closest {cp['a']}<->{cp['b']} {cp['state']} {cp['min_distance']} mm" if cp else "single part"
+            bad = f"  VIOLATIONS: {[(v['a'], v['b'], v['min_distance']) for v in row['violations']]}" if row.get("violations") else ""
+            lines.append(f"  {args.parameter}={row['value']}: r{row['revision']} {desc}{bad}")
+            for img in row.get("images", []):
+                lines.append(f"      {img}")
+        fail = None
+        if r.get("ok") is False:
+            bad = [x["value"] for x in r["results"] if x.get("violations")]
+            fail = {"code": "VALIDATION_FAILED", "message": f"clearance below {args.min} mm at {args.parameter} = {bad}"}
+        return r, "\n".join(lines), fail
     if c == "params":
         r = s.params()
         lines = [f"parameters (revision {r['revision']}):"]
@@ -473,6 +538,23 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         r = s.restore(args.revision, force=args.force)
         return r, f"restored r{r['revision']}: {r.get('restored')}"
     raise UsageError(f"unknown command {c}")
+
+
+def _sweep_values(text: str) -> list:
+    from .project import parse_value
+
+    t = text.strip()
+    if ":" in t:
+        try:
+            a, b, step = (float(x) for x in t.split(":"))
+        except ValueError as e:
+            raise UsageError(f"sweep range must be START:STOP:STEP, got {text!r}") from e
+        if step <= 0:
+            raise UsageError("sweep STEP must be positive")
+        n = int(round((b - a) / step))
+        vals = [a + i * step for i in range(n + 1) if a + i * step <= b + 1e-9]
+        return [int(v) if float(v).is_integer() else round(v, 9) for v in vals]
+    return [parse_value(x) for x in t.split(",") if x.strip()]
 
 
 def _assignments(items: list[str]) -> dict[str, Any]:
@@ -592,7 +674,7 @@ def _fmt_inspect(r: dict) -> str:
         lines.append("parameters: " + ", ".join(f"{k}={v['value']}" for k, v in r["parameters"].items()))
     for n, p in r["parts"].items():
         b = p["bbox"]
-        lines.append(f"part {n}: valid={p['valid']} solids={p['solids']} faces={p['faces']} edges={p['edges']}")
+        lines.append(f"part {n}{' (reference: not exported)' if p.get('reference') else ''}: valid={p['valid']} solids={p['solids']} faces={p['faces']} edges={p['edges']}")
         lines.append(f"  bbox min {b['min']} max {b['max']} size {b['size']}")
         lines.append(f"  volume {p['volume']} mm3, area {p['area']} mm2, center of mass {p['center_of_mass']}")
         for h in p["hole_list"]:

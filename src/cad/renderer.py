@@ -55,6 +55,7 @@ STANDARD_VIEWS: dict[str, tuple[tuple[float, float, float], tuple[float, float, 
     "iso_bottom": ((1, -1, -1), (0, 0, 1)),
 }
 DEFAULT_VIEWS = ("iso", "front", "right", "top")
+REFERENCE_COLOR = (0.86, 0.84, 0.72)  # reference (design-around) bodies
 ALL_VIEWS = ("iso", "front", "back", "left", "right", "top", "bottom")
 STYLES = ("shaded_edges", "shaded", "lines")
 
@@ -195,21 +196,22 @@ def _parse_color(c, default) -> tuple[float, float, float]:
     return t  # type: ignore[return-value]
 
 
-def model_items(model: Any) -> list[tuple[str, Any, Any]]:
-    """(name, shape, colour) for a Part, list/tuple of Parts, dict name->Part or raw TopoDS_Shape."""
+def model_items(model: Any) -> list[tuple]:
+    """(name, shape, colour, is_reference) for a Part, list/tuple of Parts, dict name->Part or raw TopoDS_Shape."""
     from .part import Part
 
     items: list[tuple[str, Any, Any]] = []
     if isinstance(model, Part):
-        items.append((model.name, model.shape, model.color))
+        items.append((model.name, model.shape, model.color, model.reference))
     elif isinstance(model, dict):
         for k, p in model.items():
-            items.append((k, p.shape if isinstance(p, Part) else p, getattr(p, "color", None)))
+            items.append((k, p.shape if isinstance(p, Part) else p, getattr(p, "color", None), getattr(p, "reference", False)))
     elif isinstance(model, (list, tuple)):
         for p in model:
-            items.append((getattr(p, "name", "shape"), p.shape if isinstance(p, Part) else p, getattr(p, "color", None)))
+            items.append((getattr(p, "name", "shape"), p.shape if isinstance(p, Part) else p, getattr(p, "color", None),
+                          getattr(p, "reference", False)))
     else:
-        items.append(("shape", model, None))
+        items.append(("shape", model, None, False))
     return items
 
 
@@ -218,14 +220,15 @@ def build_scene(model: Any, deflection: float | None = None, mesh_cache: dict | 
     from . import _occ
 
     scene = []
-    for i, (name, shape, color) in enumerate(model_items(model)):
+    for i, (name, shape, color, *rest) in enumerate(model_items(model)):
         key = (id(shape), deflection)
         mesh = mesh_cache.get(key) if mesh_cache is not None else None
         if mesh is None:
             mesh = tessellate(shape, deflection)
             if mesh_cache is not None:
                 mesh_cache[key] = mesh
-        scene.append(SceneItem(name, mesh, _parse_color(color, PALETTE[i % len(PALETTE)]), _occ.bbox(shape)))
+        default = REFERENCE_COLOR if rest and rest[0] else PALETTE[i % len(PALETTE)]
+        scene.append(SceneItem(name, mesh, _parse_color(color, default), _occ.bbox(shape)))
     return scene
 
 
@@ -238,7 +241,7 @@ def section_scene(items: list[tuple[str, Any, Any]], cam: Camera, section: str, 
     axis, value, side = parse_section(section)
     keep = keep_sign(axis, side, cam.eye)
     scene = []
-    for i, (name, shape, color) in enumerate(items):
+    for i, (name, shape, color, *rest) in enumerate(items):
         key = ("section", id(shape), axis, value, keep, deflection)
         hit = cache.get(key) if cache is not None else None
         if hit is None:
@@ -249,8 +252,8 @@ def section_scene(items: list[tuple[str, Any, Any]], cam: Camera, section: str, 
         if not hit:
             continue
         mesh, caps, bounds = hit
-        scene.append(SceneItem(name, mesh, _parse_color(color, PALETTE[i % len(PALETTE)]), bounds,
-                               {c: SECTION_COLOR for c in caps}))
+        default = REFERENCE_COLOR if rest and rest[0] else PALETTE[i % len(PALETTE)]
+        scene.append(SceneItem(name, mesh, _parse_color(color, default), bounds, {c: SECTION_COLOR for c in caps}))
     info = {"plane": f"{'xyz'[axis]}={value:g}", "kept_side": "+" if keep > 0 else "-",
             "cap_color": list(SECTION_COLOR), "parts_cut": [it.name for it in scene]}
     return scene, info
