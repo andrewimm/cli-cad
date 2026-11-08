@@ -171,3 +171,14 @@ def test_build_auto_creates_project_file(tmp_path):
     assert (tmp_path / "cad.toml").exists()
     c, r = j(["inspect"], tmp_path / "missing" if False else tmp_path)
     assert c == 0
+
+
+def test_docs_sections_and_getting_started(tmp_path):
+    c, out, _ = run(["--help"], tmp_path)
+    assert c == 0 and "getting started" in out and "cad docs holes" in out
+    c, r = j(["docs", "holes"], tmp_path)
+    assert c == 0 and r["result"]["sections"][0] == "Holes" and "hole_pattern" in r["result"]["markdown"]
+    c, r = j(["docs", "--list"], tmp_path)
+    assert "Quick start" in r["result"]["sections"]
+    c, r = j(["docs", "nonexistent-topic-xyz"], tmp_path)
+    assert c == 5 and r["error"]["code"] == "NOT_FOUND"

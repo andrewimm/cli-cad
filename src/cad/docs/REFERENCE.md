@@ -1,7 +1,30 @@
 # cad — API & CLI reference
 
 Agent-first parametric CAD on Open CASCADE. Write a Python script, build it,
-check numbers, look at renders, revise, export.
+check numbers, look at renders, revise, export. Print one section with
+`cad docs <words>` (e.g. `cad docs holes`); list them with `cad docs --list`.
+
+## Quick start
+
+```python
+# model.py  (create the project with `cad init`, then `cad build`)
+from cad import Part
+
+def build():
+    p = Part("cover")                                   # one part = one printable solid
+    p.box(70, 45, 3, name="body")                       # 70 (X) x 45 (Y) x 3 (Z) mm, centred on X/Y, bottom on Z = 0
+    p.hole_pattern(3.4, spacing=(58, 33), count=(2, 2)) # 2 x 2 holes, centre-to-centre spacing, grid centred on (0, 0)
+    p.hole(10, at=(0, 0))                               # one more hole at (x, y), drilled down through the part
+    p.fillet(p.edges().vertical(), 4)                   # round the four vertical corners
+    p.assert_valid()
+    return p
+```
+
+```bash
+cad build && cad measure --holes        # check sizes and hole positions
+cad render --views iso,top              # look at renders/r1/*.png
+cad export --format stl                 # printable file: out/r1/cover.stl (mm)
+```
 
 ## Conventions
 

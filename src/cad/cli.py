@@ -98,7 +98,8 @@ class _HelpShown(Exception):
 
 
 def _parser() -> _Parser:
-    p = _Parser(prog="cad", description="Agent-first parametric CAD.  Run `cad capabilities --json` for a full description.")
+    p = _Parser(prog="cad", description="Agent-first parametric CAD: Python scripts in, exact solids, renders and STEP/STL out.",
+                formatter_class=argparse.RawDescriptionHelpFormatter, epilog=GETTING_STARTED)
     p.add_argument("--version", action="store_true", help="print version and exit")
     sub = p.add_subparsers(dest="command", parser_class=_Parser)
 
@@ -222,7 +223,9 @@ def _parser() -> _Parser:
     s.add_argument("name", nargs="?")
     s.add_argument("dest", nargs="?")
 
-    cmd("docs")
+    s = cmd("docs")
+    s.add_argument("topic", nargs="*", help="print only the matching section, e.g. `cad docs holes` (default: everything)")
+    s.add_argument("--list", action="store_true", help="list the section titles")
     s = cmd("help")
     s.add_argument("topic", nargs="?")
     return p
@@ -398,8 +401,7 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
             return SCHEMAS[args.name], json.dumps(SCHEMAS[args.name], indent=2)
         return SCHEMAS, json.dumps(SCHEMAS, indent=2)
     if c == "docs":
-        text = _docs_text()
-        return {"markdown": text}, text
+        return _docs(args)
     if c == "examples":
         return _examples(args, cwd)
     if c == "init":
@@ -782,6 +784,62 @@ def _capabilities_text() -> str:
               f"styles: {', '.join(c['render']['styles'])};  export: {', '.join(c['export_formats'])}",
               "exit codes: " + ", ".join(f"{k}={v}" for k, v in c["exit_codes"].items())]
     return "\n".join(lines)
+
+
+GETTING_STARTED = """getting started:
+  cad init                      make this directory a project (writes cad.toml and a model.py to edit)
+  # edit model.py:  from cad import Part;  p = Part("plate");  p.box(80, 50, 4);  p.hole(5, at=(30, 15))
+  cad build                     run the model -> revision 1 (errors point at your script line)
+  cad render --views iso,top    PNGs in renders/r1/ to look at
+  cad export --format stl       printable files in out/r1/
+
+documentation:
+  cad docs                      full API reference      cad docs --list    section titles
+  cad docs holes                one section (any title words: fillet, selecting, assemblies, ...)
+  cad examples list             worked examples         cad examples show <name>
+  cad help <command>            options of one command
+"""
+
+
+def _sections(text: str) -> list[tuple[str, int, str]]:
+    """(title, level, body) for every ## / ### section of the reference."""
+    out, cur, lvl, buf = [], None, 0, []
+    for line in text.splitlines():
+        if line.startswith("## ") or line.startswith("### "):
+            if cur is not None:
+                out.append((cur, lvl, "\n".join(buf)))
+            lvl = 2 if line.startswith("## ") else 3
+            cur, buf = line.lstrip("#").strip(), [line]
+        elif cur is not None:
+            buf.append(line)
+    if cur is not None:
+        out.append((cur, lvl, "\n".join(buf)))
+    return out
+
+
+def _docs(args):
+    text = _docs_text()
+    secs = _sections(text)
+    if args.list:
+        lines = [("  " if lvl == 3 else "") + title for title, lvl, _ in secs]
+        return {"sections": [t for t, _, _ in secs]}, "sections (print one with `cad docs <words>`):\n" + "\n".join("  " + l for l in lines)
+    if not args.topic:
+        return {"markdown": text}, text
+    words = [w.lower() for w in args.topic]
+
+    def score(title, body):
+        t = title.lower()
+        return sum(3 for w in words if w in t) + sum(1 for w in words if w in body.lower())
+
+    ranked = sorted(((score(t, b), i) for i, (t, _, b) in enumerate(secs)), reverse=True)
+    if not ranked or ranked[0][0] == 0:
+        raise CadError("NOT_FOUND", f"no documentation section matches {' '.join(args.topic)!r}",
+                       hint="see `cad docs --list` for section titles", details={"sections": [t for t, _, _ in secs]})
+    best = ranked[0][0]
+    # sections whose title matches; otherwise the best body matches (at most 3)
+    picks = [i for sc, i in ranked if sc >= 3 and sc >= best - 1][:3] or [i for sc, i in ranked if sc == best][:3]
+    body = "\n\n".join(secs[i][2] for i in sorted(picks))
+    return {"markdown": body, "sections": [secs[i][0] for i in sorted(picks)]}, body
 
 
 def _docs_text() -> str:
