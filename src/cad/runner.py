@@ -37,6 +37,7 @@ class BuildOutput:
     stderr: str = ""
     duration_ms: float = 0.0
     warnings: list[dict] = field(default_factory=list)
+    joints: list[dict] = field(default_factory=list)
 
 
 def _purge_project_modules(root: Path) -> None:
@@ -48,17 +49,24 @@ def _purge_project_modules(root: Path) -> None:
             del sys.modules[name]
 
 
-def _collect(ns: dict[str, Any]) -> dict[str, Part]:
+def _collect(ns: dict[str, Any]) -> tuple[dict[str, Part], Any]:
+    """(parts, assembly or None)."""
+    from .assembly import Assembly
+
     if callable(ns.get("build")):
         result = ns["build"]()
-        return _normalise(result, "build()")
+        if isinstance(result, Assembly):
+            if not result.parts:
+                raise CadError(SCRIPT_ERROR, "build() returned an empty Assembly", hint="asm.add(part, ...)")
+            return result.solve(), result
+        return _normalise(result, "build()"), None
     parts: dict[str, Part] = {}
     seen: set[int] = set()
     for k, v in ns.items():
         if isinstance(v, Part) and not k.startswith("_") and id(v) not in seen and v.has_body:
             seen.add(id(v))
             parts[v.name if v.name not in parts else k] = v
-    return parts
+    return parts, None
 
 
 def _normalise(result: Any, where: str) -> dict[str, Part]:
@@ -128,7 +136,8 @@ def run_script(
             os.chdir(root)
             try:
                 ns = runpy.run_path(str(path), run_name="__cad__")
-                parts = _collect(ns)
+                parts, assembly = _collect(ns)
+                joints = assembly.describe() if assembly is not None else []
             except CadError as e:
                 frames = _script_frames(sys.exc_info()[2], path)
                 if frames:
@@ -161,4 +170,6 @@ def run_script(
             hint="define build() returning a Part (or list/dict of Parts), or assign a Part with geometry to a module-level variable",
         )
     warnings = [dict(w.to_dict(), part=name) for name, p in parts.items() for w in p.warnings]
-    return BuildOutput(parts, dict(ctx.declared), out.getvalue(), err.getvalue(), (time.perf_counter() - t0) * 1000, warnings)
+    warnings += [dict(w, joint=j["name"]) for j in joints for w in j["warnings"]]
+    return BuildOutput(parts, dict(ctx.declared), out.getvalue(), err.getvalue(), (time.perf_counter() - t0) * 1000, warnings,
+                       joints)

@@ -127,6 +127,7 @@ class ProjectSession:
                 "overrides": params,
                 "parameters": {k: v.to_dict() for k, v in out.parameters.items()},
                 "parts": geom,
+                "joints": out.joints,
                 "build": {"duration_ms": round(out.duration_ms, 2), "stdout": out.stdout[-20000:],
                           "stderr": out.stderr[-20000:], "warnings": warnings},
                 "cad_version": __version__,
@@ -373,6 +374,7 @@ class ProjectSession:
         sheet: bool = True,
         deflection: float | None = None,
         section: str | None = None,
+        joints: bool = False,
     ) -> dict:
         from . import renderer as R
 
@@ -401,6 +403,7 @@ class ProjectSession:
             "title": title,
             "deflection": deflection,
             "section": section,
+            "joints": m.get("joints", []) if joints else None,
             "renderer": R.RENDERER_VERSION,
         }
         out = Path(out_dir) if out_dir else self.root / "renders" / f"r{r}"
@@ -436,7 +439,8 @@ class ProjectSession:
                                                       cam, section, deflection, section_cache)
                 img, meta = R.render_one(view_scene, cam, size=size, style=style, background=bg, title=title,
                                          fit_bounds=full_bounds, section=sec,
-                                         annotate_images=annotate, metadata={"revision": r, "project": cfg.name})
+                                         annotate_images=annotate, metadata={"revision": r, "project": cfg.name},
+                                         joints=scene_key["joints"])
                 R.save_png(img, cpng)
                 cjson.write_text(json.dumps(meta, indent=1))
                 cached = False
@@ -596,11 +600,31 @@ class ProjectSession:
         out["references"] = [n for n, p in sel.items() if p.reference]
         return out
 
+    def joints(self, rev=None) -> dict:
+        r = self.resolve_rev(rev)
+        return {"revision": r, "joints": self.store.manifest(r).get("joints", [])}
+
+    def joint_parameter(self, name: str, rev=None) -> str:
+        """The parameter driving joint ``name`` (or ``name`` itself if it is not a joint)."""
+        try:
+            joints = self.joints(rev)["joints"]
+        except CadError:
+            return name
+        j = next((x for x in joints if x["name"] == name), None)
+        if j is None:
+            return name
+        if not j.get("parameter"):
+            raise CadError(INVALID_ARGUMENT, f"joint {name!r} has a fixed value ({j['value']:g}), not a parameter",
+                           hint=f"declare one and pass it: Parameter('{name}_angle', 0, min=.., max=.., unit='deg'); "
+                                f"asm.{j['type']}(..., angle='{name}_angle')")
+        return j["parameter"]
+
     def sweep(self, parameter: str, values: list, *, views: str | None = None, size=None, min_distance: float | None = None,
               section: str | None = None, allow_contact: bool = False) -> dict:
-        """Rebuild at each parameter value, check clearances (and render), then restore the active revision."""
+        """Rebuild at each parameter (or joint) value, check clearances (and render), then restore the active revision."""
         from .analysis import clearance_matrix
 
+        parameter = self.joint_parameter(parameter)
         head = self.store.head()
         rows = []
         try:

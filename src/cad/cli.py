@@ -64,6 +64,7 @@ COMMANDS: dict[str, dict] = {
     "export": {"summary": "Export STEP / STL / 3MF (with materials) / BREP for a revision (reference parts are skipped)", "project": True},
     "materials": {"summary": "List built-in materials (density, colour) for Part(..., material=...)", "project": False},
     "slice": {"summary": "Slice with Bambu Studio: print time, filament grams per material, layers, supports, warnings; writes a .gcode.3mf", "project": True},
+    "joints": {"summary": "Joints of an Assembly: type, parts, world axis, value, limits, what a positive value does", "project": True},
     "fasteners": {"summary": "Metric screw, nut and heat-set insert dimensions used by screw_hole() (M2-M8)", "project": False},
     "info": {"summary": "What a STEP / IGES / STL / BREP file contains: bodies, names, sizes, units (before importing it)", "project": False},
     "fonts": {"summary": "List installed fonts usable for text (Profile.text, Part.emboss / engrave)", "project": False},
@@ -173,6 +174,7 @@ def _parser() -> _Parser:
     s.add_argument("--section", metavar="PLANE", help="cut-away view: 'y=0' removes the half facing the camera; 'x=10:+' keeps the +X side; cut faces are tinted red")
     s.add_argument("--no-annotate", action="store_true", help="omit the title, axis triad and scale bar")
     s.add_argument("--no-sheet", action="store_true", help="do not write the combined contact sheet")
+    s.add_argument("--joints", action="store_true", help="draw joint axes (Assembly) with their positive direction")
 
     s = cmd("export")
     s.add_argument("--format", "-f", help="comma-separated: step,stl,3mf,brep (default from cad.toml)")
@@ -202,6 +204,8 @@ def _parser() -> _Parser:
     s.add_argument("--out", help="output directory (default out/r<N>)")
     s.add_argument("--list", choices=["printers", "processes", "filaments"], help="list Bambu presets and exit")
     cmd("fasteners")
+    s = cmd("joints")
+    s.add_argument("--revision", "-r")
     s = cmd("info")
     s.add_argument("file", help="a .step/.stp/.iges/.igs/.stl/.brep file")
     s = cmd("fonts")
@@ -534,7 +538,7 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
     if c == "render":
         r = s.render(args.views, rev=args.revision, parts=args.part, size=_size(args.size), style=args.style,
                      background=args.background, out_dir=args.out, annotate=not args.no_annotate, sheet=not args.no_sheet,
-                     section=args.section)
+                     section=args.section, joints=args.joints)
         lines = [f"revision {r['revision']}: {len(r['images'])} view(s) -> {r['out_dir']}"]
         for im in r["images"]:
             lines.append(f"  {im['view']:<10} {im['path']}  ({'cached' if im['cached'] else 'rendered'}, "
@@ -641,8 +645,26 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         if extra:
             lines.append(f"  overlay entries not declared by the model: {extra}")
         return r, "\n".join(lines)
+    if c == "joints":
+        r = s.joints(args.revision)
+        if not r["joints"]:
+            return r, f"revision {r['revision']}: no joints (build() returns parts, not an Assembly)"
+        lines = [f"revision {r['revision']} joints:"]
+        for j in r["joints"]:
+            val = f"{j['value']:g} {j['unit']}" + (f" (parameter {j['parameter']})" if j.get("parameter") else " (fixed value)")
+            lim = f", limits {j['limits'][0]:g}..{j['limits'][1]:g}" if j.get("limits") else ""
+            lines.append(f"  {j['name']}: {j['type']} {j['parent']} -> {j['child']}, at {val}{lim}")
+            if j["type"] != "fixed":
+                lines.append(f"      axis through {j['axis_origin']} along {j['axis_direction']}  ({j['axis_source']})")
+            if j.get("positive_motion"):
+                lines.append(f"      positive value: {j['positive_motion']}")
+            lines.append(f"      moves: {', '.join(j['moves'])}")
+            for w in j.get("warnings", []):
+                lines.append(f"      warning {w['code']}: {w['message']}")
+        return r, "\n".join(lines)
     if c == "set":
         vals = _assignments(args.assignments)
+        vals = {s.joint_parameter(k): v for k, v in vals.items()}  # a joint name sets its parameter
         r = s.set_params(vals, force=args.force)
         text = f"params.toml: {r['overlay']}"
         if not args.no_build:

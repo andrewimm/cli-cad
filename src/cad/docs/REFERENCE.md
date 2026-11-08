@@ -309,6 +309,7 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad fonts [filter]` | installed fonts for text |
 | `cad measure <part> --section z=V` | cross-section outline at a plane (regions, rectangles, circles, holes) |
 | `cad fasteners` | M2-M8 screw, nut and heat-set insert dimensions (screw_hole table) |
+| `cad joints` | an Assembly's joints: world axes, values, limits, what positive motion does |
 | `cad info <file>` | bodies, names, sizes, units in a STEP / IGES / STL / BREP file |
 | `cad slice` | Bambu Studio slice: print time, grams per filament, supports, warnings, .gcode.3mf |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
@@ -485,7 +486,45 @@ cad slice --list printers | processes | filaments
 
 ## Assemblies, motion and designing around components
 
-A script may return several parts (`return {"base": base, "arm": arm}`); each is a separate
+### Joints (moving parts)
+
+Model every part in place, in its rest pose. Then connect parts with joints; a joint's value turns or moves
+the child, and everything hanging below it, away from that rest pose (value 0 = as modelled).
+
+```python
+from cad import Assembly, Parameter, Part
+
+Parameter("hip_angle", 0, min=-30, max=60, unit="deg")     # declare, then refer to it by name
+Parameter("knee_angle", 0, min=0, max=90, unit="deg")
+
+def build():
+    base, upper, lower = make_base(), make_upper(), make_lower()   # modelled in place (rest pose)
+    asm = Assembly("leg")
+    asm.add(base, upper, lower)                            # the first part added is fixed to the world
+    asm.revolute("hip", base, upper, axis=base.faces("hip.wall"), angle="hip_angle")
+    asm.revolute("knee", upper, lower, axis=upper.faces("knee.wall"), angle="knee_angle")
+    return asm                                             # instead of a dict of parts
+```
+
+- `revolute(name, parent, child, axis=, angle=)` (degrees), `slider(..., axis=, distance=)` (mm),
+  `cylindrical(..., angle=, distance=)` (a pin that turns and slides), `fixed(name, parent, child)` (follows its parent).
+- `axis=`: a hole or boss wall (`part.faces("hinge.wall")`, its axis line), a circular or straight edge, a flat face
+  (its normal, for sliders), or `((x, y, z), (dx, dy, dz))`. Give it in the parent's rest pose: the knee axis is
+  where the knee hole is when everything is at 0; moving the hip carries it along.
+- Direction: from geometry the axis points along the positive world axis it is closest to (+X, +Y or +Z);
+  `direction="-y"` reverses it. Positive angles turn right-handed about the axis direction. `cad joints`
+  prints, for each joint, the world axis and in words what a positive value does ("its far end moves -X").
+- Values: a number, or the name of a declared Parameter (the joint takes its limits). Then
+  `cad set knee 45` (joint name or parameter name) poses it and `cad sweep knee 0:90:15 --min 0.5` checks
+  clearances through the motion. `limits=(lo, hi)` for numbers; out-of-range values fail with `JOINT_LIMIT`.
+- Each part has one parent joint (a tree from the fixed part); closed loops such as four-bar linkages are not
+  supported: drive one link and check the closing joint with `cad clearance`. `JOINT_AXIS_OFF_GEOMETRY` warns
+  when a revolute axis does not pass through a hole or boss of both parts.
+- Layer moving parts along the joint axis with a gap (links at different Y), as for any parts that slide past each other.
+
+### Parts without joints
+
+A script may also return several parts (`return {"base": base, "arm": arm}`); each is a separate
 printable body, positioned in one shared assembly frame. Common patterns:
 
 ```python

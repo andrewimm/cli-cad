@@ -570,6 +570,62 @@ def annotate(img: Image.Image, cam: Camera, framing: dict, title: str, bbox_size
     return img
 
 
+def overlay_joints(img: Image.Image, cam: Camera, framing: dict, joints: list[dict], diag: float) -> Image.Image:
+    """Draw joint axes: a dashed line with an arrow at the positive end and the joint name; an axis
+    pointing at the viewer is a circle with a curved arrow showing the positive turning sense."""
+    W, H = img.size
+    d = ImageDraw.Draw(img)
+    f = _font(max(11, int(H / 50)))
+    k = framing["_scale_px_per_mm"]
+    cu, cv = framing["_cu"], framing["_cv"]
+    col = (230, 120, 20)
+
+    def scr(p):
+        p = np.asarray(p, dtype=float)
+        return W / 2 + (float(p @ cam.right) - cu) * k, H / 2 - (float(p @ cam.up) - cv) * k
+
+    for j in joints:
+        if j.get("type") == "fixed":
+            continue
+        o, a = np.asarray(j["axis_origin"], float), np.asarray(j["axis_direction"], float)
+        u, v = float(a @ cam.right), float(a @ cam.up)
+        ox, oy = scr(o)
+        if math.hypot(u, v) < 0.2:  # end-on: circle + turning arrow
+            r = max(10, H / 40)
+            toward = float(a @ cam.eye) > 0
+            d.ellipse((ox - r, oy - r, ox + r, oy + r), outline=col, width=2)
+            d.ellipse((ox - 2, oy - 2, ox + 2, oy + 2), fill=col)
+            # positive rotation looks counter-clockwise when the axis points at the viewer
+            sweep = range(20, 300, 10)
+            pts = [(ox + 1.7 * r * math.cos(math.radians(t if toward else -t)),
+                    oy - 1.7 * r * math.sin(math.radians(t if toward else -t))) for t in sweep]
+            d.line(pts, fill=col, width=2)
+            ex, ey = pts[-1]
+            px, py = pts[-2]
+            _arrowhead(d, (px, py), (ex, ey), col, r * 0.6)
+            d.text((ox + 1.9 * r, oy - 1.9 * r), f"{j['name']} (+)", fill=col, font=f)
+            continue
+        L = 0.3 * diag
+        x0, y0 = scr(o - a * L)
+        x1, y1 = scr(o + a * L)
+        n = 14
+        for i in range(n):
+            if i % 2 == 0:
+                d.line((x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n,
+                        x0 + (x1 - x0) * (i + 1) / n, y0 + (y1 - y0) * (i + 1) / n), fill=col, width=2)
+        _arrowhead(d, (x0 + (x1 - x0) * 0.9, y0 + (y1 - y0) * 0.9), (x1, y1), col, max(8, H / 70))
+        d.ellipse((ox - 4, oy - 4, ox + 4, oy + 4), outline=col, width=2)
+        d.text((x1 + 4, y1 - 6), f"{j['name']} (+ turns right-handed)" if j.get("type") != "slider" else f"{j['name']} (+)",
+               fill=col, font=f)
+    return img
+
+
+def _arrowhead(d, a, b, col, size) -> None:
+    ang = math.atan2(b[1] - a[1], b[0] - a[0])
+    for s in (+1, -1):
+        d.line((b[0], b[1], b[0] - size * math.cos(ang + s * 0.45), b[1] - size * math.sin(ang + s * 0.45)), fill=col, width=2)
+
+
 # --------------------------------------------------------------------------- public API
 
 
@@ -595,6 +651,7 @@ def render_one(
     metadata: dict | None = None,
     fit_bounds: tuple | None = None,
     section: dict | None = None,
+    joints: list[dict] | None = None,
 ) -> tuple[Image.Image, dict]:
     """Render one view; returns the image and its metadata dict (without the image path).
 
@@ -606,6 +663,8 @@ def render_one(
     lo, hi = fit_bounds if fit_bounds is not None else scene_bounds(scene)
     img, framing = rasterize(scene, cam, size[0], size[1], style=style, background=background, supersample=supersample,
                              fit_bounds=(np.asarray(lo), np.asarray(hi)))
+    if joints:
+        img = overlay_joints(img, cam, framing, joints, float(np.linalg.norm(np.asarray(hi) - np.asarray(lo))))
     if annotate_images:
         label = title + (f"  |  SECTION {section['plane']} (cut faces tinted red)" if section else "")
         img = annotate(img, cam, framing, label, [float(c) for c in (np.asarray(hi) - np.asarray(lo))])

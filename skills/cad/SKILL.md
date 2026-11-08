@@ -98,7 +98,7 @@ or your own `p.tag("mount", p.faces().facing("-z"))`.
 | wall thickness | `cad measure <part> --thickness` (holes near edges leave thin ligaments) |
 | clearance to other parts | `cad clearance --min 0.5` (every pair: clear / touching / overlap) |
 | a component you design around | `Part("servo", reference=True)` (rendered, never exported) + `cad clearance` |
-| moving parts | a motion `Parameter`, then `cad sweep angle 0:90:15 --min 0.5 --render front` |
+| moving parts | model in place, `Assembly` + `asm.revolute("knee", upper, lower, axis=upper.faces("knee.wall"), angle="knee_angle")`, return the assembly; `cad joints`, `cad sweep knee 0:90:15 --min 0.5 --render front` (`cad docs joints`) |
 | hidden internals | `cad render --views front --section y=0` |
 | a vendor part (STEP/STL) | `cad info vendor/x.step`, then `Part.from_file("vendor/x.step", reference=True)`; keep it where the file puts it; outline at a height: `cad measure x --section z=-5` |
 | will it print, how long, how many grams | `cad slice` (Bambu Studio; `NEEDS_SUPPORT` = `part.print_on(face)` to lay it on another face, or `--supports auto`) |

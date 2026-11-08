@@ -14,6 +14,7 @@ Quick start::
 See docs/REFERENCE.md for the full API and conventions.
 """
 
+from .assembly import Assembly
 from .errors import CadError, CadWarning
 from .materials import Material
 from .params import Parameter
@@ -24,6 +25,7 @@ from .selection import EdgeSelection, FaceSelection
 __version__ = "0.1.0"
 
 __all__ = [
+    "Assembly",
     "BBox",
     "CadError",
     "CadWarning",
