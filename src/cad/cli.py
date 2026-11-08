@@ -241,8 +241,11 @@ def resolve_project(args, cwd: Path) -> Path:
         r = Path(f.read_text().strip())
         if (r / CONFIG_NAME).exists():
             return r
-    raise CadError("NO_PROJECT", "no project found: not inside a project directory and no project is open",
-                   hint="run `cad open <dir>` or `cad init <dir>`, or pass --project")
+    here = [p.name for p in cwd.glob("*.py")]
+    hint = ("this directory has no cad.toml: run `cad init` here (it keeps your existing model.py"
+            + (f"; or `cad open {here[0]}`" if here and "model.py" not in here else "") + ")") if here else \
+        "run `cad init` to make this directory a project, `cad open <dir>`, or pass --project"
+    raise CadError("NO_PROJECT", "no project found: not inside a project directory and no project is open", hint=hint)
 
 
 def _kv(items: list[str]) -> dict[str, Any]:

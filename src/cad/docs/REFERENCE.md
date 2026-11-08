@@ -103,14 +103,14 @@ and `name=`. The first body must use `"add"`. All return a `FeatureRef`.
 - Arbitrary planes: `Plane.make(origin, normal, u=None)`, `Plane.named("XY", offset=5)`, `plane.offset(d)`.
 
 ```python
-# side profile in the YZ plane extruded 70 mm along X, centred on X = 0
-p.extrude(Profile.polygon([(-10, 6), (32, 96), (37, 94), (-5, 3)]), 70, plane="YZ", symmetric=True)
-# a 4 mm thick rib whose mid-plane is X = 15
-p.extrude(Profile.polygon([(15, 5), (-10, 5), (15, 30)]), 4, plane="YZ", offset=15, symmetric=True)
-# a lip hanging 3 mm down from Z = 40
-lid.extrude(ring, -3, plane="XY", offset=40)
-# rectangular through cut-out
-p.extrude(Profile.rect(23.4, 12.8), 1, op="cut", through=True)
+# a ramp: side profile drawn in the YZ plane (u = Y, v = Z), extruded 20 mm along X, centred on X = 0
+p.extrude(Profile.polygon([(0, 0), (30, 0), (30, 12)]), 20, plane="YZ", symmetric=True)
+# a 3 mm thick triangular web whose mid-plane is X = -8
+p.extrude(Profile.polygon([(0, 3), (-18, 3), (0, 21)]), 3, plane="YZ", offset=-8, symmetric=True)
+# a skirt hanging 2 mm down from a plate whose underside is at Z = 25
+cap.extrude(skirt, -2, plane="XY", offset=25)
+# slot-shaped through cut-out
+p.extrude(Profile.slot(30, 8), 1, op="cut", through=True)
 ```
 
 ## Profiles (2D, in plane coordinates u, v)
@@ -123,9 +123,9 @@ Combine with `a + b` (union) and `a - b` (subtract); `p.translated((du, dv))`, `
 `p.offset(d)` (grow by d mm, negative shrinks; holes shrink/grow accordingly), `p.area`.
 
 ```python
-wall_ring = Profile.rect(76, 56) - Profile.rect(72, 52)          # 2 mm perimeter wall
-cavity = Profile.rounded_rect(95, 65, 3.5)
-lip = cavity.offset(-0.25) - cavity.offset(-2.25)                 # 0.25 mm clearance, 2 mm thick
+frame = Profile.rect(50, 35) - Profile.rect(47, 32)              # 1.5 mm perimeter frame
+pocket = Profile.rounded_rect(60, 40, 4)
+skirt = pocket.offset(-0.3) - pocket.offset(-1.8)                 # 0.3 mm clearance, 1.5 mm thick
 ```
 
 ```python
@@ -162,13 +162,13 @@ p.bolt_circle(diameter, circle_diameter=40, count=6, center=(0, 0), start_angle=
 - A hole that misses the part produces a `CUT_NO_EFFECT` / `HOLE_MISSED` warning.
 
 ```python
-c.hole(8, at=(0, 0, 0), depth=20, direction="+z")              # bore up from the bottom face
-c.hole(2.5, at=(12.5, 0, 10), depth=12.5, direction="-x")      # radial: from the +X surface to the axis
-t.holes(2.5, [(26, 16, 7), (-26, 16, 7)], depth=4)             # blind holes from boss tops at Z = 7
-import math                                                    # angled: axis through (-10,0,10), 30° from vertical
-s, c = math.sin(math.radians(30)), math.cos(math.radians(30))
-L = 15 / c                                                     # from Z = 10 up to the top face Z = 25
-m.hole(6, at=(-10 + L * s, 0, 25), direction=(-s, 0, -c), depth=L)
+r.hole(6, at=(0, 0, 0), depth=12, direction="+z")              # bore up from the bottom face of a round bar
+r.hole(3, at=(0, -9, 6), depth=9, direction="+y")              # radial: from the -Y surface (Ø18 bar) to the axis
+t.holes(2, [(18, 0, 5), (-18, 0, 5)], depth=3)                 # blind holes from boss tops at Z = 5
+import math                                                    # angled: axis through (0,5,4), 20° from vertical,
+a = math.radians(20)                                           # leaning toward -Y as it rises; top face at Z = 18
+L = (18 - 4) / math.cos(a)
+k.hole(5, at=(0, 5 - L * math.sin(a), 18), direction=(0, math.sin(a), -math.cos(a)), depth=L)
 ```
 
 ## Dress-up
@@ -283,8 +283,8 @@ A failed build never replaces the last good revision.
 
 ```python
 # plate with rounded corners and a chamfered top edge
-p = Part("plate"); p.box(80, 50, 5, name="body")
-p.fillet(p.edges().vertical(), 4)
+p = Part("plate"); p.box(70, 45, 4, name="body")
+p.fillet(p.edges().vertical(), 3)
 p.chamfer(p.edges("body.top").exclude(p.edges().circular()), 0.5)
 
 # wall on the back edge of a base, inside corner filleted

@@ -17,8 +17,8 @@ def test_example_builds_valid(name):
 def test_reference_recipes():
     from cad import Part, Profile
 
-    p = Part("plate"); p.box(80, 50, 5, name="body")
-    p.fillet(p.edges().vertical(), 4)
+    p = Part("plate"); p.box(70, 45, 4, name="body")
+    p.fillet(p.edges().vertical(), 3)
     p.chamfer(p.edges("body.top").exclude(p.edges().circular()), 0.5)
     p.assert_valid()
 
