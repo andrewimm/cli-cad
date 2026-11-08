@@ -131,3 +131,25 @@ surfaced while building the eval: `cad init`'s template was itself a plate with 
 holes (now a neutral cube), and the wheel had to be confirmed to ship the reference and
 examples (it does). Remaining feedback (STL printability confirmation) led to a
 watertightness report on every STL export; that change is not yet re-measured.
+
+## Multi-material 3MF (coaster task)
+
+Task: a PLA coaster with a flush TPU insert, exported as one 3MF for single-pass
+multi-material printing. The grader reads the agent's 3MF with lib3mf (the 3MF
+Consortium's reference implementation) and checks that every mesh is closed and
+oriented and that each part's material covers that part's geometry.
+
+| 3 attempts each | v1 (3MF + materials) | v2 (layout guidance, cad.toml key, export hint) |
+|---|---|---|
+| passed | 3/3 | 3/3 |
+| chose the multi-material layout for a one-piece print | 0/3 | **3/3** |
+| verified contact with `cad clearance` | 0/3 | **3/3** |
+| cad commands (mean) | 10.0 | 7.7 |
+| cost per attempt | $0.127 | $0.118 |
+
+All agents found the features through `cad docs --list` / `cad docs materials` / `cad docs 3mf`.
+v1 feedback: which 3MF layout fits "printed in one go" was unclear (3/3), no cad.toml key for
+it (2/3), `cad clearance` read as reference-only, and section cuts painted both materials the
+same red. Remaining v2 feedback: the two materials' cut faces are still similar in tint.
+Not verified here: import into PrusaSlicer/OrcaSlicer/Bambu Studio (no slicer in this environment);
+the slicer-specific extruder config follows PrusaSlicer's `Slic3r_PE_model.config` format.

@@ -1,0 +1,85 @@
+{
+  "run": {
+    "label": "mm-coaster-v2",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "multimaterial_coaster"
+    ],
+    "git": "1308220",
+    "started": 1794112445.984223
+  },
+  "overall": {
+    "attempts": 3,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 7.667,
+    "mean_failed_builds": 0,
+    "mean_turns": 9.333,
+    "mean_cost_usd": 0.118,
+    "total_cost_usd": 0.353,
+    "implementation_peeks": 0,
+    "feedback_received": 3
+  },
+  "tasks": {
+    "multimaterial_coaster": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 7.667,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 2.667,
+      "mean_turns": 9.333,
+      "mean_duration_s": 22.233,
+      "mean_cost_usd": 0.118,
+      "failed_checks": {},
+      "visual_overall_match": 5
+    }
+  },
+  "cad_errors": {},
+  "issue_categories": {
+    "docs_unclear/low": 1,
+    "other/low": 1
+  },
+  "issues": [
+    {
+      "task": "multimaterial_coaster",
+      "category": "docs_unclear",
+      "description": "The `cad docs materials` section never states that the insert's flush top face and the coaster's recess floor/wall count as 'touching' rather than overlapping; I had to run `cad clearance` to confirm it (it reported touching, 0 mm).",
+      "severity": "low"
+    },
+    {
+      "task": "multimaterial_coaster",
+      "category": "other",
+      "description": "Section render shows both parts in similar tints, so the PLA/TPU boundary is only visible as a thin dark line; hard to confirm flush top visually (numbers from cad clearance confirmed it).",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Put a minimal recess + inlay example in the docs; the task here is the canonical case."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Have `cad export` print a one-line confirmation of the 3MF mode used (multimaterial vs objects), and mention when it comes from cad.toml."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "A one-line 'inlay in a recess' example in the materials docs would speed up the first attempt."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Mention in the Materials docs that a cylinder cut with at=(0,0,z) is the idiomatic way to make a recess and a matching insert part."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Section renders could use distinct colours per part material."
+    }
+  ]
+}

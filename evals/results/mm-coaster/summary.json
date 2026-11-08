@@ -1,0 +1,134 @@
+{
+  "run": {
+    "label": "mm-coaster",
+    "model": "sonnet",
+    "attempts": 3,
+    "tasks": [
+      "multimaterial_coaster"
+    ],
+    "git": "3aef587",
+    "started": 1794112236.0638552
+  },
+  "overall": {
+    "attempts": 3,
+    "pass_rate": 1.0,
+    "mean_score": 1.0,
+    "self_reported_success": 1.0,
+    "overclaimed": 0,
+    "mean_cad_calls": 10,
+    "mean_failed_builds": 0,
+    "mean_turns": 9.333,
+    "mean_cost_usd": 0.127,
+    "total_cost_usd": 0.382,
+    "implementation_peeks": 0,
+    "feedback_received": 3
+  },
+  "tasks": {
+    "multimaterial_coaster": {
+      "attempts": 3,
+      "pass_rate": 1.0,
+      "mean_score": 1.0,
+      "self_reported_success": 1.0,
+      "mean_cad_calls": 10,
+      "mean_builds": 1,
+      "mean_failed_builds": 0,
+      "mean_render_inspections": 1,
+      "mean_doc_lookups": 5.333,
+      "mean_turns": 9.333,
+      "mean_duration_s": 27.167,
+      "mean_cost_usd": 0.127,
+      "failed_checks": {},
+      "visual_overall_match": 4.667
+    }
+  },
+  "cad_errors": {},
+  "issue_categories": {
+    "docs_unclear/low": 3,
+    "api_missing/low": 1,
+    "query_missing/low": 1,
+    "api_confusing/low": 1,
+    "render_missing/low": 1
+  },
+  "issues": [
+    {
+      "task": "multimaterial_coaster",
+      "category": "docs_unclear",
+      "description": "It is not obvious which 3MF mode fits 'both parts in one 3MF, printed in one go'. 'objects' (the default) gives two objects, and 'multimaterial' gives one object with material regions. I used the default.",
+      "severity": "low"
+    },
+    {
+      "task": "multimaterial_coaster",
+      "category": "api_missing",
+      "description": "I found no way to set the 3MF mode in cad.toml [export]. It is only a CLI flag.",
+      "severity": "low"
+    },
+    {
+      "task": "multimaterial_coaster",
+      "category": "query_missing",
+      "description": "I found no direct check that the two parts touch without overlapping. cad clearance only covers reference parts. I relied on the bboxes, the volumes and the section render.",
+      "severity": "low"
+    },
+    {
+      "task": "multimaterial_coaster",
+      "category": "docs_unclear",
+      "description": "The task says 'one 3MF with both parts' but it is not obvious whether to use objects mode (default) or multimaterial mode. I chose the default (two objects, each with its own material). The docs do not say which one a slicer user should pick for a recess plus insert.",
+      "severity": "low"
+    },
+    {
+      "task": "multimaterial_coaster",
+      "category": "api_confusing",
+      "description": "cad.toml [export] has no documented key for the 3MF mode. A later 'cad export --format 3mf' without the flag silently overwrote the multimaterial file with an objects-mode file.",
+      "severity": "low"
+    },
+    {
+      "task": "multimaterial_coaster",
+      "category": "render_missing",
+      "description": "Section render paints every cut face the same red, so the PLA/TPU boundary is only a thin line and the two materials can't be told apart in the cut.",
+      "severity": "low"
+    },
+    {
+      "task": "multimaterial_coaster",
+      "category": "docs_unclear",
+      "description": "The docs don't say which 3MF mode fits 'one file, both parts, one print'. I used the default (objects: one object per part). I didn't exercise multimaterial mode, and cad.toml has no documented key for it.",
+      "severity": "low"
+    }
+  ],
+  "suggestions": [
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Add a per-project 3mf_mode option in cad.toml."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Add a 'cad measure --contact' or an overlap/contact report between parts."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Print the 3MF overlap-check result in the export output even when it passes."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Document an [export] 3mf_mode key in cad.toml."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Add a recipe for 'recess plus insert': cut the recess in one part and add a matching cylinder as a second part."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Have cad inspect or cad clearance report contact and overlap between parts, to confirm that the parts touch without overlapping."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Colour section cut faces by part material."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Document a cad.toml [export] key for the 3MF mode."
+    },
+    {
+      "task": "multimaterial_coaster",
+      "suggestion": "Add a cad measure/query that reports touching or overlapping parts and their contact area, so flush-fit insets can be checked numerically."
+    }
+  ]
+}
