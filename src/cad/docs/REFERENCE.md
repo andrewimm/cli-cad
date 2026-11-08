@@ -17,12 +17,13 @@ check numbers, look at renders, revise, export.
 ## Workflow
 
 ```bash
-cad init my_part            # or: cad examples copy mounting_bracket my_part
-cd my_part                  # edit model.py
-cad build                   # runs model.py -> immutable revision (cached if nothing changed)
+cad init                    # make the CURRENT directory a project (safe with existing files; keeps model.py if present)
+                            # or: cad init my_part   /   cad examples copy mounting_bracket my_part
+cad build                   # runs the entry script -> immutable revision (cached if nothing changed)
 cad inspect                 # validity, bbox, volume, holes, features, warnings
-cad render                  # PNGs in renders/r<N>/ (+ <name>_sheet.png with all views)
-cad render --views az=200,el=25 --part lid   # look again from elsewhere (cheap: meshes are cached)
+cad render                  # PNGs in renders/r<N>/ (+ *_sheet.png with all views in one image)
+cad render --views az=200,el=25 --part lid      # look again from elsewhere (cheap: meshes are cached)
+cad render --views front,iso --section y=0      # cut-away: see cavities, bores, wall thickness (cut faces red)
 cad set width 80            # parameter override -> params.toml -> rebuild
 cad export --format step,stl
 ```
@@ -33,6 +34,27 @@ Add `--json` to any command for a machine-readable envelope
 5 not found, 6 worker crashed, 7 timeout, 8 daemon unavailable.
 
 One-shot, no project: `cad run model.py --render iso,front --export step --out out/`.
+
+### Project files
+
+A project is a directory with `cad.toml` (what `cad init` writes):
+
+```toml
+[project]
+name = "bracket"          # label for renders/exports (part names come from Part("..."))
+entry = "model.py"        # the model script
+
+[render]                  # optional defaults for `cad render`
+views = ["iso", "front", "right", "top"]
+size = [1024, 768]
+
+[export]                  # optional defaults for `cad export`
+formats = ["step", "stl"]
+```
+
+`params.toml` holds parameter overrides written by `cad set` (commit it with the
+script). `.cad/` (revisions, caches) and `renders/`, `out/` are generated.
+`cad open model.py` turns a lone script's directory into a project.
 
 ## Script contract
 
@@ -62,13 +84,34 @@ and `name=`. The first body must use `"add"`. All return a `FeatureRef`.
 | `box(width, depth, height, at=(0,0,0), align=("center","center","min"))` | `align` per axis says where `at` sits on the box: `"min"`, `"center"`, `"max"`. Default: centred in X/Y, bottom at `at.z`. Faces: `.top .bottom .front .back .left .right` |
 | `cylinder(diameter, height, at=(0,0,0), axis="z", align="min")` | `align` along the axis. Faces: `.side .start .end` (+ `.top/.bottom`… when axis-aligned) |
 | `sphere(diameter, at=(0,0,0))` | `.surface` |
-| `extrude(profile, distance, plane="XY", offset=0, symmetric=False)` | Extrudes along the plane normal; negative distance goes the other way. Faces: `.start .end .side` (+ direction names) |
+| `extrude(profile, distance, plane="XY", offset=0, symmetric=False, through=False)` | See *Sketch planes and extrusion* below. Faces: `.start .end .side` (+ direction names) |
 | `revolve(profile, angle=360, plane="XZ", axis="v")` | Revolves about the plane's v axis (for `XZ`: world Z). Draw the half-profile at u ≥ 0. |
 | `union(other_part)`, `cut(other_part)`, `intersect(other_part)` | Boolean with another Part |
 
-Planes: `"XY"` (u=+X, v=+Y, normal +Z), `"XZ"` (u=+X, v=+Z, **normal −Y**),
-`"YZ"` (u=+Y, v=+Z, normal +X), or `Plane.make(origin, normal, u=None)`,
-`Plane.named("XY", offset=5)`, `plane.offset(d)`.
+### Sketch planes and extrusion
+
+| plane | profile u → | profile v → | normal (extrude direction) | `offset=d` puts the sketch at |
+|---|---|---|---|---|
+| `"XY"` | +X | +Y | +Z | Z = d |
+| `"XZ"` | +X | +Z | **−Y** | Y = −d |
+| `"YZ"` | +Y | +Z | +X | X = d |
+
+- The profile is drawn in (u, v) on the plane, then swept `distance` along the normal.
+  Negative `distance` sweeps the other way (`"XZ"` with `-5` goes toward +Y).
+- `symmetric=True` centres the extrusion on the sketch plane (`distance/2` each side).
+- `through=True` (with `op="cut"`) makes the cut go through the whole part in both directions; `distance` is ignored.
+- Arbitrary planes: `Plane.make(origin, normal, u=None)`, `Plane.named("XY", offset=5)`, `plane.offset(d)`.
+
+```python
+# side profile in the YZ plane extruded 70 mm along X, centred on X = 0
+p.extrude(Profile.polygon([(-10, 6), (32, 96), (37, 94), (-5, 3)]), 70, plane="YZ", symmetric=True)
+# a 4 mm thick rib whose mid-plane is X = 15
+p.extrude(Profile.polygon([(15, 5), (-10, 5), (15, 30)]), 4, plane="YZ", offset=15, symmetric=True)
+# a lip hanging 3 mm down from Z = 40
+lid.extrude(ring, -3, plane="XY", offset=40)
+# rectangular through cut-out
+p.extrude(Profile.rect(23.4, 12.8), 1, op="cut", through=True)
+```
 
 ## Profiles (2D, in plane coordinates u, v)
 
@@ -76,7 +119,14 @@ Planes: `"XY"` (u=+X, v=+Y, normal +Z), `"XZ"` (u=+X, v=+Z, **normal −Y**),
 `Profile.circle(diameter, center)`, `Profile.rounded_rect(w, h, radius, center)`,
 `Profile.slot(length, width, center, angle)`, `Profile.polygon([(u,v), ...])`,
 `Profile.regular_polygon(sides, diameter, center, angle)`.
-Combine with `a + b` (union) and `a - b` (subtract); `p.translated((du, dv))`, `p.rotated(deg)`.
+Combine with `a + b` (union) and `a - b` (subtract); `p.translated((du, dv))`, `p.rotated(deg)`,
+`p.offset(d)` (grow by d mm, negative shrinks; holes shrink/grow accordingly), `p.area`.
+
+```python
+wall_ring = Profile.rect(76, 56) - Profile.rect(72, 52)          # 2 mm perimeter wall
+cavity = Profile.rounded_rect(95, 65, 3.5)
+lip = cavity.offset(-0.25) - cavity.offset(-2.25)                 # 0.25 mm clearance, 2 mm thick
+```
 
 ```python
 # L-shaped rib in the XZ plane, 3 mm thick, centred on Y=0
@@ -93,15 +143,33 @@ p.hole_pattern(diameter, spacing=(sx, sy), count=(nx, ny), center=(0, 0), ...)
 p.bolt_circle(diameter, circle_diameter=40, count=6, center=(0, 0), start_angle=0, ...)
 ```
 
-- `direction` is the drilling direction (default `"-z"`, i.e. drilled down from the top).
-- `at` is either a **3D start point**, or a **2D point in the two axes perpendicular
-  to the direction**: ±Z → (x, y); ±Y → (x, z); ±X → (y, z). With a 2D point the
-  hole starts at the part's bounding-box face it enters.
-- `depth=None` drills through everything; otherwise depth from the start point.
-- `counterbore=(diameter, depth)`, `countersink=(diameter, angle=90)`.
+- `direction` is the drilling direction: `"-z"` (default, drilled down from the top),
+  `"+x"`, … **or any vector** such as `(-0.5, 0, -0.866)` for angled holes.
+- `at` is either a **3D start point** (the hole starts exactly there — use it to drill from a
+  boss top, a wall, or for angled holes), or a **2D point** in the two axes perpendicular to
+  an axis-aligned direction; the hole then starts on the part's bounding-box face it enters:
+
+  | direction | 2D `at` means | starts at |
+  |---|---|---|
+  | `-z` / `+z` | (x, y) | top (max Z) / bottom (min Z) of the part's bbox |
+  | `-y` / `+y` | (x, z) | back (max Y) / front (min Y) |
+  | `-x` / `+x` | (y, z) | right (max X) / left (min X) |
+
+- `depth` is measured from the start point along the direction; `None` drills through everything.
+- `counterbore=(diameter, depth)`, `countersink=(diameter, angle=90)` are added at the start.
 - `hole_pattern` centres the grid: `spacing=(48, 28), count=(2, 2)` → holes at (±24, ±14).
 - Faces: `<id>.wall` (all), `<id>.wall.<i>` (per hole), `.floor` (blind), `.counterbore`, `.countersink`.
 - A hole that misses the part produces a `CUT_NO_EFFECT` / `HOLE_MISSED` warning.
+
+```python
+c.hole(8, at=(0, 0, 0), depth=20, direction="+z")              # bore up from the bottom face
+c.hole(2.5, at=(12.5, 0, 10), depth=12.5, direction="-x")      # radial: from the +X surface to the axis
+t.holes(2.5, [(26, 16, 7), (-26, 16, 7)], depth=4)             # blind holes from boss tops at Z = 7
+import math                                                    # angled: axis through (-10,0,10), 30° from vertical
+s, c = math.sin(math.radians(30)), math.cos(math.radians(30))
+L = 15 / c                                                     # from Z = 10 up to the top face Z = 25
+m.hole(6, at=(-10 + L * s, 0, 25), direction=(-s, 0, -c), depth=L)
+```
 
 ## Dress-up
 
@@ -117,13 +185,16 @@ small fillets**. Fillet faces are named `<id>.faces`.
 
 ## Transforms
 
-`p.translate((dx, dy, dz))`, `p.rotate(angle, axis="z", center=(0,0,0))`,
+`p.translate((dx, dy, dz))`, `p.rotate(angle, axis="z", center=(0,0,0))` (right-hand rule:
+positive angles turn counter-clockwise when looking from +axis toward the origin; `rotate(30, axis="y")`
+tilts +Z toward +X, `rotate(90, axis="z")` turns +X into +Y),
 `p.mirror("YZ", keep_original=True)` (mirror and fuse), `p.copy(name)`.
 
 ## Selecting faces and edges
 
 ```python
 p.faces()                    # all faces          p.faces("base.top")  # a named reference
+p.faces("hole1")             # a feature id selects every face that feature created
 p.edges()                    # all edges          p.edges("base.top")  # edges of named faces
 ```
 
@@ -160,6 +231,7 @@ p.is_valid()       # BRep validity
 p.assert_valid(solids=1)          # raises VALIDATION_FAILED with problems listed
 p.distance_to(other)              # min distance (0 if touching/overlapping)
 p.interference(other)             # shared volume (0 = no collision)
+p.faces("lip").distance_to(box.faces("shell1.inner"))   # gap between selections (or a Part)
 p.warnings                        # non-fatal diagnostics from all features
 p.feature_graph()                 # features, params, dependencies, references
 p.references()                    # named references and their status
@@ -167,7 +239,8 @@ p.export("out/part.step")         # .step/.stp, .stl, .brep
 from cad import approx; approx(a, b, tol=1e-6)
 ```
 
-`find_holes()[i]["position"]` is the centre of the hole's end with the lowest coordinate along
+`depth` in `find_holes()` is the axial extent of the hole wall, so a hole entering a slanted
+surface reports its longest side. `find_holes()[i]["position"]` is the centre of the hole's end with the lowest coordinate along
 its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x, y, 0).
 
 ## CLI reference
@@ -178,9 +251,9 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad open <dir or file.py>` | make a project current (commands work from any directory afterwards) |
 | `cad build [-p name=value] [--force]` | build → revision N (identical inputs reuse an existing revision) |
 | `cad inspect [part] [--features] [--refs] [-r REV]` | summary, holes, features, warnings |
-| `cad measure [part[.ref]] [--volume --area --bbox --com --holes] [--distance OTHER] [--density D]` | numbers, or the faces of a reference (e.g. `bracket.base.top`) |
+| `cad measure [part[.ref]] [--volume --area --bbox --com --holes] [--distance OTHER] [--density D]` | numbers, or the faces of a reference (e.g. `bracket.base.top`); `--distance` accepts parts or references on both sides, e.g. `cad measure lid.lip --distance box.shell1.inner` |
 | `cad query [part] "<expr>"` | evaluate a selection, e.g. `cad query "edges().vertical().convex()"` |
-| `cad render [--views ...] [--part P] [--size WxH] [--style shaded_edges|shaded|lines] [-r REV]` | PNG + JSON metadata per view, plus a contact sheet |
+| `cad render [--views ...] [--section y=0] [--part P] [--size WxH] [--style shaded_edges|shaded|lines] [-r REV]` | PNG + JSON metadata per view, plus a contact sheet; `--section` cuts away the half facing the camera (`x=5:+` keeps the +X side) |
 | `cad export [--format step,stl,brep] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files |
 | `cad params` / `cad set NAME VALUE` / `cad unset NAME` | parameter overlay (params.toml) |
 | `cad revisions` / `cad diff [A] [B]` / `cad checkout REV` / `cad restore REV --force` | history; checkout never edits sources, restore does |

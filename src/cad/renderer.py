@@ -175,6 +175,7 @@ class SceneItem:
     mesh: Mesh
     color: tuple[float, float, float]
     bounds: tuple | None = None  # exact BRep (min, max); mesh bounds are used if absent
+    face_colors: dict | None = None  # BRep face index -> colour override (e.g. section caps)
 
 
 def _parse_color(c, default) -> tuple[float, float, float]:
@@ -194,8 +195,8 @@ def _parse_color(c, default) -> tuple[float, float, float]:
     return t  # type: ignore[return-value]
 
 
-def build_scene(model: Any, deflection: float | None = None, mesh_cache: dict | None = None) -> list[SceneItem]:
-    """Accept a Part, list/tuple of Parts, dict name->Part or raw TopoDS_Shape."""
+def model_items(model: Any) -> list[tuple[str, Any, Any]]:
+    """(name, shape, colour) for a Part, list/tuple of Parts, dict name->Part or raw TopoDS_Shape."""
     from .part import Part
 
     items: list[tuple[str, Any, Any]] = []
@@ -209,18 +210,50 @@ def build_scene(model: Any, deflection: float | None = None, mesh_cache: dict | 
             items.append((getattr(p, "name", "shape"), p.shape if isinstance(p, Part) else p, getattr(p, "color", None)))
     else:
         items.append(("shape", model, None))
+    return items
+
+
+def build_scene(model: Any, deflection: float | None = None, mesh_cache: dict | None = None) -> list[SceneItem]:
+    """Tessellate a model (see :func:`model_items`) into scene items."""
+    from . import _occ
+
     scene = []
-    for i, (name, shape, color) in enumerate(items):
+    for i, (name, shape, color) in enumerate(model_items(model)):
         key = (id(shape), deflection)
         mesh = mesh_cache.get(key) if mesh_cache is not None else None
         if mesh is None:
             mesh = tessellate(shape, deflection)
             if mesh_cache is not None:
                 mesh_cache[key] = mesh
-        from . import _occ
-
         scene.append(SceneItem(name, mesh, _parse_color(color, PALETTE[i % len(PALETTE)]), _occ.bbox(shape)))
     return scene
+
+
+def section_scene(items: list[tuple[str, Any, Any]], cam: Camera, section: str, deflection: float | None = None,
+                  cache: dict | None = None) -> tuple[list[SceneItem], dict]:
+    """Cut every item with the section plane (side chosen per camera) and colour the cut faces."""
+    from . import _occ
+    from .section import SECTION_COLOR, cut_shape, keep_sign, parse_section
+
+    axis, value, side = parse_section(section)
+    keep = keep_sign(axis, side, cam.eye)
+    scene = []
+    for i, (name, shape, color) in enumerate(items):
+        key = ("section", id(shape), axis, value, keep, deflection)
+        hit = cache.get(key) if cache is not None else None
+        if hit is None:
+            cut, caps = cut_shape(shape, axis, value, keep)
+            hit = (tessellate(cut, deflection), caps, _occ.bbox(cut)) if cut is not None else None
+            if cache is not None:
+                cache[key] = hit or ()
+        if not hit:
+            continue
+        mesh, caps, bounds = hit
+        scene.append(SceneItem(name, mesh, _parse_color(color, PALETTE[i % len(PALETTE)]), bounds,
+                               {c: SECTION_COLOR for c in caps}))
+    info = {"plane": f"{'xyz'[axis]}={value:g}", "kept_side": "+" if keep > 0 else "-",
+            "cap_color": list(SECTION_COLOR), "parts_cut": [it.name for it in scene]}
+    return scene, info
 
 
 # --------------------------------------------------------------------------- rasteriser
@@ -294,7 +327,13 @@ def rasterize(
             # gentle specular so curved surfaces read as curved
             h = (key + cam.eye) / np.linalg.norm(key + cam.eye)
             spec = 0.18 * np.clip(n @ h, 0, None) ** 24
-            shade = np.clip(lam[:, None] * np.array(item.color)[None, :] + spec[:, None], 0, 1)
+            base = np.tile(np.array(item.color, dtype=float), (len(n), 1))
+            if item.face_colors:
+                vface = np.zeros(len(n), dtype=np.int64)
+                vface[m.triangles.reshape(-1)] = np.repeat(m.face_ids, 3)
+                for fi, c in item.face_colors.items():
+                    base[vface == fi] = c
+            shade = np.clip(lam[:, None] * base + spec[:, None], 0, 1)
         _raster_triangles(sx, sy, sz, m.triangles, shade, m.face_ids + face_base, color, zbuf, idbuf)
         face_base += int(m.face_ids.max()) + 1 if len(m.face_ids) else 0
 
@@ -545,12 +584,22 @@ def render_one(
     annotate_images: bool = True,
     supersample: int = 2,
     metadata: dict | None = None,
+    fit_bounds: tuple | None = None,
+    section: dict | None = None,
 ) -> tuple[Image.Image, dict]:
-    """Render one view; returns the image and its metadata dict (without the image path)."""
-    lo, hi = scene_bounds(scene)
-    img, framing = rasterize(scene, cam, size[0], size[1], style=style, background=background, supersample=supersample)
+    """Render one view; returns the image and its metadata dict (without the image path).
+
+    ``fit_bounds`` frames the camera on given (min, max) instead of the scene (used
+    so section views keep the scale of the full model).
+    """
+    if not scene:
+        raise CadError(INVALID_ARGUMENT, "nothing to render" + (" on the kept side of the section plane" if section else ""))
+    lo, hi = fit_bounds if fit_bounds is not None else scene_bounds(scene)
+    img, framing = rasterize(scene, cam, size[0], size[1], style=style, background=background, supersample=supersample,
+                             fit_bounds=(np.asarray(lo), np.asarray(hi)))
     if annotate_images:
-        img = annotate(img, cam, framing, title, [float(c) for c in (hi - lo)])
+        label = title + (f"  |  SECTION {section['plane']} (cut faces red)" if section else "")
+        img = annotate(img, cam, framing, label, [float(c) for c in (np.asarray(hi) - np.asarray(lo))])
     meta = {
         "image": {"width": size[0], "height": size[1], "format": "png"},
         "camera": cam.to_dict(),
@@ -566,6 +615,8 @@ def render_one(
         "renderer": RENDERER_VERSION,
         "conventions": "right-handed, Z up; front view looks from -Y toward +Y",
     }
+    if section:
+        meta["section"] = section
     return img, meta
 
 
@@ -603,25 +654,35 @@ def render_views(
     sheet: bool = True,
     metadata: dict | None = None,
     mesh_cache: dict | None = None,
+    section: str | None = None,
 ) -> list[dict]:
     """Render ``model`` from each view to ``<out_dir>/<prefix>_<view>.png``.
 
     ``model`` is a Part, a list/dict of Parts, or a raw OCCT shape.  Each PNG
     gets a sibling ``.json`` with camera, framing and model metadata.  With
     ``sheet=True`` a ``<prefix>_sheet.png`` contact sheet of all views is
-    written too.  Returns one dict per image.
+    written too.  ``section="y=0"`` cuts the model with a plane (removing the
+    half that faces the camera; ``"y=0:+"`` / ``"y=0:-"`` keep a given side) and
+    colours the cut faces.  Returns one dict per image.
     """
     cams = parse_views(views)
     out = Path(out_dir)
     scene = build_scene(model, deflection, mesh_cache)
+    full_bounds = scene_bounds(scene)
     title = prefix or "+".join(it.name for it in scene)
     prefix = prefix or _safe_name(title)
     bg = _parse_color(background, (1.0, 1.0, 1.0))
     results, images = [], []
+    cache: dict = {}
     for cam in cams:
-        img, meta = render_one(scene, cam, size=size, style=style, background=bg, title=title,
-                               annotate_images=annotate_images, supersample=supersample, metadata=metadata)
-        path = out / f"{prefix}_{cam.name}.png"
+        view_scene, sec = scene, None
+        if section:
+            view_scene, sec = section_scene(model_items(model), cam, section, deflection, cache)
+        img, meta = render_one(view_scene, cam, size=size, style=style, background=bg, title=title,
+                               annotate_images=annotate_images, supersample=supersample, metadata=metadata,
+                               fit_bounds=full_bounds, section=sec)
+        suffix = f"_section_{_safe_name(section)}" if section else ""
+        path = out / f"{prefix}_{cam.name}{suffix}.png"
         save_png(img, path)
         meta["image"]["path"] = str(path)
         mpath = path.with_suffix(".json")

@@ -101,6 +101,12 @@ def shells(shape: TopoDS_Shape) -> list:
     return [TopoDS.Shell(s) for s in iter_sub(shape, TopAbs_SHELL)]
 
 
+def wires(shape: TopoDS_Shape) -> list:
+    from OCP.TopAbs import TopAbs_WIRE
+
+    return [TopoDS.Wire(s) for s in iter_sub(shape, TopAbs_WIRE)]
+
+
 def vertices(shape: TopoDS_Shape) -> list:
     return [TopoDS.Vertex(s) for s in iter_sub(shape, TopAbs_VERTEX)]
 

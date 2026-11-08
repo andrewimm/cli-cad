@@ -129,6 +129,7 @@ def _parser() -> _Parser:
     s.add_argument("--out", help="output directory (default ./out/<script-name>)")
     s.add_argument("--size", default="1024x768")
     s.add_argument("--style", default="shaded_edges", choices=["shaded_edges", "shaded", "lines"])
+    s.add_argument("--section", metavar="PLANE", help="render a cut-away view, e.g. y=0")
 
     s = cmd("inspect")
     s.add_argument("part", nargs="?")
@@ -157,6 +158,7 @@ def _parser() -> _Parser:
     s.add_argument("--style", default="shaded_edges", choices=["shaded_edges", "shaded", "lines"])
     s.add_argument("--background", default="#ffffff")
     s.add_argument("--out", help="output directory (default renders/r<rev>)")
+    s.add_argument("--section", metavar="PLANE", help="cut-away view: 'y=0' removes the half facing the camera; 'x=10:+' keeps the +X side; cut faces are red")
     s.add_argument("--no-annotate", action="store_true", help="omit the title, axis triad and scale bar")
     s.add_argument("--no-sheet", action="store_true", help="do not write the combined contact sheet")
 
@@ -405,7 +407,8 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
         return r, _fmt_query(r)
     if c == "render":
         r = s.render(args.views, rev=args.revision, parts=args.part, size=_size(args.size), style=args.style,
-                     background=args.background, out_dir=args.out, annotate=not args.no_annotate, sheet=not args.no_sheet)
+                     background=args.background, out_dir=args.out, annotate=not args.no_annotate, sheet=not args.no_sheet,
+                     section=args.section)
         lines = [f"revision {r['revision']}: {len(r['images'])} view(s) -> {r['out_dir']}"]
         for im in r["images"]:
             lines.append(f"  {im['view']:<10} {im['path']}  ({'cached' if im['cached'] else 'rendered'}, "
@@ -537,7 +540,7 @@ def _run(args, cwd: Path):
         from .renderer import render_views
 
         result["renders"] = render_views(out.parts, args.render, outdir, size=_size(args.size), style=args.style,
-                                         prefix=script.stem)
+                                         prefix=script.stem, section=args.section)
     if args.export:
         files = []
         for fmt in [f.strip() for f in args.export.split(",")]:

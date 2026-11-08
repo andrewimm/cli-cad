@@ -269,6 +269,43 @@ class Profile:
         t.SetRotation(gp_Ax1(gp_Pnt(center[0], center[1], 0), gp_Dir(0, 0, 1)), math.radians(angle_deg))
         return Profile(BRepBuilderAPI_Transform(self._face, t, True).Shape(), {"type": "rotated", "angle": angle_deg, "of": self.description})
 
+    def offset(self, distance: float) -> "Profile":
+        """Grow (positive) or shrink (negative) the region by ``distance`` mm on every edge.
+
+        Outer corners stay sharp for rectangles when shrinking and become rounded
+        when growing (arc joins).  Useful for clearances and walls::
+
+            cavity = Profile.rounded_rect(95, 65, 3.5)
+            lip = cavity.offset(-0.25) - cavity.offset(-2.25)
+        """
+        from OCP.BRepOffsetAPI import BRepOffsetAPI_MakeOffset
+        from OCP.GeomAbs import GeomAbs_Arc
+
+        faces = _occ.faces(self._face)
+        if not faces:
+            raise CadError(INVALID_ARGUMENT, "cannot offset an empty profile")
+        result = None
+        for f in faces:
+            mk = BRepOffsetAPI_MakeOffset(f, GeomAbs_Arc)
+            mk.Perform(distance)
+            if not mk.IsDone():
+                raise CadError(INVALID_ARGUMENT, f"profile offset by {distance} failed",
+                               hint="a negative offset larger than half the narrowest width collapses the region")
+            shape = mk.Shape()
+            wires = _occ.wires(shape)
+            if not wires:
+                raise CadError(INVALID_ARGUMENT, f"profile offset by {distance} produced nothing")
+            # largest wire is the outer boundary, the rest are holes
+            wire_faces = sorted(((abs(_occ.area(BRepBuilderAPI_MakeFace(w, True).Face())), w) for w in wires),
+                                key=lambda t: -t[0])
+            mf = BRepBuilderAPI_MakeFace(wire_faces[0][1], True)
+            outer = Profile(mf.Face(), {})
+            for _, w in wire_faces[1:]:
+                outer = outer - Profile(BRepBuilderAPI_MakeFace(w, True).Face(), {})
+            result = outer if result is None else result + outer
+        result.description = {"type": "offset", "distance": distance, "of": self.description}
+        return result
+
     @property
     def area(self) -> float:
         return _occ.area(self._face)

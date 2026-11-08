@@ -264,3 +264,31 @@ def test_rehydrate_preserves_references(tmp_path):
     q = Part._rehydrate("p", read_brep(tmp_path / "p.brep"), refs=p._persisted_refs())
     assert q.references() == p.references()
     assert q.faces("base.top").info() == p.faces("base.top").info()
+
+
+def test_extrude_through_cut():
+    p = Part("p")
+    p.box(50, 30, 3)
+    p.extrude(Profile.rect(23.4, 12.8), 1, op="cut", through=True)
+    assert p.volume == pytest.approx(50 * 30 * 3 - 23.4 * 12.8 * 3)
+
+
+def test_profile_offset():
+    r = Profile.rect(20, 10) - Profile.circle(4)
+    assert r.offset(-1).area == pytest.approx(18 * 8 - math.pi * 9, rel=1e-6)
+    assert Profile.rect(10, 10).offset(1).area == pytest.approx(144 - 4 + math.pi, rel=1e-6)
+
+
+def test_selection_distance():
+    a = Part("a"); a.box(10, 10, 10)
+    b = Part("b"); b.box(10, 10, 10, at=(20, 0, 0))
+    assert a.faces().facing("+x").distance_to(b) == pytest.approx(10)
+    assert a.faces().facing("-x").distance_to(b.faces().facing("-x")) == pytest.approx(20)
+
+
+def test_angled_hole_vector_direction():
+    s, c = math.sin(math.radians(30)), math.cos(math.radians(30))
+    m = Part("m"); m.box(40, 30, 25)
+    m.hole(6, at=(-10 + 15 / c * s, 0, 25), direction=(-s, 0, -c), depth=15 / c)
+    (h,) = m.find_holes()
+    assert h["axis"] == pytest.approx([s, 0, c], abs=1e-6)

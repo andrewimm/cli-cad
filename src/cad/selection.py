@@ -160,6 +160,15 @@ class _Selection:
     def __sub__(self, other: "_Selection"):
         return self.exclude(other)
 
+    def distance_to(self, other) -> float:
+        """Minimum distance from these entities to a Part or another selection (mm)."""
+        from .part import Part
+
+        target = other.shape if isinstance(other, Part) else _occ.compound(other.shapes)
+        if not self._items:
+            raise CadError(EMPTY_SELECTION, f"selection {self.description} is empty")
+        return _occ.distance(_occ.compound(self._items), target)[0]
+
     def one(self):
         """Assert exactly one item and return the selection (raises otherwise)."""
         if len(self._items) == 1:

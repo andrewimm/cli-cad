@@ -292,6 +292,10 @@ class Part:
                 details={"reference": name, "lost_in": self._ref_lost[name]},
             )
         if name not in self._refs:
+            # a bare feature id selects everything that feature created ("lip" -> lip.side, lip.start, ...)
+            group = [n for n in self._refs if n.startswith(name + ".") and self._ref_kind[n] == kind]
+            if group:
+                return _dedupe(s for n in group for s in self._refs[n])
             matches = difflib.get_close_matches(name, list(self._refs), n=5, cutoff=0.4)
             raise CadError(
                 UNKNOWN_REFERENCE,
@@ -607,6 +611,7 @@ class Part:
         plane: str | Plane = "XY",
         offset: float = 0.0,
         symmetric: bool = False,
+        through: bool = False,
         op: str = "add",
         name: str | None = None,
     ) -> FeatureRef:
@@ -614,7 +619,9 @@ class Part:
 
         Negative ``distance`` extrudes against the normal.  ``symmetric=True``
         extrudes ``distance/2`` to each side.  ``offset`` moves the sketch plane
-        along its normal first.  Use ``op='cut'`` for pockets and cut-outs.
+        along its normal first.  Use ``op='cut'`` for pockets and cut-outs;
+        ``through=True`` extends the extrusion through the whole part in both
+        directions (``distance`` is then ignored).
 
         Named faces: ``<id>.start`` (on the sketch plane), ``<id>.end``,
         ``<id>.side`` (plus direction names like ``<id>.top`` when axis-aligned).
@@ -629,7 +636,11 @@ class Part:
         def build(feat):
             face = profile.placed(pl)
             dist = distance
-            if symmetric:
+            if through:
+                lo, hi = _occ.bbox(self.shape)
+                span = 2 * math.dist(lo, hi) + 2 * math.dist(pl.origin, ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2))
+                dist = span
+            if symmetric or through:
                 t = gp_Trsf()
                 t.SetTranslation(gp_Vec(*[-c * abs(dist) / 2 for c in n]))
                 face = BRepBuilderAPI_Transform(face, t, True).Shape()
@@ -643,7 +654,7 @@ class Part:
             self._body_op(feat, tool, _axial_refs(feat.id, tool, d, start_point=pl.origin), op)
 
         return self._run(
-            "extrude", name, dict(profile=profile, distance=distance, plane=pl, symmetric=symmetric, op=op), build
+            "extrude", name, dict(profile=profile, distance=distance, plane=pl, symmetric=symmetric, through=through, op=op), build
         )
 
     def revolve(

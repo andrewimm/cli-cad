@@ -149,3 +149,16 @@ def test_run_standalone(tmp_path):
     assert c == 0, r
     assert (tmp_path / "o" / "plate.step").exists()
     assert (tmp_path / "o" / "plate_with_holes_iso.png").exists()
+
+
+def test_section_render_and_reference_distance(tmp_path):
+    c, out, err = run(["examples", "copy", "enclosure", "proj"], tmp_path)
+    proj = tmp_path / "proj"
+    e = Engine()
+    j(["build"], proj, e)
+    c, r = j(["render", "--views", "front", "--section", "y=0", "--size", "320x240"], proj, e)
+    assert c == 0 and "section" in r["result"]["images"][0]["path"]
+    c, r = j(["render", "--views", "front", "--section", "q=1"], proj, e)
+    assert c == 3 and r["error"]["code"] == "INVALID_ARGUMENT"
+    c, r = j(["measure", "lid.lip", "--distance", "box.shell1.inner"], proj, e)
+    assert c == 0 and r["result"]["distance"]["min_distance"] > 0

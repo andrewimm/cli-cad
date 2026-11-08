@@ -64,3 +64,16 @@ def test_framing_scale(tmp_path):
     meta = json.loads(open(r["metadata_path"]).read())
     # 100 mm across 84% of 400 px
     assert meta["framing"]["mm_per_pixel"] == pytest.approx(100 / (400 * 0.84), rel=1e-3)
+
+
+def test_section_view(tmp_path):
+    p = Part("box")
+    p.box(40, 30, 20, name="b")
+    p.shell(2, open_faces=p.faces("b.top"))
+    (r, *_) = render(p, ["front"], tmp_path, size=(200, 150), annotate_images=False, sheet=False, section="y=0")
+    meta = json.loads(open(r["metadata_path"]).read())
+    assert meta["section"]["kept_side"] == "+"   # front camera sits at -Y, so the -Y half is removed
+    img = np.asarray(Image.open(r["path"])).astype(int)
+    red = (img[..., 0] > 150) & (img[..., 1] < 120) & (img[..., 2] < 120)
+    assert red.sum() > 200, "cut faces must be coloured"
+    assert "section" in r["path"]

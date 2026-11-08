@@ -261,6 +261,8 @@ class ProjectSession:
             if sel.kind == "edge" and (all_m or "length" in metrics):
                 out["length"] = round(_occ.length(comp), 6)
             out["entities"] = sel.info()
+            if other:
+                out["distance"] = self._distance(comp, other, r)
             return out
         if all_m or "volume" in metrics:
             out["volume"] = round(part.volume, 6)
@@ -278,13 +280,21 @@ class ProjectSession:
         if density is not None:
             out["mass_g"] = round(part.mass(density), 4)
         if other:
+            out["distance"] = self._distance(part.shape, other, r)
             _, op, oref = self.split_target(other, r)
-            oshape = _occ.compound(op.faces(oref).shapes) if oref else op.shape
-            d, p1, p2 = _occ.distance(part.shape, oshape)
-            out["distance"] = {"to": other, "min_distance": round(d, 6), "point_on_self": _r(p1), "point_on_other": _r(p2)}
             if not oref and op is not part:
                 out["distance"]["interference_volume"] = round(part.interference(op), 6)
         return out
+
+    def _distance(self, shape, other: str, rev: int) -> dict:
+        _, op, oref = self.split_target(other, rev)
+        if oref:
+            osel = op.faces(oref) if op._ref_kind.get(oref, "face") == "face" else op.edges(oref)
+            oshape = _occ.compound(osel.shapes)
+        else:
+            oshape = op.shape
+        d, p1, p2 = _occ.distance(shape, oshape)
+        return {"to": other, "min_distance": round(d, 6), "point_on_self": _r(p1), "point_on_other": _r(p2)}
 
     def query(self, target: str | None, expr: str, rev=None) -> dict:
         r, part, ref = self.split_target(target, rev)
@@ -340,6 +350,7 @@ class ProjectSession:
         annotate: bool = True,
         sheet: bool = True,
         deflection: float | None = None,
+        section: str | None = None,
     ) -> dict:
         from . import renderer as R
 
@@ -353,7 +364,11 @@ class ProjectSession:
         size = size or cfg.size
         cams = R.parse_views(views or cfg.views)
         bg = R._parse_color(background, (1.0, 1.0, 1.0))
-        title = f"{cfg.name} r{r}" + ("" if names == list(all_parts) else f" [{', '.join(names)}]")
+        title = f"{' + '.join(names)}  (rev {r})"
+        if section:
+            from .section import parse_section
+
+            parse_section(section)  # validate early
         scene_key = {
             "geom": [m["parts"][n]["geometry_hash"] for n in names],
             "names": names,
@@ -363,6 +378,7 @@ class ProjectSession:
             "annotate": annotate,
             "title": title,
             "deflection": deflection,
+            "section": section,
             "renderer": R.RENDERER_VERSION,
         }
         out = Path(out_dir) if out_dir else self.root / "renders" / f"r{r}"
@@ -371,6 +387,8 @@ class ProjectSession:
         out.mkdir(parents=True, exist_ok=True)
         prefix = "_".join(names) if len(names) <= 3 else f"{len(names)}parts"
         scene = None
+        full_bounds = None
+        section_cache: dict = {}
         results, images = [], []
         for cam in cams:
             vkey = hash_json({**scene_key, "eye": cam.eye.round(9).tolist(), "up": cam.up.round(9).tolist()})
@@ -387,25 +405,33 @@ class ProjectSession:
                                          R._parse_color(all_parts[n].color, R.PALETTE[i % len(R.PALETTE)]),
                                          _occ.bbox(all_parts[n].shape))
                              for i, n in enumerate(names)]
-                img, meta = R.render_one(scene, cam, size=size, style=style, background=bg, title=title,
+                if full_bounds is None:
+                    full_bounds = R.scene_bounds(scene)
+                view_scene, sec = scene, None
+                if section:
+                    view_scene, sec = R.section_scene([(n, all_parts[n].shape, all_parts[n].color) for n in names],
+                                                      cam, section, deflection, section_cache)
+                img, meta = R.render_one(view_scene, cam, size=size, style=style, background=bg, title=title,
+                                         fit_bounds=full_bounds, section=sec,
                                          annotate_images=annotate, metadata={"revision": r, "project": cfg.name})
                 R.save_png(img, cpng)
                 cjson.write_text(json.dumps(meta, indent=1))
                 cached = False
-            dst = out / f"{prefix}_{cam.name}.png"
+            suffix = f"_section_{R._safe_name(section)}" if section else ""
+            dst = out / f"{prefix}_{cam.name}{suffix}.png"
             shutil.copyfile(cpng, dst)
             meta = dict(meta)
             meta["image"] = dict(meta["image"], path=str(dst))
             mdst = dst.with_suffix(".json")
             mdst.write_text(json.dumps(meta, indent=1))
-            results.append({"view": cam.name, "path": str(dst), "metadata": str(mdst), "cached": cached,
+            results.append({"view": cam.name + (f" section {section}" if section else ""), "path": str(dst), "metadata": str(mdst), "cached": cached,
                             "mm_per_pixel": meta["framing"]["mm_per_pixel"], "screen_axes": meta["camera"]["screen_axes"]})
             images.append(dst)
         sheet_path = None
         if sheet and len(images) > 1:
             from PIL import Image
 
-            sheet_path = out / f"{prefix}_sheet.png"
+            sheet_path = out / f"{prefix}_sheet{'_section_' + R._safe_name(section) if section else ''}.png"
             R.save_png(R.contact_sheet([(p.stem, Image.open(p)) for p in images], size), sheet_path)
         return {"revision": r, "parts": names, "out_dir": str(out), "images": results,
                 "sheet": str(sheet_path) if sheet_path else None}
