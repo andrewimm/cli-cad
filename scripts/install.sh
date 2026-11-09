@@ -43,6 +43,9 @@ rm -rf dist
 uv build --wheel -q
 cargo build --release -q
 mkdir -p "$PREFIX/bin"
+# stop this install's running daemon with the old client before replacing anything: it would keep the old
+# code (a newer client also replaces an older daemon by itself, but only daemons that know how to step aside)
+if [ -x "$PREFIX/bin/cad" ]; then "$PREFIX/bin/cad" daemon stop >/dev/null 2>&1 || true; fi
 uv venv -q --allow-existing --python 3.12 "$PREFIX/.venv"
 uv pip install -q --reinstall --python "$PREFIX/.venv/bin/python" dist/cad-*.whl
 if [ "$FEA" = 1 ]; then
@@ -52,7 +55,6 @@ fi
 # replace, never overwrite in place: macOS kills a binary whose signed file was modified in place (SIGKILL)
 rm -f "$PREFIX/bin/cad" "$PREFIX/bin/cadd"
 cp target/release/cad target/release/cadd "$PREFIX/bin/"
-"$PREFIX/bin/cad" daemon stop >/dev/null 2>&1 || true   # a running daemon would keep the old code
 
 # check that the geometry kernel loads (on Linux it needs a few system libraries)
 if ! "$PREFIX/bin/cad" --no-daemon capabilities >/dev/null 2>"$PREFIX/install-check.log"; then

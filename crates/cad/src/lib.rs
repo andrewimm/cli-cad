@@ -2,8 +2,10 @@
 //! filesystem locations, project resolution, Python discovery and the wire protocol.
 //!
 //! Wire protocol (client <-> daemon): one JSON object per line over a Unix socket.
-//!   request : {"argv": [...], "cwd": "/abs/path", "timeout_s": 600}
+//!   request : {"argv": [...], "cwd": "/abs/path", "timeout_s": 600, "build": "<build_id>"}
 //!   response: {"exit_code": 0, "stdout": "...", "stderr": "..."}
+//!             or {"restart": true} when "build" differs from the daemon's own: the daemon was built
+//!             before the client's `cadd` was replaced, so it exits and the client starts the new one.
 
 use std::env;
 use std::fs;
@@ -54,17 +56,69 @@ pub fn runtime_dir() -> PathBuf {
     PathBuf::from(tmp).join(format!("cad-{}", uid()))
 }
 
-/// Unix socket paths are limited to ~104 bytes; very long runtime dirs fall back
-/// to a short per-user path derived from a hash of the requested location.
-pub fn socket_path() -> PathBuf {
-    let p = runtime_dir().join("cadd.sock");
+fn fnv(parts: &[&[u8]]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for part in parts {
+        for b in part.iter().chain(&[0u8]) {
+            h = (h ^ *b as u64).wrapping_mul(0x100000001b3);
+        }
+    }
+    h
+}
+
+/// The `cadd` binary the client starts: the one next to the running `cad`, else `cadd` on PATH.
+pub fn daemon_binary() -> PathBuf {
+    let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("cad"));
+    let sib = exe.with_file_name("cadd");
+    if sib.exists() {
+        return sib;
+    }
+    env::var_os("PATH")
+        .and_then(|paths| {
+            env::split_paths(&paths)
+                .map(|d| d.join("cadd"))
+                .find(|p| p.is_file())
+        })
+        .unwrap_or_else(|| PathBuf::from("cadd"))
+}
+
+/// Which installation a daemon serves: its `cadd` binary and the Python its workers run.
+/// Every installation (and every `CAD_PYTHON`) gets its own daemon and socket, so two installs
+/// never answer each other's commands. The client passes the `cadd` it would start; the daemon its own exe.
+pub fn install_id(cadd: &Path) -> String {
+    let cadd = fs::canonicalize(cadd).unwrap_or_else(|_| cadd.to_path_buf());
+    let py = python();
+    format!(
+        "{:012x}",
+        fnv(&[
+            cadd.as_os_str().as_encoded_bytes(),
+            py.as_os_str().as_encoded_bytes()
+        ]) & 0xffff_ffff_ffff
+    )
+}
+
+/// Changes whenever the `cadd` binary is rebuilt or replaced (its size and modification time), so a
+/// client can tell that the running daemon is older than the one it would start, and restart it.
+pub fn build_id(cadd: &Path) -> String {
+    let m = fs::metadata(cadd);
+    let len = m.as_ref().map(|m| m.len()).unwrap_or(0);
+    let mtime = m
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{:016x}", fnv(&[&len.to_le_bytes(), &mtime.to_le_bytes()]))
+}
+
+/// Socket of the daemon for one installation (see `install_id`). Unix socket paths are limited to
+/// ~104 bytes; very long runtime dirs fall back to a short per-user path derived from a hash.
+pub fn socket_path(cadd: &Path) -> PathBuf {
+    let p = runtime_dir().join(format!("cadd-{}.sock", install_id(cadd)));
     if p.as_os_str().len() < 100 {
         return p;
     }
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in p.as_os_str().as_encoded_bytes() {
-        h = (h ^ *b as u64).wrapping_mul(0x100000001b3);
-    }
+    let h = fnv(&[p.as_os_str().as_encoded_bytes()]);
     PathBuf::from(format!("/tmp/cad-{}", uid())).join(format!("{:016x}.sock", h))
 }
 

@@ -12,6 +12,8 @@
 //! * a request exceeding its timeout kills its worker (exit 7)
 //! * optional limits: CAD_WORKER_MAX_MEM_MB (RLIMIT_AS), CAD_WORKER_CPU_SECS (RLIMIT_CPU)
 //! * the daemon exits after CAD_DAEMON_IDLE_SECS (default 1800) without requests
+//! * one daemon per installation (socket named by `install_id`); a request from a client whose
+//!   `cadd` was rebuilt since this daemon started (`build_id` differs) makes it exit for the new one
 
 use cadcore::*;
 use serde_json::{json, Value};
@@ -51,6 +53,10 @@ struct Daemon {
     started: Instant,
     last_activity: AtomicU64,
     shutdown: AtomicBool,
+    inflight: AtomicU64,
+    exe: PathBuf,
+    build: String,
+    sock: PathBuf,
 }
 
 fn now_s() -> u64 {
@@ -70,7 +76,9 @@ fn main() {
         log(&format!("cannot create runtime dir {}: {e}", rt.display()));
         std::process::exit(1);
     }
-    let sock = socket_path();
+    let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("cadd"));
+    let exe = fs::canonicalize(&exe).unwrap_or(exe);
+    let sock = socket_path(&exe);
     if let Some(parent) = sock.parent() {
         let _ = ensure_private_dir(parent);
     }
@@ -86,10 +94,11 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let _ = fs::write(rt.join("cadd.pid"), std::process::id().to_string());
+    let _ = fs::write(sock.with_extension("pid"), std::process::id().to_string());
     log(&format!(
-        "listening on {} (python {})",
+        "listening on {} ({}, python {})",
         sock.display(),
+        exe.display(),
         python().display()
     ));
 
@@ -98,6 +107,10 @@ fn main() {
         started: Instant::now(),
         last_activity: AtomicU64::new(now_s()),
         shutdown: AtomicBool::new(false),
+        inflight: AtomicU64::new(0),
+        build: build_id(&exe),
+        exe,
+        sock: sock.clone(),
     });
 
     let idle: u64 = env::var("CAD_DAEMON_IDLE_SECS")
@@ -109,13 +122,13 @@ fn main() {
         let sock = sock.clone();
         std::thread::spawn(move || loop {
             std::thread::sleep(Duration::from_secs(5));
-            if d.shutdown.load(Ordering::SeqCst)
-                || now_s().saturating_sub(d.last_activity.load(Ordering::SeqCst)) > idle
-            {
-                log("shutting down");
-                shutdown_workers(&d);
+            if d.shutdown.load(Ordering::SeqCst) && d.inflight.load(Ordering::SeqCst) == 0 {
+                exit_now(&d); // asked to stop; the socket is already gone
+            }
+            if now_s().saturating_sub(d.last_activity.load(Ordering::SeqCst)) > idle {
+                log("idle; shutting down");
                 let _ = fs::remove_file(&sock);
-                std::process::exit(0);
+                exit_now(&d);
             }
         });
     }
@@ -135,6 +148,21 @@ fn main() {
     }
 }
 
+fn exit_now(d: &Daemon) -> ! {
+    shutdown_workers(d);
+    let _ = fs::remove_file(d.sock.with_extension("pid"));
+    std::process::exit(0);
+}
+
+/// Stop taking connections at once: the socket goes before the reply, so the client can start a
+/// replacement right away, and this daemon never deletes a socket a replacement has bound.
+/// Requests already running finish; the daemon exits after the last one.
+fn begin_stop(d: &Daemon, why: &str) {
+    log(why);
+    let _ = fs::remove_file(&d.sock);
+    d.shutdown.store(true, Ordering::SeqCst);
+}
+
 fn shutdown_workers(d: &Daemon) {
     let slots: Vec<_> = d.slots.lock().unwrap().values().cloned().collect();
     for s in slots {
@@ -150,6 +178,15 @@ fn shutdown_workers(d: &Daemon) {
 }
 
 fn handle(d: &Arc<Daemon>, stream: UnixStream) -> std::io::Result<()> {
+    d.inflight.fetch_add(1, Ordering::SeqCst);
+    let r = serve(d, stream);
+    if d.inflight.fetch_sub(1, Ordering::SeqCst) == 1 && d.shutdown.load(Ordering::SeqCst) {
+        exit_now(d);
+    }
+    r
+}
+
+fn serve(d: &Arc<Daemon>, stream: UnixStream) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut line = String::new();
     reader.read_line(&mut line)?;
@@ -179,11 +216,20 @@ fn dispatch(d: &Arc<Daemon>, req: &Value) -> Value {
     if argv.first().map(|s| s.as_str()) == Some("daemon") {
         return match argv.get(1).map(|s| s.as_str()) {
             Some("stop") => {
-                d.shutdown.store(true, Ordering::SeqCst);
+                begin_stop(d, "stop requested; shutting down");
                 json!({"exit_code": 0, "stdout": "", "stderr": ""})
             }
             _ => json!({"exit_code": 0, "result": status(d)}),
         };
+    }
+    if let Some(b) = req["build"].as_str() {
+        if b != d.build {
+            begin_stop(
+                d,
+                "a client with a newer cadd build connected; exiting for it",
+            );
+            return json!({"restart": true});
+        }
     }
     let cwd = PathBuf::from(req["cwd"].as_str().unwrap_or("/"));
     let timeout = Duration::from_secs(req["timeout_s"].as_u64().unwrap_or(600));
@@ -456,6 +502,6 @@ fn status(d: &Daemon) -> Value {
         };
         workers.push(entry);
     }
-    json!({"pid": std::process::id(), "uptime_s": d.started.elapsed().as_secs(), "socket": socket_path(),
-           "python": python(), "workers": workers})
+    json!({"pid": std::process::id(), "uptime_s": d.started.elapsed().as_secs(), "socket": d.sock,
+           "cadd": d.exe, "build": d.build, "python": python(), "workers": workers})
 }

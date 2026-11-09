@@ -1,6 +1,7 @@
 """Integration tests for the Rust client + daemon (skipped if not built: `cargo build --release`)."""
 import json
 import os
+import shutil
 import signal
 import subprocess
 import time
@@ -78,3 +79,78 @@ def test_falls_back_to_standalone_when_daemon_cannot_start(tmp_path, env):
     env["CAD_REQUIRE_DAEMON"] = "1"
     p = cad(["capabilities", "--json"], tmp_path, env, check=False)
     assert p.returncode == 8 and json.loads(p.stdout)["error"]["code"] == "DAEMON_UNAVAILABLE"
+
+
+def _install(root: Path) -> Path:
+    """A minimal installation like scripts/install.sh makes: bin/cad, bin/cadd and a .venv beside them."""
+    (root / "bin").mkdir(parents=True)
+    for exe in ("cad", "cadd"):
+        shutil.copy(CAD.with_name(exe), root / "bin" / exe)
+    (root / ".venv").symlink_to(ROOT / ".venv")
+    return root / "bin" / "cad"
+
+
+def _status(cad_exe, cwd, env):
+    p = subprocess.run([str(cad_exe), "daemon", "status", "--json"], cwd=cwd, env=env, capture_output=True,
+                       text=True, timeout=60)
+    return json.loads(p.stdout)["result"]
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    # an exited child of nobody we know may linger as a zombie briefly; treat "ps says Z" as dead
+    st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    return bool(st) and not st.startswith("Z")
+
+
+def test_each_installation_has_its_own_daemon(tmp_path, env):
+    env = {k: v for k, v in env.items() if k != "CAD_PYTHON"}   # each install finds its own .venv
+    a, b = _install(tmp_path / "a"), _install(tmp_path / "b")
+    for exe in (a, b):
+        p = subprocess.run([str(exe), "capabilities"], cwd=tmp_path, env=env, capture_output=True, text=True,
+                           timeout=120)
+        assert p.returncode == 0, p.stderr
+    sa, sb = _status(a, tmp_path, env), _status(b, tmp_path, env)
+    try:
+        assert sa["pid"] != sb["pid"] and sa["socket"] != sb["socket"]
+        assert sa["cadd"].startswith(str((tmp_path / "a").resolve()))
+        assert sa["python"].startswith(str(tmp_path / "a"))
+        # removing one installation leaves the other working (it used to answer the other's commands)
+        subprocess.run([str(a), "daemon", "stop"], env=env, capture_output=True, timeout=60)
+        shutil.rmtree(tmp_path / "a")
+        p = subprocess.run([str(b), "capabilities", "--json"], cwd=tmp_path, env=env, capture_output=True,
+                           text=True, timeout=120)
+        assert p.returncode == 0 and json.loads(p.stdout)["ok"], p.stderr
+        assert _status(b, tmp_path, env)["pid"] == sb["pid"]
+    finally:
+        for exe in (a, b):
+            if exe.exists():
+                subprocess.run([str(exe), "daemon", "stop"], env=env, capture_output=True, timeout=60)
+
+
+def test_rebuilt_cadd_replaces_its_running_daemon(tmp_path, env):
+    exe = _install(tmp_path / "inst")
+    try:
+        cad_ok = lambda: subprocess.run([str(exe), "capabilities", "--json"], cwd=tmp_path, env=env,  # noqa: E731
+                                        capture_output=True, text=True, timeout=120)
+        assert cad_ok().returncode == 0
+        old = _status(exe, tmp_path, env)
+        # reinstall the way install.sh does: remove, copy, new modification time
+        cadd = exe.with_name("cadd")
+        cadd.unlink()
+        shutil.copy(CAD.with_name("cadd"), cadd)
+        os.utime(cadd, (time.time() + 5, time.time() + 5))
+        p = cad_ok()
+        assert p.returncode == 0 and json.loads(p.stdout)["ok"], p.stderr
+        new = _status(exe, tmp_path, env)
+        assert new["pid"] != old["pid"] and new["build"] != old["build"]
+        for _ in range(100):
+            if not _alive(old["pid"]):
+                break
+            time.sleep(0.05)
+        assert not _alive(old["pid"]), "the replaced daemon should exit"
+    finally:
+        subprocess.run([str(exe), "daemon", "stop"], env=env, capture_output=True, timeout=60)

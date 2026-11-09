@@ -67,6 +67,16 @@ implementation (`cad/cli.py`): the daemon forwards argv to a worker that calls
 the same `main()` that standalone mode runs in-process, so standalone and
 daemon output are identical (an integration test compares them).
 
+**One daemon per installation.** The socket is named after the installation: the canonical path of `cadd`
+plus the Python its workers run (`CAD_PYTHON` or the `.venv` beside the binaries). Side-by-side installs, a
+dev checkout and an installed copy never answer each other's commands, and deleting one install cannot
+break another. Each request also carries a build id (the `cadd` binary's size and modification time). A
+daemon started from an older binary removes its socket, finishes any requests already running and exits,
+and the client starts the new one. A git hash would not be enough: two installs from the same commit would
+still share one daemon, and a rebuild with uncommitted changes would keep the same hash. Python-only edits
+in a dev checkout (`uv sync` installs it editable) do not change the build id; run `cad daemon restart`
+after those.
+
 **Sessions.** One worker per project root (resolved by `--project`, cwd ancestors,
 then the opened project), plus a global worker for project-less commands.
 Requests to one project are serialised; projects run in parallel. A worker

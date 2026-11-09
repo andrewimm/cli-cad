@@ -9,7 +9,8 @@
 //! Unix sockets), the client falls back to standalone mode automatically and says so
 //! on stderr; set `CAD_REQUIRE_DAEMON=1` to make that an error instead.
 //!
-//! Daemon management: `cad daemon status|stop|start|restart`.
+//! Each installation has its own daemon (socket named by `install_id`), and a daemon older than
+//! this install's `cadd` is replaced on the next command. Daemon management: `cad daemon status|stop|start|restart`.
 
 use cadcore::*;
 use serde_json::{json, Value};
@@ -56,36 +57,48 @@ fn main() {
         exec_standalone(&args);
     }
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
-    let req = json!({"argv": args, "cwd": cwd, "timeout_s": timeout_s});
+    let build = build_id(&daemon_binary());
+    let req = json!({"argv": args, "cwd": cwd, "timeout_s": timeout_s, "build": build});
     let require = env::var("CAD_REQUIRE_DAEMON")
         .map(|v| v == "1")
         .unwrap_or(false);
-    let stream = match connect_or_start() {
-        Ok(s) => s,
-        Err(reason) if !require => {
-            // same engine in-process: identical results, just no warm session
-            eprintln!("note: cad daemon unavailable ({reason}); running standalone. Set CAD_NO_DAEMON=1 to skip this check.");
-            exec_standalone(&args);
-        }
-        Err(reason) => {
-            if json_out {
-                println!(
-                    "{}",
-                    error_json(
-                        &first,
-                        "DAEMON_UNAVAILABLE",
-                        &reason,
-                        "unset CAD_REQUIRE_DAEMON or retry with --no-daemon",
-                        exit::DAEMON_UNAVAILABLE
-                    )
-                );
-            } else {
-                eprintln!("error [DAEMON_UNAVAILABLE]: {reason}\n  hint: unset CAD_REQUIRE_DAEMON or retry with --no-daemon");
+    let mut replaced_old = false;
+    let resp = loop {
+        let stream = match connect_or_start() {
+            Ok(s) => s,
+            Err(reason) if !require => {
+                // same engine in-process: identical results, just no warm session
+                eprintln!("note: cad daemon unavailable ({reason}); running standalone. Set CAD_NO_DAEMON=1 to skip this check.");
+                exec_standalone(&args);
             }
-            std::process::exit(exit::DAEMON_UNAVAILABLE);
+            Err(reason) => {
+                if json_out {
+                    println!(
+                        "{}",
+                        error_json(
+                            &first,
+                            "DAEMON_UNAVAILABLE",
+                            &reason,
+                            "unset CAD_REQUIRE_DAEMON or retry with --no-daemon",
+                            exit::DAEMON_UNAVAILABLE
+                        )
+                    );
+                } else {
+                    eprintln!("error [DAEMON_UNAVAILABLE]: {reason}\n  hint: unset CAD_REQUIRE_DAEMON or retry with --no-daemon");
+                }
+                std::process::exit(exit::DAEMON_UNAVAILABLE);
+            }
+        };
+        let resp = send(stream, &req, Duration::from_secs(timeout_s + 30));
+        // the running daemon predates this install's cadd (rebuilt or reinstalled): it has stepped
+        // aside, so start the new one and send the request again
+        if !replaced_old && matches!(&resp, Ok(r) if r["restart"] == true) {
+            replaced_old = true;
+            continue;
         }
+        break resp;
     };
-    match send(stream, &req, Duration::from_secs(timeout_s + 30)) {
+    match resp {
         Ok(resp) => {
             let out = resp["stdout"].as_str().unwrap_or("");
             let err = resp["stderr"].as_str().unwrap_or("");
@@ -122,7 +135,7 @@ fn exec_standalone(args: &[String]) -> ! {
 }
 
 fn connect() -> std::io::Result<UnixStream> {
-    UnixStream::connect(socket_path())
+    UnixStream::connect(socket_path(&daemon_binary()))
 }
 
 /// Connect to the daemon, starting it if needed.  A socket refused with EPERM/EACCES
@@ -170,16 +183,6 @@ fn send(mut stream: UnixStream, req: &Value, timeout: Duration) -> Result<Value,
         return Err("daemon closed the connection without responding".into());
     }
     serde_json::from_str(&resp).map_err(|e| format!("bad response from daemon: {e}"))
-}
-
-fn daemon_binary() -> PathBuf {
-    let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("cad"));
-    let sib = exe.with_file_name("cadd");
-    if sib.exists() {
-        sib
-    } else {
-        PathBuf::from("cadd")
-    }
 }
 
 fn start_daemon() -> Result<(), String> {
@@ -265,7 +268,10 @@ fn daemon_cmd(args: &[String], json_out: bool) -> i32 {
                 Ok(()) => {
                     print(
                         &json!({"running": true, "started": true}),
-                        format!("daemon started ({})", socket_path().display()),
+                        format!(
+                            "daemon started ({})",
+                            socket_path(&daemon_binary()).display()
+                        ),
                     );
                     0
                 }
@@ -307,11 +313,16 @@ fn daemon_cmd(args: &[String], json_out: bool) -> i32 {
             Ok(resp) => {
                 let st = &resp["result"];
                 let mut text = format!(
-                    "daemon pid {} up {}s, socket {}\n",
+                    "daemon pid {} up {}s, socket {}\n  cadd {}, python {}\n",
                     st["pid"],
                     st["uptime_s"],
-                    socket_path().display()
+                    socket_path(&daemon_binary()).display(),
+                    st["cadd"].as_str().unwrap_or("?"),
+                    st["python"].as_str().unwrap_or("?")
                 );
+                if st["build"].as_str() != Some(build_id(&daemon_binary()).as_str()) {
+                    text += "  older than the installed cadd: the next command replaces it\n";
+                }
                 if let Some(ws) = st["workers"].as_array() {
                     for w in ws {
                         text += &format!(
