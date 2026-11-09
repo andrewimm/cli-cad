@@ -137,6 +137,7 @@ def _parser() -> _Parser:
     s.add_argument("--render", metavar="VIEWS", help="comma-separated views, e.g. iso,front or all")
     s.add_argument("--export", metavar="FORMATS", help="comma-separated: step,stl,3mf,brep")
     s.add_argument("--3mf-mode", dest="threemf_mode", default="objects", choices=["objects", "multimaterial"])
+    s.add_argument("--3mf-for", dest="threemf_for", default="any", choices=["any", "prusa"])
     s.add_argument("--out", help="output directory (default ./out/<script-name>)")
     s.add_argument("--size", default="1024x768")
     s.add_argument("--style", default="shaded_edges", choices=["shaded_edges", "shaded", "lines"])
@@ -189,6 +190,10 @@ def _parser() -> _Parser:
     s.add_argument("--3mf-mode", dest="threemf_mode", default=None, choices=["objects", "multimaterial"],
                    help="multimaterial: one print, parts as material regions in place; objects: separate pieces "
                         "(default from cad.toml [export] threemf_mode, else objects)")
+    s.add_argument("--3mf-for", dest="threemf_for", default=None, choices=["any", "prusa"],
+                   help="slicer the 3MF layout is for: any (Bambu Studio, OrcaSlicer, Cura; PrusaSlicer too for objects) "
+                        "or prusa (PrusaSlicer: a multimaterial assembly as one object with per-part extruders) "
+                        "(default from cad.toml [export] threemf_for, else any)")
     s.add_argument("--revision", "-r")
     s.add_argument("--part", action="append")
     s.add_argument("--out", help="output directory (default out/r<rev>)")
@@ -606,7 +611,7 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
     if c == "export":
         fmts = [f.strip() for f in args.format.split(",")] if args.format else None
         r = s.export(fmts, rev=args.revision, parts=args.part, out_dir=args.out, tolerance=args.tolerance,
-                     threemf_mode=args.threemf_mode)
+                     threemf_mode=args.threemf_mode, threemf_for=args.threemf_for)
         lines = [f"revision {r['revision']}:"]
         for f in r["files"]:
             lines.append(f"  {f['path']}  ({f['bytes']} bytes)")
@@ -943,7 +948,8 @@ def _run(args, cwd: Path):
             if fmt == "3mf":  # one file with every part and its material
                 from .threemf import export_3mf
 
-                rep = export_3mf(deliver, outdir / f"{script.stem}.3mf", mode=args.threemf_mode, title=script.stem)
+                rep = export_3mf(deliver, outdir / f"{script.stem}.3mf", mode=args.threemf_mode, title=script.stem,
+                                  target=args.threemf_for)
                 files.append(rep["path"])
                 result.setdefault("warnings", []).extend(rep["warnings"])
                 continue

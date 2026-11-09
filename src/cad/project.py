@@ -57,6 +57,7 @@ class ProjectConfig:
     export_formats: list[str]
     raw: dict
     threemf_mode: str = "objects"
+    threemf_for: str = "any"
 
     @staticmethod
     def load(root: Path) -> "ProjectConfig":
@@ -79,6 +80,7 @@ class ProjectConfig:
             export_formats=list(export.get("formats", ["step", "stl"])),
             raw=raw,
             threemf_mode=str(export.get("threemf_mode", "objects")),
+            threemf_for=str(export.get("threemf_for", "any")),
         )
 
 

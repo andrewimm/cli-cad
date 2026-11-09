@@ -89,6 +89,7 @@ size = [1024, 768]
 [export]                  # optional defaults for `cad export`
 formats = ["step", "stl"]
 threemf_mode = "objects"  # or "multimaterial" (see Materials and 3D printing)
+threemf_for = "any"       # or "prusa": multimaterial laid out for PrusaSlicer
 ```
 
 `params.toml` holds parameter overrides written by `cad set` (commit it with the
@@ -344,7 +345,7 @@ its (positive) axis — for a vertical through hole in a plate on Z=0 that is (x
 | `cad measure [part[.ref]] [--volume --area --bbox --com --holes --thickness] [--distance OTHER] [--density D]` | numbers, or the faces of a reference (e.g. `bracket.base.top`); `--distance` accepts parts or references on both sides, e.g. `cad measure lid.lip --distance box.shell1.inner` |
 | `cad query [part] "<expr>"` | evaluate a selection, e.g. `cad query "edges().vertical().convex()"` |
 | `cad render [--views ...] [--section y=0] [--part P] [--size WxH] [--style shaded_edges|shaded|lines] [-r REV]` | PNG + JSON metadata per view, plus a contact sheet; `--section` cuts away the half facing the camera (`x=5:+` keeps the +X side) |
-| `cad export [--format step,stl,3mf,brep] [--3mf-mode objects|multimaterial] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files; 3MF carries materials; STL reports watertightness |
+| `cad export [--format step,stl,3mf,brep] [--3mf-mode objects|multimaterial] [--3mf-for any|prusa] [--part P] [--out DIR] [--tolerance 0.01]` | manufacturing files; 3MF carries materials; STL reports watertightness |
 | `cad materials` | built-in materials (density, colour) |
 | `cad fonts [filter]` | installed fonts for text |
 | `cad measure <part> --section z=V` | cross-section outline at a plane (regions, rectangles, circles, holes) |
@@ -415,6 +416,7 @@ housing.mass()                                      # grams, from the material d
 
 ```bash
 cad export --format 3mf --3mf-mode multimaterial # ONE print, several filaments: parts touching in place (inlay, seal, two-tone)
+cad export --format 3mf --3mf-mode multimaterial --3mf-for prusa   # the same, laid out for PrusaSlicer
 cad export --format 3mf                          # separate prints: every part its own object (box + lid, spare parts)
 cad export --format stl                          # one STL per part, with a watertightness check
 ```
@@ -425,13 +427,23 @@ pieces → `objects`. Set a default in cad.toml: `[export]` `threemf_mode = "mul
 parts touch without overlapping with `cad clearance` (every pair: clear / touching / overlap).
 
 The 3MF file holds all parts (reference parts excluded): mesh units mm, closed oriented meshes, each
-part's colour in a 3MF colour group (how Bambu Studio picks filaments) and its material name as
-`cad:material` metadata. Material slot k is filament k+1, in first-use order. `multimaterial` mode
-writes one assembly object plus Bambu Studio's per-part settings (name + filament). Verified with
-Bambu Studio 2.07: objects mode loads as separate objects on filaments 1..n; multimaterial mode as one
-object with one part per material. Set the matching filament types/colours in the slicer.
+part's colour in a 3MF colour group and its material name as `cad:material` metadata. Material slot k
+is extruder / filament k+1, in first-use order, and the file states each part's extruder in the form
+each common slicer reads. Which slicer loads which file correctly:
+
+| | objects | multimaterial | multimaterial `--3mf-for prusa` |
+|---|---|---|---|
+| Bambu Studio, OrcaSlicer | ✓ | ✓ one object, one part per material | ✗ |
+| Cura | ✓ | ✓ one group, parts on their extruders | ✗ |
+| PrusaSlicer | ✓ | ✗ parts become separate objects dropped onto the bed | ✓ one object, one part (volume) per material |
+
+PrusaSlicer needs its own layout for an assembly (one mesh whose triangle ranges are the parts), which
+Cura cannot assign extruders within; so for PrusaSlicer pass `--3mf-for prusa`, or set
+`[export]` `threemf_for = "prusa"` in cad.toml. Set the matching filament types/colours in the slicer.
+Checked against Bambu Studio 2.9, OrcaSlicer 2.5, PrusaSlicer 2.9.4 and Cura 5.14 (`scripts/slicer_compat`).
 Overlapping parts are reported (`MATERIAL_OVERLAP`) because two materials would claim the same volume.
-In Python: `part.export("x.3mf")`, or `from cad.threemf import export_3mf; export_3mf({"a": a, "b": b}, "x.3mf", mode="multimaterial")`.
+In Python: `part.export("x.3mf")`, or `from cad.threemf import export_3mf; export_3mf({"a": a, "b": b}, "x.3mf", mode="multimaterial")`
+(`target="prusa"` for PrusaSlicer).
 
 ## Designing for 3D printing: screws, inserts, nuts, snap fits, threads
 

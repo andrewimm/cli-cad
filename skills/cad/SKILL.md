@@ -124,7 +124,8 @@ case.mass()                                       # grams from the material dens
 
 - One material per part; a multi-material print is several parts touching in place (not overlapping).
 - `cad export --format 3mf --3mf-mode multimaterial`: one piece printed with several filaments
-  (Bambu Studio loads it as one object, part k on filament k). `cad export --format 3mf`: separate pieces.
+  (Bambu Studio, OrcaSlicer and Cura load it as one object, part k on filament k; for PrusaSlicer add
+  `--3mf-for prusa`). `cad export --format 3mf`: separate pieces (every slicer).
   Set the default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. `cad materials` lists the library.
 - `cad slice [--printer "P1S"] [--process "0.16mm Optimal"] [--supports auto]`: print time, grams per filament
   and a ready-to-print `.gcode.3mf` via Bambu Studio (if installed). `cad docs slicing` for options.

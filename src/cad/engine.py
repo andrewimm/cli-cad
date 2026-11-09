@@ -514,7 +514,8 @@ class ProjectSession:
 
     # ------------------------------------------------------------------ export
     def export(self, formats: list[str] | None = None, *, rev=None, parts: list[str] | None = None,
-               out_dir: str | None = None, tolerance: float = 0.01, threemf_mode: str | None = None) -> dict:
+               out_dir: str | None = None, tolerance: float = 0.01, threemf_mode: str | None = None,
+               threemf_for: str | None = None) -> dict:
         from .export import FORMATS
 
         r, all_parts = self.parts(rev)
@@ -539,11 +540,12 @@ class ProjectSession:
                 if n not in all_parts:
                     raise CadError(NOT_FOUND, f"no part named '{n}'", details={"parts": list(all_parts)})
             threemf_mode = threemf_mode or self.config.threemf_mode
+            threemf_for = threemf_for or self.config.threemf_for
             dst = out / f"{self.config.name}.3mf"
             threemf = export_3mf({n: all_parts[n] for n in chosen}, dst, mode=threemf_mode, tolerance=tolerance,
-                                 title=self.config.name)
+                                 title=self.config.name, target=threemf_for)
             files.append({"part": ",".join(chosen), "format": "3mf", "path": str(dst), "bytes": threemf["bytes"],
-                          "materials": threemf["materials"], "mode": threemf_mode})
+                          "materials": threemf["materials"], "mode": threemf_mode, "for": threemf_for})
             formats = [f for f in formats if f != "3mf"]
         for n in chosen:
             if n not in all_parts:

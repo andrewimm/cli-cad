@@ -94,6 +94,54 @@ def test_multimaterial_mode_assembly_with_part_filaments(tmp_path):
     assert cfg.count("<part ") == 3 and 'value="gasket"' in cfg and '<metadata key="extruder" value="2"/>' in cfg
 
 
+def _config_extruders(cfg: str, tag: str) -> dict:
+    """{name: extruder} for each <tag> block of a Bambu / PrusaSlicer model config."""
+    import re
+    out = {}
+    for block in cfg.split(f"<{tag} ")[1:]:
+        block = block.split(f"</{tag}>")[0]
+        name = re.search(r'key="name" value="([^"]*)"', block).group(1)
+        out[name] = re.search(r'key="extruder" value="(\d+)"', block).group(1)
+    return out
+
+
+def test_objects_mode_states_extruders_for_every_slicer(tmp_path):
+    # Bambu Studio reads the colour group; OrcaSlicer, PrusaSlicer and Cura need their own metadata
+    export_3mf(_parts(), tmp_path / "a.3mf")
+    want = {"housing": "1", "gasket": "2", "inlay": "3"}
+    with zipfile.ZipFile(tmp_path / "a.3mf") as z:
+        bambu = z.read("Metadata/model_settings.config").decode()
+        prusa = z.read("Metadata/Slic3r_PE_model.config").decode()
+    assert _config_extruders(bambu, "object") == want
+    assert _config_extruders(prusa, "object") == want
+    w, model = _read(tmp_path / "a.3mf")
+    cura = {o.GetName(): _material_meta(o)["extruder_nr"] for o in _objects(model)}   # 0-based
+    assert cura == {"housing": "0", "gasket": "1", "inlay": "2"}
+
+
+def test_multimaterial_for_prusa_is_one_object_with_volumes(tmp_path):
+    parts = _parts()
+    rep = export_3mf(parts, tmp_path / "p.3mf", mode="multimaterial", title="enclosure", target="prusa")
+    assert rep["target"] == "prusa"
+    w, model = _read(tmp_path / "p.3mf")
+    (obj,) = _objects(model)
+    assert obj.GetName() == "enclosure" and obj.IsManifoldAndOriented()
+    with zipfile.ZipFile(tmp_path / "p.3mf") as z:
+        names = z.namelist()
+        cfg = z.read("Metadata/Slic3r_PE_model.config").decode()
+    assert "Metadata/model_settings.config" not in names   # Bambu's parts would name objects that are not there
+    assert _config_extruders(cfg, "volume") == {"housing": "1", "gasket": "2", "inlay": "3"}
+    # the volumes' triangle ranges tile the mesh, in order, one per part with that part's triangle count
+    import re
+    ranges = [(int(a), int(b)) for a, b in re.findall(r'<volume firstid="(\d+)" lastid="(\d+)"', cfg)]
+    counts = [o["triangles"] for o in rep["objects"]]
+    assert ranges[0][0] == 0 and ranges[-1][1] == obj.GetTriangleCount() - 1
+    assert [b - a + 1 for a, b in ranges] == counts
+    assert all(ranges[i + 1][0] == ranges[i][1] + 1 for i in range(len(ranges) - 1))
+    with pytest.raises(CadError):
+        export_3mf(parts, tmp_path / "x.3mf", target="simplify3d")
+
+
 def test_overlap_warning_and_single_part(tmp_path):
     a = Part("a", material="PLA"); a.box(10, 10, 10)
     b = Part("b", material="TPU"); b.box(10, 10, 10, at=(5, 0, 0))

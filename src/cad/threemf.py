@@ -12,9 +12,21 @@ Layouts:
 Every part's mesh object references its material's colour in a 3MF Materials-extension
 ``<m:colorgroup>`` (the same mechanism Fusion uses for multi-colour exports; Bambu
 Studio assigns filaments from it) and carries ``cad:material`` metadata with the
-material name.  Verified with Bambu Studio 2.07 (CLI): objects mode maps the colours
-to filaments 1..n, multimaterial mode yields one object with named parts on their
-filaments.
+material name.  Slicers ignore the colours when choosing extruders, except Bambu Studio,
+so each file also states every part's extruder in the formats the common slicers read:
+
+* Bambu Studio and OrcaSlicer: ``Metadata/model_settings.config`` (both layouts);
+* Cura: ``cura:extruder_nr`` metadata on each mesh object (0-based; both layouts);
+* PrusaSlicer: ``Metadata/Slic3r_PE_model.config`` (objects layout).
+
+PrusaSlicer turns every 3MF component into a separate object and drops each onto the
+bed, so the multimaterial layout falls apart there.  ``target="prusa"`` writes the
+assembly as PrusaSlicer's own layout instead: one mesh object whose triangle ranges are
+the parts ("volumes"), each with its extruder.  Cura cannot assign extruders within one
+mesh, which is why that layout is not the default.
+
+Verified with Bambu Studio 2.07, OrcaSlicer 2.5, PrusaSlicer 2.9.4 and Cura 5.14's 3MF
+parser (``scripts/slicer_compat``).
 
 Meshes are welded (shared vertices), outward oriented and checked to be closed
 two-manifolds before writing, as the 3MF core specification requires.
@@ -35,7 +47,10 @@ from .errors import EXPORT_FAILED, INVALID_ARGUMENT, CadError
 CORE_NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 MATERIAL_NS = "http://schemas.microsoft.com/3dmanufacturing/material/2015/02"
 CAD_NS = "https://github.com/cad-agent/cad/3mf/2026"
+CURA_NS = "http://software.ultimaker.com/xml/cura/3mf/2015/10"
 MODES = ("objects", "multimaterial")
+TARGETS = ("any", "prusa")
+IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -147,14 +162,19 @@ def _dir_name(d) -> str:
 
 
 def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", tolerance: float = 0.01,
-               angular_tolerance: float = 0.2, title: str | None = None, check_overlap: bool = True) -> dict:
-    """Write ``parts`` ({name: Part}) to one .3mf file.  Returns a report (materials, objects, warnings)."""
+               angular_tolerance: float = 0.2, title: str | None = None, check_overlap: bool = True,
+               target: str = "any") -> dict:
+    """Write ``parts`` ({name: Part}) to one .3mf file.  Returns a report (materials, objects, warnings).
+
+    ``target="prusa"`` changes only the multimaterial layout (see the module docstring)."""
     from . import __version__
     from .materials import Material
     from .renderer import PALETTE
 
     if mode not in MODES:
         raise CadError(INVALID_ARGUMENT, f"unknown 3MF mode {mode!r}", hint=f"use one of {MODES}")
+    if target not in TARGETS:
+        raise CadError(INVALID_ARGUMENT, f"unknown 3MF target {target!r}", hint=f"use one of {TARGETS}")
     if not parts:
         raise CadError(INVALID_ARGUMENT, "nothing to export")
     assembled = parts  # overlap / contact checks use the design pose, not the print layout
@@ -171,7 +191,7 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
             idx = len(slots) - 1
         slot_of[name] = idx
     meshes = {}
-    report = {"mode": mode, "objects": [], "materials": [], "warnings": [], "oriented_for_print": orient_notes}
+    report = {"mode": mode, "target": target, "objects": [], "materials": [], "warnings": [], "oriented_for_print": orient_notes}
     for name, p in parts.items():
         v, t = welded_mesh(p.shape, tolerance, angular_tolerance)
         mr = manifold_report(v, t)
@@ -210,35 +230,55 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
     meta = [f'<metadata name="Application">cad {escape(__version__)}</metadata>']
     if title:
         meta.append(f"<metadata name=\"Title\">{escape(title)}</metadata>")
-    objects, items, config = [], [], ""
-    ids = {}
-    for oid, (name, (v, t)) in enumerate(meshes.items(), start=2):
-        ids[name] = oid
+    label = title or "assembly"
+    extruder = {n: slot_of[n] + 1 for n in meshes}  # material slot k -> extruder / filament k+1
+    configs: dict[str, str] = {}
+
+    def metadata(name: str) -> str:
         m = slots[slot_of[name]]
-        md = (f'<metadatagroup><metadata name="cad:material">{escape(m.name)}</metadata>'
-              + (f'<metadata name="cad:density_g_cm3">{m.density}</metadata>' if m.density else "") + "</metadatagroup>")
-        objects.append(f'<object id="{oid}" type="model" name={quoteattr(name)} pid="1" pindex="{slot_of[name]}">'
-                       + md + _mesh_xml(v, t) + "</object>")
-    if mode == "objects":
-        items = [f'<item objectid="{ids[n]}"/>' for n in meshes]
+        return ('<metadatagroup>'
+                f'<metadata name="cad:material">{escape(m.name)}</metadata>'
+                + (f'<metadata name="cad:density_g_cm3">{m.density}</metadata>' if m.density else "")
+                + f'<metadata name="cura:extruder_nr" preserve="1">{extruder[name] - 1}</metadata>'
+                + "</metadatagroup>")
+
+    objects, items = [], []
+    if mode == "multimaterial" and target == "prusa":
+        # one mesh; each part is a range of its triangles (a PrusaSlicer "volume")
+        verts, tris, volumes, first = [], [], [], 0
+        offset = 0
+        for name, (v, t) in meshes.items():
+            verts.append(v)
+            tris.append(t + offset)
+            offset += len(v)
+            volumes.append((first, first + len(t) - 1, name, extruder[name]))
+            first += len(t)
+        first_part = next(iter(meshes))
+        objects.append(f'<object id="2" type="model" name={quoteattr(label)} pid="1" pindex="{slot_of[first_part]}">'
+                       + _mesh_xml(np.vstack(verts), np.vstack(tris)) + "</object>")
+        items = ['<item objectid="2"/>']
+        configs["Metadata/Slic3r_PE_model.config"] = _prusa_config([(2, label, extruder[first_part], volumes)])
     else:
-        aid = len(meshes) + 2
-        label = title or "assembly"
-        objects.append(f'<object id="{aid}" type="model" name={quoteattr(label)}><components>'
-                       + "".join(f'<component objectid="{ids[n]}"/>' for n in meshes) + "</components></object>")
-        items = [f'<item objectid="{aid}"/>']
-        identity = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
-        parts_cfg = "".join(
-            f'    <part id="{ids[n]}" subtype="normal_part">\n'
-            f'      <metadata key="name" value={quoteattr(n)}/>\n'
-            f'      <metadata key="matrix" value="{identity}"/>\n'
-            f'      <metadata key="extruder" value="{slot_of[n] + 1}"/>\n'
-            f"    </part>\n" for n in meshes)
-        config = ('<?xml version="1.0" encoding="UTF-8"?>\n<config>\n'
-                  f'  <object id="{aid}">\n    <metadata key="name" value={quoteattr(label)}/>\n'
-                  f'    <metadata key="extruder" value="1"/>\n{parts_cfg}  </object>\n</config>\n')
+        ids = {}
+        for oid, (name, (v, t)) in enumerate(meshes.items(), start=2):
+            ids[name] = oid
+            objects.append(f'<object id="{oid}" type="model" name={quoteattr(name)} pid="1" pindex="{slot_of[name]}">'
+                           + metadata(name) + _mesh_xml(v, t) + "</object>")
+        if mode == "objects":
+            items = [f'<item objectid="{ids[n]}"/>' for n in meshes]
+            configs["Metadata/model_settings.config"] = _bambu_config(
+                [(ids[n], n, extruder[n], [(ids[n], n, extruder[n])]) for n in meshes])
+            configs["Metadata/Slic3r_PE_model.config"] = _prusa_config(
+                [(ids[n], n, extruder[n], [(0, len(meshes[n][1]) - 1, n, extruder[n])]) for n in meshes])
+        else:
+            aid = len(meshes) + 2
+            objects.append(f'<object id="{aid}" type="model" name={quoteattr(label)}><components>'
+                           + "".join(f'<component objectid="{ids[n]}"/>' for n in meshes) + "</components></object>")
+            items = [f'<item objectid="{aid}"/>']
+            configs["Metadata/model_settings.config"] = _bambu_config(
+                [(aid, label, 1, [(ids[n], n, extruder[n]) for n in meshes])])
     model = (f'<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" xmlns="{CORE_NS}" '
-             f'xmlns:m="{MATERIAL_NS}" xmlns:cad="{CAD_NS}">'
+             f'xmlns:m="{MATERIAL_NS}" xmlns:cad="{CAD_NS}" xmlns:cura="{CURA_NS}">'
              + "".join(meta) + f'<resources><m:colorgroup id="1">{colors}</m:colorgroup>' + "".join(objects)
              + "</resources><build>" + "".join(items) + "</build></model>\n")
     p = Path(path)
@@ -248,12 +288,43 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         z.writestr("[Content_Types].xml", CONTENT_TYPES)
         z.writestr("_rels/.rels", RELS)
         z.writestr("3D/3dmodel.model", model)
-        if config:
-            z.writestr("Metadata/model_settings.config", config)
+        for name, text in configs.items():
+            z.writestr(name, text)
     os.replace(tmp, p)
     report["path"] = str(p)
     report["bytes"] = p.stat().st_size
     return report
+
+
+def _bambu_config(objects) -> str:
+    """Bambu Studio / OrcaSlicer model settings: objects [(id, name, extruder, parts [(id, name, extruder)])]."""
+    out = ['<?xml version="1.0" encoding="UTF-8"?>\n<config>\n']
+    for oid, name, ext, parts in objects:
+        out.append(f'  <object id="{oid}">\n    <metadata key="name" value={quoteattr(name)}/>\n'
+                   f'    <metadata key="extruder" value="{ext}"/>\n')
+        for pid, pname, pext in parts:
+            out.append(f'    <part id="{pid}" subtype="normal_part">\n'
+                       f'      <metadata key="name" value={quoteattr(pname)}/>\n'
+                       f'      <metadata key="matrix" value="{IDENTITY}"/>\n'
+                       f'      <metadata key="extruder" value="{pext}"/>\n    </part>\n')
+        out.append("  </object>\n")
+    return "".join(out) + "</config>\n"
+
+
+def _prusa_config(objects) -> str:
+    """PrusaSlicer model settings: objects [(id, name, extruder, volumes [(first, last triangle, name, extruder)])]."""
+    out = ['<?xml version="1.0" encoding="UTF-8"?>\n<config>\n']
+    for oid, name, ext, volumes in objects:
+        out.append(f' <object id="{oid}" instances_count="1">\n'
+                   f'  <metadata type="object" key="name" value={quoteattr(name)}/>\n'
+                   f'  <metadata type="object" key="extruder" value="{ext}"/>\n')
+        for first, last, vname, vext in volumes:
+            out.append(f'  <volume firstid="{first}" lastid="{last}">\n'
+                       f'   <metadata type="volume" key="name" value={quoteattr(vname)}/>\n'
+                       f'   <metadata type="volume" key="volume_type" value="ModelPart"/>\n'
+                       f'   <metadata type="volume" key="extruder" value="{vext}"/>\n  </volume>\n')
+        out.append(" </object>\n")
+    return "".join(out) + "</config>\n"
 
 
 def _hex(color, fallback) -> str:

@@ -14,3 +14,4 @@ dist/
 /*.log
 /result.json
 junit.xml
+slicer-compat-report.*
