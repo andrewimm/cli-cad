@@ -423,7 +423,9 @@ cad export --format stl                          # one STL per part, with a wate
 
 Which mode: parts that are printed together as one piece in different materials → `multimaterial`
 (the slicer gets one object whose parts are on filaments 1, 2, …). Parts printed as separate
-pieces → `objects`. Set a default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. Check that
+pieces → `objects`: each keeps its modelled X/Y unless two footprints would overlap on the bed
+(feet under a case), in which case all parts are laid out side by side, 5 mm apart, each on Z = 0
+(`cad export` says so; the JSON's `arranged` lists the moves). Set a default in cad.toml: `[export]` `threemf_mode = "multimaterial"`. Check that
 parts touch without overlapping with `cad clearance` (every pair: clear / touching / overlap).
 
 The 3MF file holds all parts (reference parts excluded): mesh units mm, closed oriented meshes, each

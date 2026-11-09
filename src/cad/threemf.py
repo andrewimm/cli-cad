@@ -4,6 +4,9 @@ Layouts:
 
 * ``objects`` (default): one mesh object per part, each a separate build item at its
   modelled position.  Slicers load them as separate objects (e.g. a box and its lid).
+  If two parts' footprints on the bed would overlap or touch (feet under a case: slicers
+  drop every object onto the bed), all parts are laid out side by side instead
+  (``arrange``), each resting on Z = 0, and the report says so.
 * ``multimaterial``: one assembly object whose components are the parts' meshes, in
   place, plus Bambu Studio's ``Metadata/model_settings.config`` naming each part and
   its filament (material slot k -> filament k+1), so the slicer loads one object with
@@ -51,6 +54,8 @@ CURA_NS = "http://software.ultimaker.com/xml/cura/3mf/2015/10"
 MODES = ("objects", "multimaterial")
 TARGETS = ("any", "prusa")
 IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+ARRANGE_MIN_GAP = 1.0   # mm between footprints below which objects mode lays the parts out
+ARRANGE_GAP = 5.0       # mm between parts once laid out
 
 CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
@@ -132,6 +137,45 @@ def orient_for_print(parts: dict, mode: str = "objects") -> tuple[dict, list[str
     return out, [f"all parts: printed on the {_dir_name(down)} side"]
 
 
+def footprint_conflicts(boxes: dict, min_gap: float = ARRANGE_MIN_GAP) -> list[tuple[str, str]]:
+    """Pairs of parts whose footprints (X/Y bounding boxes) overlap or come closer than ``min_gap``."""
+    names = list(boxes)
+    out = []
+    for i, a in enumerate(names):
+        (alo, ahi) = boxes[a]
+        for b in names[i + 1:]:
+            (blo, bhi) = boxes[b]
+            if all(alo[k] < bhi[k] + min_gap and blo[k] < ahi[k] + min_gap for k in (0, 1)):
+                out.append((a, b))
+    return out
+
+
+def arrange(boxes: dict, gap: float = ARRANGE_GAP) -> dict:
+    """Side-by-side layout of footprints: {name: (lo, hi)} -> {name: (dx, dy, dz)} moving each part into rows
+    (deepest first) that fill a roughly square area, the whole layout centred on the origin, every part on Z = 0."""
+    import math as _m
+
+    size = {n: (hi[0] - lo[0], hi[1] - lo[1]) for n, (lo, hi) in boxes.items()}
+    order = sorted(boxes, key=lambda n: (-size[n][1], -size[n][0], n))
+    row_limit = max(max(w for w, _ in size.values()),
+                    _m.sqrt(sum((w + gap) * (d + gap) for w, d in size.values())) * 1.25)
+    spots, x, y, row_depth = {}, 0.0, 0.0, 0.0
+    for n in order:
+        w, d = size[n]
+        if x > 0 and x + w > row_limit:
+            x, y, row_depth = 0.0, y + row_depth + gap, 0.0
+        spots[n] = (x, y)
+        x += w + gap
+        row_depth = max(row_depth, d)
+    width = max(spots[n][0] + size[n][0] for n in spots)
+    depth = max(spots[n][1] + size[n][1] for n in spots)
+    out = {}
+    for n, (lo, hi) in boxes.items():
+        sx, sy = spots[n]
+        out[n] = (sx - width / 2 - lo[0], depth / 2 - sy - size[n][1] - lo[1], -lo[2])  # first row at the back
+    return out
+
+
 def _whole_trsf(before, down):
     from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt, gp_Trsf, gp_Vec
     import math as _m
@@ -202,6 +246,17 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         meshes[name] = (v, t)
         report["objects"].append({"part": name, "material": slots[slot_of[name]].name, "triangles": int(len(t)),
                                   "vertices": int(len(v)), "volume_mm3": round(mr["volume"], 3)})
+    report["arranged"] = None
+    if mode == "objects" and len(meshes) > 1:
+        boxes = {n: (v.min(0), v.max(0)) for n, (v, _) in meshes.items()}
+        conflicts = footprint_conflicts(boxes)
+        if conflicts:
+            moves = arrange(boxes)
+            meshes = {n: (v + np.array(moves[n]), t) for n, (v, t) in meshes.items()}
+            report["arranged"] = {
+                "reason": "footprints overlap on the bed: " + ", ".join(f"{a}/{b}" for a, b in conflicts[:4])
+                          + (f" (+{len(conflicts) - 4} more)" if len(conflicts) > 4 else ""),
+                "gap_mm": ARRANGE_GAP, "moved_mm": {n: [round(c, 3) for c in moves[n]] for n in meshes}}
     if check_overlap and len(parts) > 1:
         names = list(parts)
         for i, a in enumerate(names):
@@ -217,9 +272,10 @@ def export_3mf(parts: dict, path: str | os.PathLike, *, mode: str = "objects", t
         touching = [(a, b) for i, a in enumerate(names) for b in names[i + 1:]
                     if slot_of[a] != slot_of[b] and assembled[a].distance_to(assembled[b]) < 1e-6]
         if touching:
+            apart = "they are laid out apart as separate objects; " if report["arranged"] else ""
             report["warnings"].append({"code": "CONSIDER_MULTIMATERIAL",
                                        "message": f"parts in different materials touch ({', '.join(f'{a}/{b}' for a, b in touching[:4])}); "
-                                                  "to print them together as one piece use --3mf-mode multimaterial "
+                                                  f"{apart}to print them together as one piece use --3mf-mode multimaterial "
                                                   "(or threemf_mode = \"multimaterial\" in cad.toml)",
                                        "parts": [list(t) for t in touching]})
     for k, m in enumerate(slots):

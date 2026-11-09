@@ -545,7 +545,8 @@ class ProjectSession:
             threemf = export_3mf({n: all_parts[n] for n in chosen}, dst, mode=threemf_mode, tolerance=tolerance,
                                  title=self.config.name, target=threemf_for)
             files.append({"part": ",".join(chosen), "format": "3mf", "path": str(dst), "bytes": threemf["bytes"],
-                          "materials": threemf["materials"], "mode": threemf_mode, "for": threemf_for})
+                          "materials": threemf["materials"], "mode": threemf_mode, "for": threemf_for,
+                          "arranged": threemf["arranged"]})
             formats = [f for f in formats if f != "3mf"]
         for n in chosen:
             if n not in all_parts:

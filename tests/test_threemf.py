@@ -142,6 +142,38 @@ def test_multimaterial_for_prusa_is_one_object_with_volumes(tmp_path):
         export_3mf(parts, tmp_path / "x.3mf", target="simplify3d")
 
 
+def _footprints(model):
+    out = {}
+    for o in _objects(model):
+        v = [p.Coordinates[0:3] for p in o.GetVertices()]
+        xs, ys, zs = zip(*v)
+        out[o.GetName()] = ((min(xs), min(ys), min(zs)), (max(xs), max(ys), max(zs)))
+    return out
+
+
+def test_objects_mode_lays_out_parts_whose_footprints_collide(tmp_path):
+    from cad.threemf import footprint_conflicts
+
+    # the gasket and inlay sit inside the housing's footprint: printed as separate objects they would collide
+    rep = export_3mf(_parts(), tmp_path / "a.3mf")
+    assert rep["arranged"] and "housing/gasket" in rep["arranged"]["reason"]
+    w, model = _read(tmp_path / "a.3mf")
+    boxes = _footprints(model)
+    assert not footprint_conflicts(boxes, min_gap=4.9)          # 5 mm apart
+    assert all(abs(lo[2]) < 1e-6 for lo, _ in boxes.values())    # each on the bed
+    sizes = {n: [round(h - l, 3) for l, h in zip(lo, hi)] for n, (lo, hi) in boxes.items()}
+    assert sizes["housing"] == [60.0, 40.0, 20.0]                # moved, not changed
+    # parts already apart keep their modelled positions
+    box = Part("box", material="PLA"); box.box(40, 40, 20)
+    lid = Part("lid", material="PLA"); lid.box(40, 40, 3, at=(60, 0, 0))
+    rep = export_3mf({"box": box, "lid": lid}, tmp_path / "b.3mf")
+    assert rep["arranged"] is None
+    w, model = _read(tmp_path / "b.3mf")
+    assert round(_footprints(model)["lid"][0][0], 3) == 40.0
+    # multimaterial mode keeps the assembly together
+    assert export_3mf(_parts(), tmp_path / "m.3mf", mode="multimaterial")["arranged"] is None
+
+
 def test_overlap_warning_and_single_part(tmp_path):
     a = Part("a", material="PLA"); a.box(10, 10, 10)
     b = Part("b", material="TPU"); b.box(10, 10, 10, at=(5, 0, 0))

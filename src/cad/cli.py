@@ -617,6 +617,9 @@ def _dispatch(args, cwd: Path, engine, parser) -> tuple[Any, str]:
             lines.append(f"  {f['path']}  ({f['bytes']} bytes)")
             for m in f.get("materials", []):
                 lines.append(f"      material slot {m['slot']} (extruder {m['extruder']}): {m['name']} {m['color']} <- {', '.join(m['parts'])}")
+            if f.get("arranged"):
+                lines.append(f"      laid out side by side, {f['arranged']['gap_mm']:g} mm apart ({f['arranged']['reason']}); "
+                             "--3mf-mode multimaterial keeps them assembled")
             pr = f.get("printability")
             if pr:
                 state = "watertight, manifold" if pr["watertight"] else f"NOT watertight ({pr.get('open_edges')} open / {pr.get('non_manifold_edges')} non-manifold edges)"

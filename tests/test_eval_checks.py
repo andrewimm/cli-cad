@@ -169,7 +169,9 @@ def test_threemf_artifact_check(tmp_path):
             assert main(["export", *fmt_args], d, e)[0] == 0
         return d
 
-    assert grade(t, project("objects", src, ["--format", "3mf"]))["passed"]
+    # separate objects are laid out side by side (the insert's footprint is inside the coaster's), so the
+    # insert no longer sits in its recess: not "printed in one go"
+    assert failed(grade(t, project("objects", src, ["--format", "3mf"]))) == {"threemf_artifact"}
     assert grade(t, project("mm", src, ["--format", "3mf", "--3mf-mode", "multimaterial"]))["passed"]
     swapped = src.replace('material="PLA"', 'material="X"').replace('material="TPU"', 'material="PLA"').replace('material="X"', 'material="TPU"')
     assert failed(grade(t, project("swapped", swapped, ["--format", "3mf"]))) == {"threemf_artifact"}

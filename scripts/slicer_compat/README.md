@@ -17,8 +17,9 @@ With PrusaSlicer it also slices to G-code and checks which extruders the print u
 | `nameplate`, multimaterial | a badge sitting on top of a plate |
 | both multimaterial, `--3mf-for prusa` | PrusaSlicer's own layout |
 
-Slicing is skipped, with a note, for separate-objects files whose parts overlap on the bed:
-`multimaterial_case`'s feet sit under the case, and PrusaSlicer refuses those as G-code path conflicts.
+Separate-objects files must not have parts whose footprints overlap on the bed: slicers drop every object
+onto the bed, and PrusaSlicer refuses the result as G-code path conflicts. cad lays such parts out side by
+side (`multimaterial_case`'s feet sit under the case), and the check fails if any still overlap.
 
 Known limitations are reported as `know`, not as failures. Example: PrusaSlicer splits the default
 multimaterial layout into separate objects. If a known limitation stops reproducing, the check fails, so

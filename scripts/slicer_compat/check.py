@@ -367,7 +367,7 @@ def compare(want: list[dict], got: list[dict], mode: str) -> list[str]:
 
 
 def footprints_overlap(parts: list[dict]) -> list[str]:
-    """Pairs of parts whose footprints on the bed overlap (objects mode keeps each part's modelled X/Y)."""
+    """Pairs of parts whose footprints on the bed overlap (slicers drop separate objects onto the bed)."""
     out = []
     for i, a in enumerate(parts):
         for b in parts[i + 1:]:
@@ -443,9 +443,10 @@ def main() -> int:
                     row.update(status="fail", problems=["known limitation no longer reproduces; update check.py"])
                     failed = True
             overlap = footprints_overlap(fx["want"]) if fx["mode"] == "objects" else []
-            if key == "prusa" and not args.no_slice and row["status"] == "ok" and overlap:
-                row["note"] = (f"not sliced: in objects mode these parts overlap on the bed ({', '.join(overlap[:3])}); "
-                               "PrusaSlicer reports G-code path conflicts")
+            if overlap:  # cad lays separate objects out side by side; colliding footprints are a cad bug
+                row.update(status="fail", problems=row.get("problems", []) + [
+                    f"separate objects overlap on the bed: {', '.join(overlap[:3])}"])
+                failed = True
             elif key == "prusa" and not args.no_slice and row["status"] == "ok":
                 try:
                     used = s.slice(fx["path"], work, max(fx["extruders"]))
