@@ -98,3 +98,35 @@ jobs:
       - name: Report failed tests as annotations
         if: failure()
         run: python3 scripts/junit_annotations.py junit.xml
+
+  install-as-documented:
+    name: Install as the README says (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - name: "Step 1: prerequisites (the README's commands)"
+        run: |
+          command -v uv    || curl -LsSf https://astral.sh/uv/install.sh | sh
+          command -v cargo || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: "Step 1: Linux system libraries (the apt-get lines copied from the README)"
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          grep '^sudo apt-get install' README.md | tee /dev/stderr | bash -e
+      - name: "Step 2: scripts/install.sh --fea"
+        run: scripts/install.sh --fea
+      - name: "Step 3: check it, then a first model end to end"
+        run: |
+          cad --version
+          cad capabilities | tail -1 | grep 'stress analysis (cad fea): available'
+          cad examples copy mounting_bracket "$RUNNER_TEMP/bracket" && cd "$RUNNER_TEMP/bracket"
+          cad build && cad inspect && cad render --views iso
+          ls renders/r1/*.png
+          cad daemon stop

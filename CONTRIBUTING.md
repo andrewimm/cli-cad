@@ -6,7 +6,8 @@ expected) are as welcome as code.
 
 ## Setup
 
-macOS or Linux, [uv](https://docs.astral.sh/uv/) and Rust (cargo).
+macOS or Linux, [uv](https://docs.astral.sh/uv/) and Rust (cargo). The README's [Install](README.md#install)
+section shows how to get each one.
 
 ```bash
 uv sync                     # Python 3.12 venv: OCP (OCCT 8), numpy, pillow, plus the dev group
@@ -15,9 +16,7 @@ cargo build --release       # target/release/cad and cadd (the daemon tests use 
 export PATH="$PWD/target/release:$PATH"
 ```
 
-On Linux, OCP and gmsh need a few system libraries (see `.github/workflows/ci.yml`):
-`libgl1 libglu1-mesa libegl1 libxrender1 libxcursor1 libxft2 libxinerama1 libfontconfig1` and a font such as
-`fonts-dejavu-core` for text.
+On Linux, install the system libraries listed in the [README](README.md#1-prerequisites) first.
 
 ## Before opening a pull request
 

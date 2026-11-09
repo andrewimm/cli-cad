@@ -14,10 +14,12 @@ and exports STEP, STL or 3MF. Everything is a CLI command with `--json` output.
 cad --version            # prints "cad 0.1.0"; if "command not found", install it (below)
 ```
 
-Install from a checkout of the cad repository (needs `uv` and Rust/`cargo`):
+If it is missing, install it from source. You need `uv` and Rust (`cargo`), and on Linux a few system
+libraries. The [README's Install section](https://github.com/andrewimm/clicd#install) gives each command:
 
 ```bash
-scripts/install.sh            # -> ~/.local/cad (Python env + cad + cadd), linked into ~/.local/bin
+git clone https://github.com/andrewimm/clicd.git && cd clicd
+scripts/install.sh            # -> ~/.local/cad (Python env + cad + cadd), linked into ~/.local/bin; --fea adds stress analysis
 ```
 
 In a sandbox that forbids Unix sockets (e.g. Codex) the background daemon cannot run; `cad` then
