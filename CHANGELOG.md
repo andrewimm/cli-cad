@@ -42,4 +42,5 @@ command has `--json` output, stable error codes and hints.
   - deterministic software renders;
   - a standalone mode for sandboxes.
 - **Install:** prebuilt for macOS (Apple silicon, Intel) and Linux (x86_64, aarch64) with
-  `curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh`.
+  `curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh`. Stress analysis
+  is not available on Linux aarch64, because gmsh publishes no wheels for it.

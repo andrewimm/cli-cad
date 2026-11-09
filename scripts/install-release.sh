@@ -27,6 +27,12 @@ for arg in "$@"; do
   esac
 done
 
+if [ "$FEA" = 1 ] && [ "$(uname -s)" = Linux ] && { [ "$(uname -m)" = aarch64 ] || [ "$(uname -m)" = arm64 ]; }; then
+  say "note: stress analysis (--fea) is not available on Linux aarch64: gmsh, its mesher, publishes no wheels for it."
+  say "      Installing cad without it; everything else works."
+  FEA=0
+fi
+
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) pattern="macosx_*_arm64.whl" ;;
   Darwin-x86_64) pattern="macosx_*_x86_64.whl" ;;

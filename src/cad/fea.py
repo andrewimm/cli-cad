@@ -18,6 +18,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import platform
 import shutil
 import subprocess
 import sys
@@ -59,8 +60,12 @@ def install_hint(names: list[str] | None = None) -> str:
     names = names or list(PACKAGES.values())
     exe = sys.executable
     pkgs = " ".join(names)
+    if "gmsh" in names and sys.platform.startswith("linux") and platform.machine() in ("aarch64", "arm64"):
+        return ("gmsh, the mesher, publishes no wheels for Linux aarch64, so stress analysis is not available on "
+                "this machine; run cad fea on Linux x86_64 or macOS")
     cmd = f"uv pip install --python {exe} {pkgs}" if shutil.which("uv") else f"{exe} -m pip install {pkgs}"
-    return (f"install them into cad's Python environment: {cmd}   (from a source checkout: scripts/install.sh --fea). "
+    return (f"install them into cad's Python environment: {cmd}   (or re-run the installer with --fea: "
+            "install.sh --fea for a release, scripts/install.sh --fea from a source checkout). "
             "They are optional because gmsh, the mesher, is GPL-licensed.")
 
 

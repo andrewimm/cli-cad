@@ -16,8 +16,9 @@ agent ──> cad (Rust CLI) ──unix socket──> cadd (Rust daemon) ──>
 
 These steps are written so an agent can follow them unattended. Each one ends with a check.
 
-**Supported:** macOS (Apple silicon or Intel) and Linux (x86_64 or aarch64). Windows is not supported; use
-WSL2. Expect about 1.5 GB on disk (the Open CASCADE wheel is large).
+**Supported:** macOS (Apple silicon or Intel) and Linux (x86_64 or aarch64). Stress analysis is not
+available on Linux aarch64, because its mesher (gmsh) publishes no wheels for it. Windows is not supported;
+use WSL2. Expect about 1.5 GB on disk (the Open CASCADE wheel is large).
 
 ### Quick install (prebuilt)
 
