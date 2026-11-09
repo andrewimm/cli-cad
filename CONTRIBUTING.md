@@ -6,8 +6,8 @@ expected) are as welcome as code.
 
 ## Setup
 
-macOS or Linux, [uv](https://docs.astral.sh/uv/) and Rust (cargo). The README's [Install](README.md#install)
-section shows how to get each one.
+macOS or Linux, [uv](https://docs.astral.sh/uv/) and Rust (cargo). The README's
+[Building from source](README.md#building-from-source) section shows how to get each one.
 
 ```bash
 uv sync                     # Python 3.12 venv: OCP (OCCT 8), numpy, pillow, plus the dev group
@@ -16,7 +16,8 @@ cargo build --release       # target/release/cad and cadd (the daemon tests use 
 export PATH="$PWD/target/release:$PATH"
 ```
 
-On Linux, install the system libraries listed in the [README](README.md#1-prerequisites-from-source) first.
+On Linux, install the system libraries listed in the [README](README.md#1-linux-only-system-libraries) first, plus
+`build-essential`.
 
 ## Before opening a pull request
 

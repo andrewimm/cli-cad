@@ -18,76 +18,38 @@ These steps are written so an agent can follow them unattended. Each one ends wi
 
 **Supported:** macOS (Apple silicon or Intel) and Linux (x86_64 or aarch64). Stress analysis is not
 available on Linux aarch64, because its mesher (gmsh) publishes no wheels for it. Windows is not supported;
-use WSL2. Expect about 1.5 GB on disk (the Open CASCADE wheel is large).
+use WSL2. Expect about 1.5 GB on disk (the Open CASCADE geometry kernel is large).
 
-### Quick install (prebuilt)
+### 1. Linux only: system libraries
 
-```bash
-curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh
-# with stress analysis (cad fea; its mesher, gmsh, is GPL-licensed, hence optional):
-curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh -s -- --fea
-```
-
-This installs [uv](https://docs.astral.sh/uv/) if it is missing, then runs `uv tool install` on this
-platform's wheel from the latest [release](https://github.com/andrewimm/clicd/releases). `cad` and `cadd`
-go into `~/.local/bin`, with their own Python 3.12 environment, so you need no Rust, compiler or clone. It
-ends by running `cad` once to check that it works.
-
-To install a specific version, use `releases/download/v0.1.0/install.sh`. To upgrade, re-run the same
-command (add `--fea` if you use stress analysis); the running daemon is replaced automatically. To
-uninstall, run `uv tool uninstall clicd`.
-
-On Linux the geometry kernel needs a few system libraries; the installer warns if they are missing. On
-Debian or Ubuntu:
+The geometry kernel needs OpenGL and fontconfig libraries even when nothing is displayed. macOS needs
+nothing here. On Debian or Ubuntu:
 
 ```bash
 sudo apt-get install -y libgl1 libegl1 libfontconfig1 fonts-dejavu-core
-# only for stress analysis (--fea): the gmsh mesher also needs
+# only for stress analysis (--fea below): the gmsh mesher also needs
 sudo apt-get install -y libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1 libxi6 libxkbcommon0
 ```
 
-Then continue at [3. Check it](#3-check-it).
-
-### From source
-
-Build from source instead to get unreleased changes from `main`, or to work on cad itself (see also
-[Development setup](#development-setup)). It takes about 5 minutes and needs Rust.
-
-### 1. Prerequisites (from source)
-
-You need git, [uv](https://docs.astral.sh/uv/) (Python packaging; it downloads Python 3.12 itself, so no
-system Python is needed) and a Rust toolchain (cargo). Install any that are missing:
+### 2. Install the latest release
 
 ```bash
-command -v uv    || curl -LsSf https://astral.sh/uv/install.sh | sh            # or: brew install uv
-command -v cargo || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-# open a new shell afterwards (or: source $HOME/.local/bin/env; source $HOME/.cargo/env)
+curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh
+# or, with stress analysis (cad fea; its mesher, gmsh, is GPL-licensed, hence optional):
+curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh -s -- --fea
 ```
 
-On macOS without the command-line developer tools, run `xcode-select --install` first (Rust needs a linker).
+This downloads `install.sh` from the latest [GitHub Release](https://github.com/andrewimm/clicd/releases),
+which then:
+1. installs [uv](https://docs.astral.sh/uv/) if it is missing;
+2. downloads that release's pre-built package for this machine (a Python wheel containing the `cad` package
+   and the compiled `cad`/`cadd` binaries);
+3. runs `uv tool install` on it, which gives cad its own Python 3.12 environment and puts `cad` and `cadd`
+   in `~/.local/bin`;
+4. runs `cad` once to check that it works.
 
-On Linux, install the system libraries listed under the quick install, plus `build-essential`:
-
-```bash
-sudo apt-get install -y build-essential libgl1 libegl1 libfontconfig1 fonts-dejavu-core
-sudo apt-get install -y libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1 libxi6 libxkbcommon0  # --fea only
-```
-
-### 2. Build and install (from source)
-
-```bash
-git clone https://github.com/andrewimm/clicd.git && cd clicd
-scripts/install.sh            # or: scripts/install.sh --fea   (adds stress analysis, see below)
-```
-
-This builds the `cad` CLI and `cadd` daemon and puts them, with their own Python environment, in
-`~/.local/cad`. It then links `cad` and `cadd` into `~/.local/bin`. If something is missing, it stops with
-the command that fixes it. Its last step runs `cad` once to check that the geometry kernel loads.
-Pass a directory to install somewhere else (`scripts/install.sh /opt/cad`). Set `CAD_LINK_DIR=""` to skip
-the links.
-
-**Stress analysis** (`cad fea`) is optional because its mesher, gmsh, is GPL-licensed. `--fea` adds it.
-You can also add it later: re-run with `--fea`, or run the command `cad capabilities` prints.
+You need no Rust, compiler or clone. To pin a version, replace `releases/latest/download` with
+`releases/download/v0.1.0`. [CHANGELOG.md](CHANGELOG.md) says what each version changed.
 
 ### 3. Check it
 
@@ -96,8 +58,8 @@ cad --version                 # cad X.Y.Z
 cad capabilities | tail -1    # stress analysis (cad fea): available | not installed (with the install command)
 ```
 
-If `cad` is "command not found", `~/.local/bin` is not on your PATH:
-`export PATH="$HOME/.local/bin:$PATH"` (bash/zsh, add it to your shell profile) or
+If `cad` is "command not found", `~/.local/bin` is not on your PATH. Run `uv tool update-shell` and open a
+new shell, or add it yourself: `export PATH="$HOME/.local/bin:$PATH"` (bash/zsh, in your shell profile) or
 `fish_add_path ~/.local/bin` (fish). The installer warns about this.
 
 A first model, end to end (in any scratch directory):
@@ -107,31 +69,63 @@ cad examples copy mounting_bracket /tmp/bracket && cd /tmp/bracket
 cad build && cad inspect && cad render --views iso   # renders/r1/*.png
 ```
 
-### 4. Optional extras
+### Optional extras
 
 - **Agent skill:** `npx skills add andrewimm/clicd --skill cad` installs [skills/cad/SKILL.md](skills/cad/SKILL.md)
   for Claude Code, Codex and other agents that read the skills.sh format. It teaches them the workflow.
   Agents can also run `cad docs` at any time for the full reference.
+- **Stress analysis later:** re-run the install command with `-s -- --fea`.
 - **Slicing** (`cad slice`: print time, filament grams, a ready-to-print `.gcode.3mf`) needs
   [Bambu Studio](https://bambulab.com/en/download/studio). `cad` looks for it:
   - in `/Applications` on macOS;
   - as `bambu-studio` on PATH;
   - at `/opt/bambu-studio` on Linux.
 
-  Elsewhere, set `CAD_BAMBU_STUDIO=/path/to/binary`.
+  Elsewhere, set `CAD_BAMBU_STUDIO=/path/to/binary`. Exported 3MF files also open in OrcaSlicer,
+  PrusaSlicer and Cura (`cad docs 3mf`).
 - **Fonts** for engraved and embossed text: any installed font works (`cad fonts` lists them). The default
   is Helvetica, falling back to Arial or DejaVu Sans.
 
 ### Updating and uninstalling
 
 ```bash
-curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh   # prebuilt: upgrade
-uv tool uninstall clicd                                                                     # prebuilt: uninstall
-cd clicd && git pull && scripts/install.sh      # from source: update (add --fea if you use stress analysis)
-rm -rf ~/.local/cad ~/.local/bin/cad ~/.local/bin/cadd   # from source: uninstall
+curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh   # upgrade (add -s -- --fea if you use it)
+uv tool uninstall clicd                                                                     # uninstall
 ```
 
-Projects keep their own `.cad/` state either way.
+A running daemon from the old version is replaced automatically. Projects keep their own `.cad/` state.
+
+### Building from source
+
+Use this to run unreleased changes from `main`. It takes about 5 minutes and needs git, uv and Rust
+(cargo):
+
+```bash
+command -v uv    || curl -LsSf https://astral.sh/uv/install.sh | sh            # or: brew install uv
+command -v cargo || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+# open a new shell afterwards (or: source $HOME/.local/bin/env; source $HOME/.cargo/env)
+```
+
+On macOS without the command-line developer tools, run `xcode-select --install` first (Rust needs a linker).
+On Linux, install the libraries from step 1, plus a compiler:
+
+```bash
+sudo apt-get install -y build-essential
+```
+
+Then:
+
+```bash
+git clone https://github.com/andrewimm/clicd.git && cd clicd
+scripts/install.sh            # or: scripts/install.sh --fea
+```
+
+This builds the package and puts it, with its own Python environment, in `~/.local/cad`, then links `cad`
+and `cadd` into `~/.local/bin`, replacing a release install's links. If a prerequisite is missing, it stops
+with the command that fixes it. Like the release installer, it ends by checking that `cad` runs. Pass a
+directory to install somewhere else (`scripts/install.sh /opt/cad`); set `CAD_LINK_DIR=""` to skip the links.
+To update, run `git pull && scripts/install.sh`. To uninstall, run
+`rm -rf ~/.local/cad ~/.local/bin/cad ~/.local/bin/cadd`.
 
 ### Troubleshooting
 
@@ -139,9 +133,9 @@ Projects keep their own `.cad/` state either way.
   standalone automatically. Results are the same, and stderr shows a note. Set `CAD_NO_DAEMON=1` to skip
   the attempt.
 - **`libGL.so.1` / `libEGL.so.1: cannot open shared object file`** (Linux): install the libraries from step 1.
-- **`cad` finds the wrong Python:** it uses the Python of the environment it is installed in (prebuilt),
-  or the `.venv` next to its install prefix (from source). Set `CAD_PYTHON` to an interpreter that has the
-  `cad` package to override that.
+- **No pre-built package for this machine** (another OS or CPU): build from source.
+- **`cad` finds the wrong Python:** it uses the Python of the environment it is installed in. Set
+  `CAD_PYTHON` to an interpreter that has the `cad` package to override that.
 - **A command hangs or a worker crashed:** `cad daemon stop`. The next command starts a fresh daemon.
 
 ### Development setup
