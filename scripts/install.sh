@@ -47,10 +47,10 @@ mkdir -p "$PREFIX/bin"
 # code (a newer client also replaces an older daemon by itself, but only daemons that know how to step aside)
 if [ -x "$PREFIX/bin/cad" ]; then "$PREFIX/bin/cad" daemon stop >/dev/null 2>&1 || true; fi
 uv venv -q --allow-existing --python 3.12 "$PREFIX/.venv"
-uv pip install -q --reinstall --python "$PREFIX/.venv/bin/python" dist/cad-*.whl
+uv pip install -q --reinstall --python "$PREFIX/.venv/bin/python" dist/clicd-*.whl
 if [ "$FEA" = 1 ]; then
   echo "installing stress-analysis packages (gmsh, scikit-fem, scipy, pyamg)..." >&2
-  uv pip install -q --python "$PREFIX/.venv/bin/python" "$(ls dist/cad-*.whl)[fea]"
+  uv pip install -q --python "$PREFIX/.venv/bin/python" "$(ls dist/clicd-*.whl)[fea]"
 fi
 # replace, never overwrite in place: macOS kills a binary whose signed file was modified in place (SIGKILL)
 rm -f "$PREFIX/bin/cad" "$PREFIX/bin/cadd"

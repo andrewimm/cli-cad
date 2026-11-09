@@ -67,6 +67,12 @@ implementation (`cad/cli.py`): the daemon forwards argv to a worker that calls
 the same `main()` that standalone mode runs in-process, so standalone and
 daemon output are identical (an integration test compares them).
 
+**Distribution.** One wheel per platform, built by maturin, holds both the pure-Python `cad` package and the
+Rust `cad`/`cadd` binaries, which install next to the environment's Python. The binaries find that
+interpreter through `pyvenv.cfg`. Releases are GitHub Releases: the wheels plus an `install.sh` that runs
+`uv tool install` on the right one. No package index is involved, and the pre-built Open CASCADE wheels
+come from PyPI as ordinary dependencies. `scripts/install.sh` builds the same wheel from a checkout.
+
 **One daemon per installation.** The socket is named after the installation: the canonical path of `cadd`
 plus the Python its workers run (`CAD_PYTHON` or the `.venv` beside the binaries). Side-by-side installs, a
 dev checkout and an installed copy never answer each other's commands, and deleting one install cannot

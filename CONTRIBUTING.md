@@ -16,7 +16,7 @@ cargo build --release       # target/release/cad and cadd (the daemon tests use 
 export PATH="$PWD/target/release:$PATH"
 ```
 
-On Linux, install the system libraries listed in the [README](README.md#1-prerequisites) first.
+On Linux, install the system libraries listed in the [README](README.md#1-prerequisites-from-source) first.
 
 ## Before opening a pull request
 
@@ -40,3 +40,19 @@ packages.
   process (`src/cad/_fea_mesh.py`), and the package must import and work without it.
 - **Commits:** stage explicit paths. Scripts and slicers write logs, renders and `result.json` files into the
   working tree; keep them out of commits.
+
+## Releasing
+
+1. Bump `version` in `crates/cad/Cargo.toml`; the Python package takes its version from there. Run
+   `cargo build` so `Cargo.lock` follows, and `uv lock`.
+2. Add a `## X.Y.Z (date)` section at the top of `CHANGELOG.md`. It becomes the release notes.
+3. Optionally, run the Release workflow by hand (Actions → Release → Run workflow). It builds and tests
+   every platform's wheel without publishing.
+4. Commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+The workflow builds a wheel per platform (macOS arm64 and x86_64, Linux x86_64 and aarch64) containing the
+`cad` package and the `cad`/`cadd` binaries. It installs each wheel with the release's `install.sh` on its
+own platform and runs a model end to end. If all of that passes, it publishes the GitHub Release with the
+wheels and `install.sh`. A tag that does not match the version in `Cargo.toml`, or a missing changelog
+section, stops it.
+

@@ -205,13 +205,21 @@ fn canon(p: &Path) -> String {
 }
 
 /// Python interpreter that has the `cad` package installed.
-/// `$CAD_PYTHON`, else a `.venv/bin/python` next to (or above) this executable, else `python3`.
+/// `$CAD_PYTHON`; else the interpreter of the virtual environment this executable is installed in
+/// (a wheel install, e.g. `uv tool install`: `<venv>/bin/{cad,python}` with `<venv>/pyvenv.cfg`); else a
+/// `.venv/bin/python` next to (or above) this executable (scripts/install.sh, a dev checkout); else `python3`.
 pub fn python() -> PathBuf {
     if let Ok(p) = env::var("CAD_PYTHON") {
         return PathBuf::from(p);
     }
     if let Ok(exe) = env::current_exe() {
         let exe = fs::canonicalize(&exe).unwrap_or(exe);
+        if let Some(bin) = exe.parent() {
+            let own = bin.join("python");
+            if own.exists() && bin.parent().is_some_and(|v| v.join("pyvenv.cfg").is_file()) {
+                return own;
+            }
+        }
         let mut d = exe.parent().map(|p| p.to_path_buf());
         while let Some(dir) = d {
             let cand = dir.join(".venv/bin/python");

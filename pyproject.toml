@@ -1,6 +1,6 @@
 [project]
-name = "cad"
-version = "0.1.0"
+name = "clicd"
+dynamic = ["version"]  # from crates/cad/Cargo.toml
 description = "Agent-first parametric CAD on Open CASCADE: Python scripts in; exact solids, renders, analysis and STEP/STL/3MF out"
 readme = "README.md"
 license = "Apache-2.0"
@@ -28,9 +28,22 @@ fea = [
     "pyamg>=5.0",
 ]
 
+# maturin builds one wheel per platform holding the `cad` package and the Rust `cad` / `cadd` binaries
+# (installed next to the environment's Python, which is how they find it)
 [build-system]
-requires = ["uv_build>=0.13.7,<0.14.0"]
-build-backend = "uv_build"
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+bindings = "bin"
+manifest-path = "crates/cad/Cargo.toml"
+python-source = "src"
+module-name = "cad"
+strip = true
+
+[tool.uv]
+# rebuild the project (and its binaries) when the Rust sources change, not only pyproject.toml
+cache-keys = [{ file = "pyproject.toml" }, { file = "Cargo.toml" }, { file = "crates/**/*.rs" }, { file = "crates/**/Cargo.toml" }]
 
 [dependency-groups]
 dev = [
@@ -42,5 +55,3 @@ dev = [
     "pyamg>=5.0",
 ]
 
-[project.scripts]
-cadpy = "cad.cli:console_main"

@@ -1,0 +1,150 @@
+name: Release
+
+# Push a tag vX.Y.Z (matching crates/cad/Cargo.toml and the top of CHANGELOG.md) to publish a GitHub Release
+# with one wheel per platform and install.sh. Run it by hand (workflow_dispatch) to build and test everything
+# without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Version and changelog
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: v
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/cad/Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          grep -q "^## $version " CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## $version' section"; exit 1; }
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "v$version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match version $version in crates/cad/Cargo.toml"; exit 1
+          fi
+
+  wheels:
+    name: Wheel (${{ matrix.name }})
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-arm64, runner: macos-latest, target: aarch64-apple-darwin }
+          - { name: macos-x86_64, runner: macos-15-intel, target: x86_64-apple-darwin }
+          - { name: linux-x86_64, runner: ubuntu-latest, target: x86_64-unknown-linux-gnu, manylinux: "2_28" }
+          - { name: linux-aarch64, runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, manylinux: "2_28" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+          args: --release --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.name }}
+          path: dist/*.whl
+
+  installer:
+    name: install.sh
+    needs: [version, wheels]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - run: |
+          ls dist
+          wheels=$(cd dist && ls *.whl | tr '\n' ' ')
+          sed -e "s/@VERSION@/${{ needs.version.outputs.version }}/" -e "s/@WHEELS@/${wheels% }/" \
+            scripts/install-release.sh > install.sh
+          sh -n install.sh
+          grep -n '^VERSION=\|^WHEELS=' install.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: install.sh
+
+  smoke:
+    name: Install and run (${{ matrix.name }})
+    needs: installer
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-arm64, runner: macos-latest }
+          - { name: macos-x86_64, runner: macos-15-intel }
+          - { name: linux-x86_64, runner: ubuntu-latest }
+          - { name: linux-aarch64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: installer
+      - name: System libraries (as the README says)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libegl1 libfontconfig1 fonts-dejavu-core \
+            libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1 libxi6 libxkbcommon0
+      - name: install.sh --fea, from these wheels instead of the release
+        run: |
+          CLICD_DOWNLOAD_BASE="file://$PWD/dist" sh install.sh --fea
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: A model end to end
+        run: |
+          cad --version
+          cad capabilities | tail -1 | grep 'stress analysis (cad fea): available'
+          cad examples copy servo_arm "$RUNNER_TEMP/arm" && cd "$RUNNER_TEMP/arm"
+          cad build && cad inspect >/dev/null && cad render --views iso --no-sheet
+          cad fea -q draft || [ $? -eq 4 ]   # 4 = a study below its target (expected for this example)
+          cad export --format step,stl,3mf
+          cad daemon status
+          cad daemon stop
+
+  publish:
+    name: GitHub Release
+    if: github.ref_type == 'tag'
+    needs: [version, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v v="${{ needs.version.outputs.version }}" '
+            $0 ~ "^## " v " " {on=1; next}  on && /^## / {exit}  on {print}' CHANGELOG.md > notes.md
+          cat >> notes.md <<'EOF'
+
+          ## Install
+
+          ```bash
+          curl -LsSf https://github.com/andrewimm/clicd/releases/download/${{ github.ref_name }}/install.sh | sh
+          ```
+
+          Add `-s -- --fea` for stress analysis. macOS (Apple silicon, Intel) and Linux (x86_64, aarch64).
+          EOF
+          cat notes.md
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" assets/*.whl assets/install.sh --title "cad ${{ needs.version.outputs.version }}" --notes-file notes.md --verify-tag

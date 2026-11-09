@@ -16,11 +16,43 @@ agent ──> cad (Rust CLI) ──unix socket──> cadd (Rust daemon) ──>
 
 These steps are written so an agent can follow them unattended. Each one ends with a check.
 
-**Supported:** macOS (Apple silicon or Intel) and Linux x86_64. Both are tested in CI on every push.
-Windows is not supported; use WSL2. Expect about 1.5 GB on disk (the Open CASCADE wheel is large), and
-about 5 minutes for a first install.
+**Supported:** macOS (Apple silicon or Intel) and Linux (x86_64 or aarch64). Windows is not supported; use
+WSL2. Expect about 1.5 GB on disk (the Open CASCADE wheel is large).
 
-### 1. Prerequisites
+### Quick install (prebuilt)
+
+```bash
+curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh
+# with stress analysis (cad fea; its mesher, gmsh, is GPL-licensed, hence optional):
+curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh -s -- --fea
+```
+
+This installs [uv](https://docs.astral.sh/uv/) if it is missing, then runs `uv tool install` on this
+platform's wheel from the latest [release](https://github.com/andrewimm/clicd/releases). `cad` and `cadd`
+go into `~/.local/bin`, with their own Python 3.12 environment, so you need no Rust, compiler or clone. It
+ends by running `cad` once to check that it works.
+
+To install a specific version, use `releases/download/v0.1.0/install.sh`. To upgrade, re-run the same
+command (add `--fea` if you use stress analysis); the running daemon is replaced automatically. To
+uninstall, run `uv tool uninstall clicd`.
+
+On Linux the geometry kernel needs a few system libraries; the installer warns if they are missing. On
+Debian or Ubuntu:
+
+```bash
+sudo apt-get install -y libgl1 libegl1 libfontconfig1 fonts-dejavu-core
+# only for stress analysis (--fea): the gmsh mesher also needs
+sudo apt-get install -y libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1 libxi6 libxkbcommon0
+```
+
+Then continue at [3. Check it](#3-check-it).
+
+### From source
+
+Build from source instead to get unreleased changes from `main`, or to work on cad itself (see also
+[Development setup](#development-setup)). It takes about 5 minutes and needs Rust.
+
+### 1. Prerequisites (from source)
 
 You need git, [uv](https://docs.astral.sh/uv/) (Python packaging; it downloads Python 3.12 itself, so no
 system Python is needed) and a Rust toolchain (cargo). Install any that are missing:
@@ -33,16 +65,14 @@ command -v cargo || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | 
 
 On macOS without the command-line developer tools, run `xcode-select --install` first (Rust needs a linker).
 
-On Linux, the geometry kernel needs OpenGL and fontconfig libraries even when nothing is displayed.
-On Debian or Ubuntu:
+On Linux, install the system libraries listed under the quick install, plus `build-essential`:
 
 ```bash
 sudo apt-get install -y build-essential libgl1 libegl1 libfontconfig1 fonts-dejavu-core
-# only for stress analysis (--fea below): the gmsh mesher also needs
-sudo apt-get install -y libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1 libxi6 libxkbcommon0
+sudo apt-get install -y libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama1 libxi6 libxkbcommon0  # --fea only
 ```
 
-### 2. Build and install
+### 2. Build and install (from source)
 
 ```bash
 git clone https://github.com/andrewimm/clicd.git && cd clicd
@@ -61,7 +91,7 @@ You can also add it later: re-run with `--fea`, or run the command `cad capabili
 ### 3. Check it
 
 ```bash
-cad --version                 # cad 0.1.0
+cad --version                 # cad X.Y.Z
 cad capabilities | tail -1    # stress analysis (cad fea): available | not installed (with the install command)
 ```
 
@@ -94,9 +124,13 @@ cad build && cad inspect && cad render --views iso   # renders/r1/*.png
 ### Updating and uninstalling
 
 ```bash
-cd clicd && git pull && scripts/install.sh      # add --fea if you use stress analysis; stops the old daemon
-rm -rf ~/.local/cad ~/.local/bin/cad ~/.local/bin/cadd   # uninstall (projects keep their own .cad/ state)
+curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh   # prebuilt: upgrade
+uv tool uninstall clicd                                                                     # prebuilt: uninstall
+cd clicd && git pull && scripts/install.sh      # from source: update (add --fea if you use stress analysis)
+rm -rf ~/.local/cad ~/.local/bin/cad ~/.local/bin/cadd   # from source: uninstall
 ```
+
+Projects keep their own `.cad/` state either way.
 
 ### Troubleshooting
 
@@ -104,8 +138,9 @@ rm -rf ~/.local/cad ~/.local/bin/cad ~/.local/bin/cadd   # uninstall (projects k
   standalone automatically. Results are the same, and stderr shows a note. Set `CAD_NO_DAEMON=1` to skip
   the attempt.
 - **`libGL.so.1` / `libEGL.so.1: cannot open shared object file`** (Linux): install the libraries from step 1.
-- **`cad` finds the wrong Python:** it uses the `.venv` next to its install prefix. Set `CAD_PYTHON` to
-  an interpreter that has the `cad` package to override that.
+- **`cad` finds the wrong Python:** it uses the Python of the environment it is installed in (prebuilt),
+  or the `.venv` next to its install prefix (from source). Set `CAD_PYTHON` to an interpreter that has the
+  `cad` package to override that.
 - **A command hangs or a worker crashed:** `cad daemon stop`. The next command starts a fresh daemon.
 
 ### Development setup
@@ -119,7 +154,8 @@ export PATH="$PWD/target/release:$PATH"
 uv run pytest -q
 ```
 
-Without the Rust binaries, `uv run cadpy <command>` runs the same CLI in standalone mode. See
+`uv run cad <command>` runs the binaries `uv sync` built into `.venv`; `uv run python -m cad <command>` runs
+the same CLI in standalone mode. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Quick start

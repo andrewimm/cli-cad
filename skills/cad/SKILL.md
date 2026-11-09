@@ -11,16 +11,17 @@ and exports STEP, STL or 3MF. Everything is a CLI command with `--json` output.
 ## 1. Make sure it is installed
 
 ```bash
-cad --version            # prints "cad 0.1.0"; if "command not found", install it (below)
+cad --version            # prints "cad X.Y.Z"; if "command not found", install it (below)
 ```
 
-If it is missing, install it from source. You need `uv` and Rust (`cargo`), and on Linux a few system
-libraries. The [README's Install section](https://github.com/andrewimm/clicd#install) gives each command:
+If it is missing, install it (macOS or Linux; installs `uv` if needed, no compiler required):
 
 ```bash
-git clone https://github.com/andrewimm/clicd.git && cd clicd
-scripts/install.sh            # -> ~/.local/cad (Python env + cad + cadd), linked into ~/.local/bin; --fea adds stress analysis
+curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh   # add: -s -- --fea for stress analysis
 ```
+
+On Linux it may ask for a few system libraries (`sudo apt-get install -y libgl1 libegl1 libfontconfig1`).
+Building from source and troubleshooting: the [README's Install section](https://github.com/andrewimm/clicd#install).
 
 In a sandbox that forbids Unix sockets (e.g. Codex) the background daemon cannot run; `cad` then
 runs each command standalone automatically (same results, a note on stderr, ~0.6 s per command).
