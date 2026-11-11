@@ -8,7 +8,7 @@ from collections import Counter
 from pathlib import Path
 
 DOC_COMMANDS = {"docs", "help", "capabilities", "examples", "schema", "--help", "-h"}
-PEEK = re.compile(r"(site-packages/cad|/src/cad/|clicd/src|cad/part\.py|cad/engine\.py)")
+PEEK = re.compile(r"(site-packages/cad|/src/cad/|clicd/src|cli-cad/src|cad/part\.py|cad/engine\.py)")
 
 
 def _cmd(argv: list[str]) -> str:

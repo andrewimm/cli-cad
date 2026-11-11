@@ -1,6 +1,6 @@
 # cad — agent-first parametric CAD
 
-[![CI](https://github.com/andrewimm/clicd/actions/workflows/ci.yml/badge.svg)](https://github.com/andrewimm/clicd/actions/workflows/ci.yml)
+[![CI](https://github.com/andrewimm/cli-cad/actions/workflows/ci.yml/badge.svg)](https://github.com/andrewimm/cli-cad/actions/workflows/ci.yml)
 
 A programmable CAD environment designed for autonomous coding agents: write a
 Python script, get exact solid geometry (Open CASCADE BRep), check it with
@@ -12,14 +12,14 @@ Paste this into your coding agent. It installs the CLI and the agent skill, then
 with you:
 
 ```
-Set me up with cad, the agent-first CAD tool from https://github.com/andrewimm/clicd, then help me
+Set me up with cad, the agent-first CAD tool from https://github.com/andrewimm/cli-cad, then help me
 design my first 3D print.
 
-1. Install the cad CLI by following the Install section of https://github.com/andrewimm/clicd#install
+1. Install the cad CLI by following the Install section of https://github.com/andrewimm/cli-cad#install
    (on Linux, install the system libraries it lists first). Check it with `cad --version`.
-2. Install the cad skill wherever you load skills from: `npx skills add andrewimm/clicd --skill cad -g -y`
+2. Install the cad skill wherever you load skills from: `npx skills add andrewimm/cli-cad --skill cad -g -y`
    works for most agents; otherwise download
-   https://raw.githubusercontent.com/andrewimm/clicd/main/skills/cad/SKILL.md into your skills directory
+   https://raw.githubusercontent.com/andrewimm/cli-cad/main/skills/cad/SKILL.md into your skills directory
    (replace any older copy). Then read it and follow it from here on.
 3. Make a project folder ~/cad-projects/first-print and ask me what I want to print. Model it with cad,
    check it with cad's measurements, show me the renders, and export a 3MF I can open in my slicer.
@@ -55,12 +55,12 @@ sudo apt-get install -y libglu1-mesa libxrender1 libxcursor1 libxft2 libxinerama
 ### 2. Install the latest release
 
 ```bash
-curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh
+curl -LsSf https://github.com/andrewimm/cli-cad/releases/latest/download/install.sh | sh
 # or, with stress analysis (cad fea; its mesher, gmsh, is GPL-licensed, hence optional):
-curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh -s -- --fea
+curl -LsSf https://github.com/andrewimm/cli-cad/releases/latest/download/install.sh | sh -s -- --fea
 ```
 
-This downloads `install.sh` from the latest [GitHub Release](https://github.com/andrewimm/clicd/releases),
+This downloads `install.sh` from the latest [GitHub Release](https://github.com/andrewimm/cli-cad/releases),
 which then:
 1. installs [uv](https://docs.astral.sh/uv/) if it is missing;
 2. downloads that release's pre-built package for this machine (a Python wheel containing the `cad` package
@@ -92,7 +92,7 @@ cad build && cad inspect && cad render --views iso   # renders/r1/*.png
 
 ### Optional extras
 
-- **Agent skill:** `npx skills add andrewimm/clicd --skill cad` installs [skills/cad/SKILL.md](skills/cad/SKILL.md)
+- **Agent skill:** `npx skills add andrewimm/cli-cad --skill cad` installs [skills/cad/SKILL.md](skills/cad/SKILL.md)
   for Claude Code, Codex and other agents that read the skills.sh format. It teaches them the workflow.
   Agents can also run `cad docs` at any time for the full reference.
 - **Stress analysis later:** re-run the install command with `-s -- --fea`.
@@ -110,8 +110,8 @@ cad build && cad inspect && cad render --views iso   # renders/r1/*.png
 ### Updating and uninstalling
 
 ```bash
-curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh   # upgrade (add -s -- --fea if you use it)
-uv tool uninstall clicd                                                                     # uninstall
+curl -LsSf https://github.com/andrewimm/cli-cad/releases/latest/download/install.sh | sh   # upgrade (add -s -- --fea if you use it)
+uv tool uninstall cli-cad                                                                   # uninstall
 ```
 
 A running daemon from the old version is replaced automatically. Projects keep their own `.cad/` state.
@@ -137,7 +137,7 @@ sudo apt-get install -y build-essential
 Then:
 
 ```bash
-git clone https://github.com/andrewimm/clicd.git && cd clicd
+git clone https://github.com/andrewimm/cli-cad.git && cd cli-cad
 scripts/install.sh            # or: scripts/install.sh --fea
 ```
 

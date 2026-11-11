@@ -32,7 +32,7 @@ TAR="$(mktemp -t cad-src).tgz"
 (cd "$REPO" && git ls-files -co --exclude-standard -z | COPYFILE_DISABLE=1 tar --no-xattrs --null -czf "$TAR" -T -)
 sandbox cp "$TAR" "$NAME:/vercel/src.tgz" >/dev/null
 rm -f "$TAR"
-run 'source ~/slicers/env.sh && mkdir -p ~/clicd && cd ~/clicd && tar xzf ~/src.tgz && CAD_LINK_DIR=~/.local/bin scripts/install.sh > ~/install.log 2>&1 || { tail -30 ~/install.log; exit 1; }'
+run 'source ~/slicers/env.sh && mkdir -p ~/cli-cad && cd ~/cli-cad && tar xzf ~/src.tgz && CAD_LINK_DIR=~/.local/bin scripts/install.sh > ~/install.log 2>&1 || { tail -30 ~/install.log; exit 1; }'
 if [ "$SAVE" = 1 ] && [ -z "$SNAPSHOT" ]; then
   # snapshotting stops the sandbox; carry on in a new one from the snapshot
   ID=$(sandbox snapshot "$NAME" --stop --expiration 30d 2>&1 | grep -oE 'snap_[A-Za-z0-9]+' | head -1)
@@ -42,7 +42,7 @@ if [ "$SAVE" = 1 ] && [ -z "$SNAPSHOT" ]; then
   sandbox create --name "$NAME" --vcpus 4 --timeout 45m --network-policy allow-all --snapshot "$ID" >/dev/null
 fi
 set +e
-run 'source ~/slicers/env.sh && cd ~/clicd && ~/.local/cad/.venv/bin/python scripts/slicer_compat/check.py --require prusa,orca,cura --out ~/compat --json-out ~/report.json | tee ~/report.txt; exit ${PIPESTATUS[0]}'
+run 'source ~/slicers/env.sh && cd ~/cli-cad && ~/.local/cad/.venv/bin/python scripts/slicer_compat/check.py --require prusa,orca,cura --out ~/compat --json-out ~/report.json | tee ~/report.txt; exit ${PIPESTATUS[0]}'
 STATUS=$?
 set -e
 sandbox cp "$NAME:/vercel/report.json" "$REPO/slicer-compat-report.json" >/dev/null

@@ -17,11 +17,11 @@ cad --version            # prints "cad X.Y.Z"; if "command not found", install i
 If it is missing, install it (macOS or Linux; installs `uv` if needed, no compiler required):
 
 ```bash
-curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh   # add: -s -- --fea for stress analysis
+curl -LsSf https://github.com/andrewimm/cli-cad/releases/latest/download/install.sh | sh   # add: -s -- --fea for stress analysis
 ```
 
 On Linux it may ask for a few system libraries (`sudo apt-get install -y libgl1 libegl1 libfontconfig1`).
-Building from source and troubleshooting: the [README's Install section](https://github.com/andrewimm/clicd#install).
+Building from source and troubleshooting: the [README's Install section](https://github.com/andrewimm/cli-cad#install).
 
 In a sandbox that forbids Unix sockets (e.g. Codex) the background daemon cannot run; `cad` then
 runs each command standalone automatically (same results, a note on stderr, ~0.6 s per command).

@@ -1,5 +1,5 @@
 [project]
-name = "clicd"
+name = "cli-cad"
 dynamic = ["version"]  # from crates/cad/Cargo.toml
 description = "Agent-first parametric CAD on Open CASCADE: Python scripts in; exact solids, renders, analysis and STEP/STL/3MF out"
 readme = "README.md"
@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/andrewimm/clicd"
-Issues = "https://github.com/andrewimm/clicd/issues"
+Repository = "https://github.com/andrewimm/cli-cad"
+Issues = "https://github.com/andrewimm/cli-cad/issues"
 
 [project.optional-dependencies]
 # stress analysis (`cad fea`): gmsh meshes (GPL, so optional), scikit-fem + scipy + pyamg solve

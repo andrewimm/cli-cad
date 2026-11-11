@@ -27,7 +27,7 @@ from .study import Study
 try:
     from importlib.metadata import PackageNotFoundError, version as _dist_version
 
-    __version__ = _dist_version("clicd")
+    __version__ = _dist_version("cli-cad")
 except PackageNotFoundError:  # running from a source tree that is not installed
     __version__ = "0.0.0+source"
 

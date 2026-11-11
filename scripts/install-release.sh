@@ -1,19 +1,19 @@
 #!/bin/sh
-# Install cad from a GitHub release of andrewimm/clicd: no Rust, compiler or clone needed.
+# Install cad from a GitHub release of andrewimm/cli-cad: no Rust, compiler or clone needed.
 #
-#   curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh
-#   curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh -s -- --fea
+#   curl -LsSf https://github.com/andrewimm/cli-cad/releases/latest/download/install.sh | sh
+#   curl -LsSf https://github.com/andrewimm/cli-cad/releases/latest/download/install.sh | sh -s -- --fea
 #
 # Installs uv if it is missing, picks this platform's wheel from the release (macOS arm64 / x86_64,
 # Linux x86_64 / aarch64) and runs `uv tool install` on it: `cad` and `cadd` land in uv's tool bin
 # directory (~/.local/bin), with their own Python 3.12 environment. Re-run to upgrade or reinstall.
 #   --fea   also install the optional stress-analysis packages (gmsh is GPL-licensed, hence optional)
-# The release workflow fills in VERSION and WHEELS; CLICD_DOWNLOAD_BASE overrides where wheels come from.
+# The release workflow fills in VERSION and WHEELS; CLI_CAD_DOWNLOAD_BASE overrides where wheels come from.
 set -eu
 
 VERSION="@VERSION@"
 WHEELS="@WHEELS@"
-BASE="${CLICD_DOWNLOAD_BASE:-https://github.com/andrewimm/clicd/releases/download/v$VERSION}"
+BASE="${CLI_CAD_DOWNLOAD_BASE:-https://github.com/andrewimm/cli-cad/releases/download/v$VERSION}"
 
 say() { printf '%s\n' "$*" >&2; }
 die() { say "error: $*"; exit 1; }
@@ -38,7 +38,7 @@ case "$(uname -s)-$(uname -m)" in
   Darwin-x86_64) pattern="macosx_*_x86_64.whl" ;;
   Linux-x86_64) pattern="manylinux_*_x86_64.whl" ;;
   Linux-aarch64 | Linux-arm64) pattern="manylinux_*_aarch64.whl" ;;
-  *) die "no prebuilt cad for $(uname -s) $(uname -m); build from source: https://github.com/andrewimm/clicd#install" ;;
+  *) die "no prebuilt cad for $(uname -s) $(uname -m); build from source: https://github.com/andrewimm/cli-cad#install" ;;
 esac
 wheel=""
 for w in $WHEELS; do
@@ -66,12 +66,19 @@ if [ -z "$UV" ]; then
   [ -n "$UV" ] || die "uv was installed but cannot be found; open a new shell and re-run"
 fi
 
+bindir="$("$UV" tool dir --bin 2>/dev/null || echo "$HOME/.local/bin")"
+# releases up to 0.1.1 installed as "clicd": remove it (and stop its daemon) so the two don't share the cad command
+if "$UV" tool list 2>/dev/null | grep -q '^clicd '; then
+  say "replacing the earlier clicd install with cli-cad..."
+  "$bindir/cad" daemon stop >/dev/null 2>&1 || true
+  "$UV" tool uninstall clicd >&2
+fi
+
 extra=""
 [ "$FEA" = 1 ] && extra="[fea]"
 say "installing cad $VERSION ($wheel)${extra:+ with stress analysis}..."
-"$UV" tool install --force --python 3.12 "clicd$extra @ $BASE/$wheel" >&2
+"$UV" tool install --force --python 3.12 "cli-cad$extra @ $BASE/$wheel" >&2
 
-bindir="$("$UV" tool dir --bin 2>/dev/null || echo "$HOME/.local/bin")"
 cad="$bindir/cad"
 [ -x "$cad" ] || die "installed, but $cad is missing"
 if ! out="$("$cad" --no-daemon capabilities 2>&1)"; then

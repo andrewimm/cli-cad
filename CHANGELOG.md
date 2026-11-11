@@ -4,6 +4,12 @@ Each release has a `## X.Y.Z (date)` section; the release workflow publishes it 
 Versions follow [semver](https://semver.org/). Before 1.0, a minor version (0.x.0) may change the scripting
 API or the CLI; patch versions do not.
 
+## 0.1.2 (2026-11-11)
+
+- Renamed: the repository is now [andrewimm/cli-cad](https://github.com/andrewimm/cli-cad) and the package
+  `cli-cad` (it was `clicd`). The command is still `cad`. Old links redirect, and the installer replaces an
+  existing `clicd` install: re-run it to upgrade. Uninstall with `uv tool uninstall cli-cad`.
+
 ## 0.1.1 (2026-11-11)
 
 - `snap_hook`: `catch_face_at` is now where the catch face leaves the beam (its end nearest the root). For a
@@ -50,5 +56,5 @@ command has `--json` output, stable error codes and hints.
   - deterministic software renders;
   - a standalone mode for sandboxes.
 - **Install:** prebuilt for macOS (Apple silicon, Intel) and Linux (x86_64, aarch64) with
-  `curl -LsSf https://github.com/andrewimm/clicd/releases/latest/download/install.sh | sh`. Stress analysis
+  `curl -LsSf https://github.com/andrewimm/cli-cad/releases/latest/download/install.sh | sh`. Stress analysis
   is not available on Linux aarch64, because gmsh publishes no wheels for it.

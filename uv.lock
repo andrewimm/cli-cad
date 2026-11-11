@@ -37,7 +37,7 @@ wheels = [
 ]
 
 [[package]]
-name = "clicd"
+name = "cli-cad"
 source = { editable = "." }
 dependencies = [
     { name = "cadquery-ocp" },
