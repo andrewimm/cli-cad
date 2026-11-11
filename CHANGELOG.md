@@ -4,11 +4,13 @@ Each release has a `## X.Y.Z (date)` section; the release workflow publishes it 
 Versions follow [semver](https://semver.org/). Before 1.0, a minor version (0.x.0) may change the scripting
 API or the CLI; patch versions do not.
 
-## Unreleased
+## 0.1.1 (2026-11-11)
 
 - `snap_hook`: `catch_face_at` is now where the catch face leaves the beam (its end nearest the root). For a
   hook with `retention_angle` below 90 it used to give the tip end, so a ledge placed there overlapped the
   sloped catch face.
+- README: a "Get started" prompt to paste into Claude Code, which installs the CLI and the agent skill and
+  starts designing a first print.
 
 ## 0.1.0 (2026-11-08)
 
