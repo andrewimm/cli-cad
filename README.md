@@ -8,8 +8,8 @@ numbers, look at deterministic headless renders, revise, and export STEP/STL.
 
 ## Get started
 
-Paste this into [Claude Code](https://claude.com/claude-code). It installs the CLI and the agent skill,
-then starts designing a print with you:
+Paste this into your coding agent. It installs the CLI and the agent skill, then starts designing a print
+with you:
 
 ```
 Set me up with cad, the agent-first CAD tool from https://github.com/andrewimm/clicd, then help me
@@ -17,9 +17,10 @@ design my first 3D print.
 
 1. Install the cad CLI by following the Install section of https://github.com/andrewimm/clicd#install
    (on Linux, install the system libraries it lists first). Check it with `cad --version`.
-2. Install the cad skill: download
-   https://raw.githubusercontent.com/andrewimm/clicd/main/skills/cad/SKILL.md to
-   ~/.claude/skills/cad/SKILL.md (replace any older copy), then read it and follow it from here on.
+2. Install the cad skill wherever you load skills from: `npx skills add andrewimm/clicd --skill cad -g -y`
+   works for most agents; otherwise download
+   https://raw.githubusercontent.com/andrewimm/clicd/main/skills/cad/SKILL.md into your skills directory
+   (replace any older copy). Then read it and follow it from here on.
 3. Make a project folder ~/cad-projects/first-print and ask me what I want to print. Model it with cad,
    check it with cad's measurements, show me the renders, and export a 3MF I can open in my slicer.
 ```

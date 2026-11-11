@@ -9,7 +9,7 @@ API or the CLI; patch versions do not.
 - `snap_hook`: `catch_face_at` is now where the catch face leaves the beam (its end nearest the root). For a
   hook with `retention_angle` below 90 it used to give the tip end, so a ledge placed there overlapped the
   sloped catch face.
-- README: a "Get started" prompt to paste into Claude Code, which installs the CLI and the agent skill and
+- README: a "Get started" prompt to paste into a coding agent, which installs the CLI and the agent skill and
   starts designing a first print.
 
 ## 0.1.0 (2026-11-08)
