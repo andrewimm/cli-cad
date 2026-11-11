@@ -4,6 +4,12 @@ Each release has a `## X.Y.Z (date)` section; the release workflow publishes it 
 Versions follow [semver](https://semver.org/). Before 1.0, a minor version (0.x.0) may change the scripting
 API or the CLI; patch versions do not.
 
+## Unreleased
+
+- `snap_hook`: `catch_face_at` is now where the catch face leaves the beam (its end nearest the root). For a
+  hook with `retention_angle` below 90 it used to give the tip end, so a ledge placed there overlapped the
+  sloped catch face.
+
 ## 0.1.0 (2026-11-08)
 
 First release. `cad` turns a Python script into exact solid geometry (Open CASCADE BRep), checks it with

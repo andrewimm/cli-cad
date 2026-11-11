@@ -479,7 +479,8 @@ nut.threaded_hole("M8", at=(0, 0))                             # internal thread
 - `snap_hook(on=, length=, thickness=, width=, catch=, hook=, at=)`: a cantilever growing out of a flat face
   along its normal, hook pointing `hook` (a direction in the face). Metrics: peak strain (1.5 t y / L^2) against
   the material's allowable strain (PLA 2 %, PETG 3.5 %, ABS 2.5 %, PC 4 %, PA12 6 %), deflection force, and
-  `catch_face_at` (where the mating ledge must be). `SNAP_STRAIN_HIGH` gives the minimum length that works;
+  `catch_face_at` (where the mating ledge must be: where the catch face leaves the beam, the end nearest the root,
+  so it is right for angled `retention_angle` hooks too). `SNAP_STRAIN_HIGH` gives the minimum length that works;
   `SNAP_LAYER_ORIENTATION` warns when the beam stands upright (printed that way it snaps along its layers).
   Named faces: `<id>.catch` (the holding face), `<id>.lead_in`, `<id>.beam`. Make the mating window/ledge yourself
   at the catch position, `catch` mm deep, a little wider than the hook.

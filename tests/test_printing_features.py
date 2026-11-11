@@ -65,6 +65,7 @@ def test_snap_hook_geometry_strain_and_warnings():
     catch = lid.faces("snap_hook1.catch").shapes
     from cad import _occ
     assert len(catch) == 1 and _occ.face_centroid(catch[0])[1] == pytest.approx(-15 - 8, abs=1e-6)
+    assert s["catch_face_at"][1] == pytest.approx(-15 - 8)
     stiff = Part("s", material="PLA"); stiff.box(40, 30, 2, name="plate")
     g = stiff.snap_hook(on=stiff.faces("plate.top"), length=5, thickness=2, width=5, catch=1.2)
     assert {w.code for w in g.warnings} == {"SNAP_STRAIN_HIGH"}
@@ -73,6 +74,22 @@ def test_snap_hook_geometry_strain_and_warnings():
     ok = Part("o", material="PETG"); ok.box(40, 30, 2, name="plate")
     k = ok.snap_hook(on=ok.faces("plate.top"), length=12, thickness=1.2, width=5, catch=0.8)
     assert [w.code for w in k.warnings] == ["SNAP_LAYER_ORIENTATION"]
+
+
+def test_snap_hook_catch_face_at_angled_hook():
+    # a 45 degree catch slopes from the beam (nearer the root) out to the tip at length: catch_face_at is the
+    # root end, so a square ledge there clears the hook; a 90 degree catch is flat at length
+    from cad import _occ
+    for ret, start in ((90, 14.0), (45, 13.0), (60, 14.0 - 1.0 / 3 ** 0.5)):
+        p = Part("p", material="PLA"); p.box(20, 10, 3, name="plate")
+        f = p.snap_hook(on=p.faces("plate.back"), at=(1, 5, 1.5), hook="+x", length=14, thickness=1.6, width=3,
+                        catch=1.0, retention_angle=ret)
+        at = f.feature.metrics["snap"]["catch_face_at"]
+        assert at == pytest.approx([1, 5 + start, 1.5], abs=1e-4)
+        catch = p.faces("snap_hook1.catch").shapes
+        lo, hi = _occ.bbox(catch[0])
+        assert lo[1] == pytest.approx(at[1], abs=1e-4) and lo[0] == pytest.approx(1, abs=1e-4)  # starts on the beam
+        assert hi[1] == pytest.approx(5 + 14, abs=1e-4)                                        # reaches the tip at length
 
 
 def test_external_and_internal_threads_mesh():

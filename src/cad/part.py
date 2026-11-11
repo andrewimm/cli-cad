@@ -1168,7 +1168,9 @@ class Part:
         catch face position; warnings SNAP_STRAIN_HIGH and SNAP_LAYER_ORIENTATION (a beam
         printed upright breaks along its layers).  Named faces: ``<id>.catch`` (the face that
         holds), ``<id>.lead_in``, ``<id>.beam``.  The mating part needs a ledge or window the
-        catch face hooks behind: put it at the catch position, ``catch`` mm deep.
+        catch face hooks behind: put it at the catch position, ``catch`` mm deep.  ``catch_face_at``
+        is where the catch face leaves the beam's outer face, the end nearest the root: a hook with
+        ``retention_angle`` below 90 slopes out from there to its tip over ``catch / tan(angle)`` mm.
         """
         from .snapfit import analyse
 
@@ -1236,7 +1238,9 @@ class Part:
             self._body_op(feat, tool, refs, "add")
             upright = abs(n[2]) > 0.7
             a = analyse(length, thickness, width, catch, self.material, upright=upright)
-            catch_pt = tuple(o + z_r * nn for o, nn in zip(origin, n))
+            # where the catch face leaves the beam's outer face: the point nearest the root, so a square ledge
+            # there clears the hook whatever the retention angle (an angled face slopes out to the tip at z_r)
+            catch_pt = tuple(o + (z_r - ret) * nn for o, nn in zip(origin, n))
             a.update(catch_face_at=_jsonable(catch_pt), hook_direction=_jsonable(h), beam_axis=_jsonable(n),
                      total_height=round(z_r + land + lead, 4))
             feat.metrics["snap"] = a
